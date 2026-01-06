@@ -1,0 +1,701 @@
+"use client"
+import { ERPLayout } from "@/components/erp-layout"
+import { Protected } from "@/components/protected"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ClienteDetailModal } from "@/components/cliente-detail-modal"
+import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Cliente } from "@/lib/api"
+// Datos hardcodeados para clientes
+const clientesHardcoded = [
+  {
+    id: 1,
+    code: "CLI001",
+    name: "Empresa ABC S.A.",
+    email: "contacto@empresaabc.com",
+    phone: "+54 11 1234-5678",
+    city: "Buenos Aires",
+    address: "Av. Corrientes 1234",
+    client_type: "mayorista",
+    is_active: 1,
+    sales_channel: "sistema_mf",
+    created_at: "2024-01-15T10:30:00Z",
+    updated_at: "2024-01-20T14:45:00Z",
+    person_type: "persona_juridica",
+    tax_condition: "responsable_inscripto",
+    primary_tax_id: "30-12345678-9",
+    secondary_tax_id: "30-12345678-8",
+    cc_enabled: true,
+    cc_limit: 100000,
+    cc_balance: -15000
+  },
+  {
+    id: 2,
+    code: "CLI002", 
+    name: "Distribuidora XYZ",
+    email: "ventas@distribuidoraxyz.com",
+    phone: "+54 11 9876-5432",
+    city: "Córdoba",
+    address: "San Martín 567",
+    client_type: "mayorista",
+    is_active: 1,
+    sales_channel: "woocommerce_mayorista",
+    created_at: "2024-01-10T09:15:00Z",
+    updated_at: "2024-01-18T11:20:00Z",
+    person_type: "persona_juridica",
+    tax_condition: "responsable_inscripto",
+    primary_tax_id: "30-87654321-0",
+    cc_enabled: true,
+    cc_limit: 200000,
+    cc_balance: 25000
+  },
+  {
+    id: 3,
+    code: "CLI003",
+    name: "Comercial del Norte",
+    email: "info@comercialnorte.com",
+    phone: "+54 11 5555-1234",
+    city: "Rosario",
+    address: "Belgrano 890",
+    client_type: "minorista",
+    is_active: 1,
+    sales_channel: "mercadolibre",
+    created_at: "2024-01-05T16:20:00Z",
+    updated_at: "2024-01-22T08:30:00Z",
+    person_type: "persona_fisica",
+    tax_condition: "consumidor_final",
+    primary_tax_id: "27-11223344-5",
+    cc_enabled: false,
+    cc_limit: 0,
+    cc_balance: 0
+  },
+  {
+    id: 4,
+    code: "CLI004",
+    name: "Ventas Directas SRL",
+    email: "admin@ventasdirectas.com",
+    phone: "+54 11 4444-5678",
+    city: "Mendoza",
+    address: "Las Heras 234",
+    client_type: "personalizado",
+    is_active: 0,
+    sales_channel: "manual",
+    created_at: "2023-12-20T12:00:00Z",
+    updated_at: "2024-01-15T10:15:00Z",
+    person_type: "persona_juridica",
+    tax_condition: "responsable_inscripto",
+    primary_tax_id: "30-55443322-1",
+    cc_enabled: false,
+    cc_limit: 0,
+    cc_balance: 0
+  },
+  {
+    id: 5,
+    code: "CLI005",
+    name: "Importadora del Sur",
+    email: "compras@importadorasur.com",
+    phone: "+54 11 3333-9999",
+    city: "La Plata",
+    address: "Diagonal 79 1234",
+    client_type: "mayorista",
+    is_active: 1,
+    sales_channel: "woocommerce_minorista",
+    created_at: "2024-01-12T14:30:00Z",
+    updated_at: "2024-01-25T16:45:00Z",
+    person_type: "persona_juridica",
+    tax_condition: "responsable_inscripto",
+    primary_tax_id: "30-99887766-4",
+    secondary_tax_id: "30-99887766-5",
+    cc_enabled: true,
+    cc_limit: 150000,
+    cc_balance: -60000
+  }
+]
+
+const TAX_CONDITION_LABELS: Record<string, string> = {
+  responsable_inscripto: "Responsable Inscripto",
+  inscripto: "Inscripto",
+  consumidor_final: "Consumidor Final",
+  monotributo: "Monotributo",
+  exento: "Exento"
+}
+
+const formatTaxConditionLabel = (value?: string, fallback: string = "N/A") => {
+  if (!value) return fallback
+  const normalized = value.toLowerCase().replace(/\s+/g, '_')
+  return TAX_CONDITION_LABELS[normalized] ?? value
+}
+
+const statsHardcoded = {
+  total_clients: 5,
+  active_clients: 4,
+  inactive_clients: 1,
+  cities_count: 5,
+  countries_count: 1
+}
+import { NewClientModal } from "@/components/new-client-modal"
+import { Pagination } from "@/components/ui/pagination"
+import { getSalesChannelConfig, SalesChannel } from "@/lib/utils"
+import { CuentasCorrientesSummary } from "@/components/cuentas-corrientes-summary"
+import { ClienteActivityModal } from "@/components/cliente-activity-modal"  
+import { CuentaCorrienteStatusBadge } from "@/components/cuenta-corriente-status-badge"
+
+// Tipo para la UI (formato mapeado)
+interface ClienteUI {
+  id: string; // Código del cliente (MAY001, etc)
+  dbId: number; // ID numérico de la base de datos
+  salesChannel: SalesChannel; // Canal de venta
+  nombre: string;
+  email: string;
+  telefono: string;
+  ciudad: string;
+  tipo: "Minorista" | "Mayorista" | "Personalizado";
+  estado: "Activo" | "Inactivo";
+  ultimaCompra: string;
+  totalCompras: number;
+  direccion?: string;
+  cuit?: string;
+  cuitSecundario?: string;
+  personType?: "Persona Física" | "Persona Jurídica";
+  taxCondition?: string;
+  ccEnabled?: boolean;
+  ccLimit?: number;
+  ccBalance?: number;
+  limiteCredito?: number;
+}
+
+export default function ClientesPage() {
+  const [selectedCliente, setSelectedCliente] = useState<ClienteUI | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false)
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false)
+  const [selectedClienteForActivity, setSelectedClienteForActivity] = useState<ClienteUI | null>(null)
+  const [clientes, setClientes] = useState<any[]>([])
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0
+  })
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
+  const [channelFilter, setChannelFilter] = useState<"all" | "sistema_norte" | "woocommerce_mayorista" | "woocommerce_minorista" | "mercadolibre" | "manual">("all")
+
+  // Función para cargar datos hardcodeados con filtros
+  const loadData = async (page: number = 1, search: string = "", status: string = "all", channel: string = "all") => {
+    console.log('🚀 [COMPONENT] Cargando datos hardcodeados para página:', page);
+    
+    try {
+      setLoading(true)
+      setError(null)
+      
+      // Simular delay de API
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Aplicar filtros a los datos hardcodeados
+      let filteredClientes = [...clientesHardcoded]
+      
+      // Filtro por búsqueda
+      if (search) {
+        filteredClientes = filteredClientes.filter(cliente => 
+          cliente.name.toLowerCase().includes(search.toLowerCase()) ||
+          cliente.email.toLowerCase().includes(search.toLowerCase()) ||
+          cliente.code.toLowerCase().includes(search.toLowerCase())
+        )
+      }
+      
+      // Filtro por estado
+      if (status !== "all") {
+        filteredClientes = filteredClientes.filter(cliente => 
+          status === "active" ? cliente.is_active === 1 : cliente.is_active === 0
+        )
+      }
+      
+      // Filtro por canal de venta
+      if (channel !== "all") {
+        filteredClientes = filteredClientes.filter(cliente => 
+          cliente.sales_channel === channel
+        )
+      }
+      
+      // Paginación
+      const itemsPerPage = 10
+      const startIndex = (page - 1) * itemsPerPage
+      const endIndex = startIndex + itemsPerPage
+      const paginatedClientes = filteredClientes.slice(startIndex, endIndex)
+      
+      // Calcular paginación
+      const totalPages = Math.ceil(filteredClientes.length / itemsPerPage)
+      
+      console.log('✅ [COMPONENT] Estableciendo clientes hardcodeados:', paginatedClientes)
+      setClientes(paginatedClientes)
+      
+      setPagination({
+        page,
+        limit: itemsPerPage,
+        total: filteredClientes.length,
+        totalPages
+      })
+      
+      console.log('✅ [COMPONENT] Estableciendo estadísticas hardcodeadas:', statsHardcoded)
+      setStats(statsHardcoded)
+      
+      console.log('🎉 [COMPONENT] Datos hardcodeados cargados exitosamente')
+    } catch (err) {
+      console.error('💥 [COMPONENT] Error al cargar datos hardcodeados:', err)
+      setError('Error al cargar los datos')
+      setClientes([])
+      setPagination({ page: 1, limit: 10, total: 0, totalPages: 0 })
+      setStats(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Cargar datos al montar el componente y cuando cambien los filtros
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadData(currentPage, searchTerm, statusFilter, channelFilter)
+    }, searchTerm ? 500 : 0) // Debounce para búsqueda
+    
+    return () => clearTimeout(timer)
+  }, [currentPage, searchTerm, statusFilter, channelFilter])
+
+  const handleVerPerfil = (cliente: ClienteUI) => {
+    setSelectedCliente(cliente)
+    setIsModalOpen(true)
+  }
+
+  const handleVerActividad = (cliente: ClienteUI) => {
+    setSelectedClienteForActivity(cliente)
+    setIsActivityModalOpen(true)
+  }
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false)
+    setSelectedCliente(null)
+  }
+
+  const handleCloseActivityModal = () => {
+    setIsActivityModalOpen(false)
+    setSelectedClienteForActivity(null)
+  }
+
+  const handleNewClientSuccess = () => {
+    console.log('🔄 [COMPONENT] Recargando datos después de crear nuevo cliente')
+    // Recargar los datos de la página actual
+    loadData(currentPage)
+  }
+
+  const handlePageChange = (page: number) => {
+    console.log('📄 [COMPONENT] Cambiando a página:', page)
+    setCurrentPage(page)
+  }
+
+  // Función helper para mapear estadísticas de la API al formato esperado por la UI
+  const mapStatsForUI = (apiStats: any) => {
+    if (!apiStats) return null;
+    
+    return {
+      totalClientes: apiStats.total_clients || 0,
+      clientesActivos: parseInt(apiStats.active_clients) || 0,
+      clientesInactivos: parseInt(apiStats.inactive_clients) || 0,
+      ciudadesCount: apiStats.cities_count || 0,
+      paisesCount: apiStats.countries_count || 0,
+      // Valores calculados para la UI
+      porcentajeActivos: apiStats.total_clients > 0 ? 
+        Math.round((parseInt(apiStats.active_clients) / apiStats.total_clients) * 100) : 0,
+      // Valores por defecto para campos que no vienen de la API
+      nuevosEsteMes: 0, // La API no proporciona este dato
+      valorPromedio: 0, // La API no proporciona este dato
+      crecimientoPorcentaje: 0, // La API no proporciona este dato
+      crecimientoNuevos: 0 // La API no proporciona este dato
+    };
+  };
+
+  // Función helper para mapear clientes hardcodeados al formato esperado por la UI
+  const mapClienteForUI = (apiCliente: any): ClienteUI => {
+    // Datos de compras hardcodeados por cliente
+    const comprasPorCliente: Record<number, number> = {
+      1: 450000, // Empresa ABC
+      2: 850000, // Distribuidora XYZ  
+      3: 320000, // Comercial del Norte
+      4: 0,      // Ventas Directas (inactivo)
+      5: 680000  // Importadora del Sur
+    }
+    const personType = apiCliente.person_type === 'persona_fisica' ? 'Persona Física' : 'Persona Jurídica'
+    const taxCondition = formatTaxConditionLabel(
+      apiCliente.tax_condition,
+      personType === 'Persona Jurídica' ? 'Responsable Inscripto' : 'Consumidor Final'
+    )
+    const ccEnabled = Boolean(apiCliente.cc_enabled)
+    const ccLimit = typeof apiCliente.cc_limit === 'number' ? apiCliente.cc_limit : undefined
+    const ccBalance = typeof apiCliente.cc_balance === 'number' ? apiCliente.cc_balance : (ccEnabled ? 0 : undefined)
+    
+    return {
+      id: apiCliente.code,
+      dbId: apiCliente.id,
+      salesChannel: apiCliente.sales_channel,
+      nombre: apiCliente.name,
+      email: apiCliente.email,
+      telefono: apiCliente.phone,
+      ciudad: apiCliente.city,
+      direccion: apiCliente.address,
+      tipo: apiCliente.client_type === 'minorista' ? 'Minorista' : 
+            apiCliente.client_type === 'mayorista' ? 'Mayorista' : 
+            apiCliente.client_type === 'personalizado' ? 'Personalizado' : 'Minorista',
+      estado: apiCliente.is_active === 1 ? 'Activo' : 'Inactivo',
+      ultimaCompra: new Date(apiCliente.updated_at).toLocaleDateString('es-AR'),
+      totalCompras: comprasPorCliente[apiCliente.id] || 0,
+      cuit: apiCliente.primary_tax_id,
+      cuitSecundario: apiCliente.secondary_tax_id,
+      personType,
+      taxCondition,
+      ccEnabled,
+      ccLimit,
+      ccBalance,
+      limiteCredito: ccLimit
+    };
+  };
+
+  // Mapear clientes a formato UI (sin filtro local, el filtro se hace en el backend)
+  const clientesUI = Array.isArray(clientes) ? clientes.map(mapClienteForUI) : []
+
+  // Mapear estadísticas para la UI
+  const uiStats = mapStatsForUI(stats);
+
+  return (
+    <Protected requiredRoles={['gerencia', 'ventas', 'admin']}>
+      <ERPLayout activeItem="clientes">
+        <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Gestión de Clientes</h1>
+            <p className="text-muted-foreground">Administra tu base de clientes y relaciones comerciales</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Exportar
+            </Button>
+            <Button onClick={() => setIsNewClientModalOpen(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Nuevo Cliente
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? "..." : (uiStats?.totalClientes || 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {loading ? "Cargando..." : `${uiStats?.ciudadesCount || 0} ciudades registradas`}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Clientes Activos</CardTitle>
+              <UserPlus className="h-4 w-4 text-turquoise-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-turquoise-600">
+                {loading ? "..." : (uiStats?.clientesActivos || 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {loading ? "Cargando..." : `${uiStats?.porcentajeActivos || 0}% del total`}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Clientes Inactivos</CardTitle>
+              <Plus className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {loading ? "..." : (uiStats?.clientesInactivos || 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {loading ? "Cargando..." : `Clientes inactivos`}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Países</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? "..." : (uiStats?.paisesCount || 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">Países registrados</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Clients Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Base de Clientes</CardTitle>
+            <CardDescription>
+              {loading ? "Cargando..." : `Mostrando ${clientes.length} de ${pagination.total} clientes registrados`}
+              <br />
+              <span className="text-xs text-muted-foreground">
+                💡 Haga clic en cualquier fila para ver la actividad completa del cliente
+              </span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4 mb-4 flex-wrap">
+              <div className="flex-1 min-w-[250px]">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Buscar por nombre, email o código..." 
+                    className="pl-8" 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="active">Activos</SelectItem>
+                  <SelectItem value="inactive">Inactivos</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={channelFilter} onValueChange={(value: any) => setChannelFilter(value)}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Canal de Venta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los Canales</SelectItem>
+                  <SelectItem value="sistema_norte">Sistema Norte</SelectItem>
+                  <SelectItem value="woocommerce_mayorista">WooCommerce Mayorista</SelectItem>
+                  <SelectItem value="woocommerce_minorista">WooCommerce Minorista</SelectItem>
+                  <SelectItem value="mercadolibre">MercadoLibre</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Mensaje de error */}
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500" />
+                <span className="text-red-700">{error}</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => window.location.reload()}
+                  className="ml-auto"
+                >
+                  Reintentar
+                </Button>
+              </div>
+            )}
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Contacto</TableHead>
+                  <TableHead>Ubicación</TableHead>
+                  <TableHead>Canal</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Última Compra</TableHead>
+                  <TableHead>Cuenta Corriente</TableHead>
+                  <TableHead>Saldo / Límite</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  // Estado de carga
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-8">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                        Cargando clientes...
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : clientesUI.length === 0 ? (
+                  // Sin resultados
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      {searchTerm || statusFilter !== "all" || channelFilter !== "all" ? "No se encontraron clientes que coincidan con los filtros" : "No hay clientes registrados"}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  // Datos de clientes
+                  clientesUI.map((cliente) => (
+                  <TableRow 
+                    key={cliente.id} 
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleVerActividad(cliente)}
+                  >
+                    <TableCell>
+                      <Badge variant={cliente.tipo === "Mayorista" ? "default" : cliente.tipo === "Personalizado" ? "outline" : "secondary"}>
+                        {cliente.tipo}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{cliente.id}</TableCell>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{cliente.nombre}</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          {cliente.email}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {cliente.telefono}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {cliente.ciudad}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant="outline" 
+                        className={`${getSalesChannelConfig(cliente.salesChannel).color} border`}
+                        title={getSalesChannelConfig(cliente.salesChannel).description}
+                      >
+                        <span className="mr-1">{getSalesChannelConfig(cliente.salesChannel).icon}</span>
+                        {getSalesChannelConfig(cliente.salesChannel).shortLabel}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={cliente.estado === "Activo" ? "default" : "secondary"}>{cliente.estado}</Badge>
+                    </TableCell>
+                    <TableCell>{cliente.ultimaCompra}</TableCell>
+                    <TableCell>
+                      <CuentaCorrienteStatusBadge 
+                        hasAccount={cliente.ccEnabled ?? false}
+                        balance={cliente.ccBalance ?? 0}
+                        creditLimit={cliente.ccLimit ?? 0}
+                        isActive={cliente.ccEnabled ?? false}
+                        className="cursor-pointer"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {cliente.ccEnabled && cliente.ccLimit !== undefined ? (
+                        <div className="text-sm font-semibold">
+                          ${Math.abs(cliente.ccBalance ?? 0).toLocaleString()} {cliente.ccBalance && cliente.ccBalance < 0 ? "(deuda)" : ""}
+                          <span className="text-muted-foreground"> / ${cliente.ccLimit.toLocaleString()}</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Sin CC</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleVerPerfil(cliente)
+                          }}
+                        >
+                          Ver Perfil
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleVerActividad(cliente)
+                          }}
+                        >
+                          Actividad
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Paginación */}
+        {!loading && pagination.totalPages > 1 && (
+          <div className="mt-4">
+            <Pagination
+              currentPage={pagination.page}
+              totalPages={pagination.totalPages}
+              onPageChange={handlePageChange}
+              isLoading={loading}
+            />
+          </div>
+        )}
+
+        {/* Cuentas Corrientes Summary */}
+        <CuentasCorrientesSummary onRefresh={() => loadData(currentPage, searchTerm, statusFilter, channelFilter)} />
+
+        {/* Modal de detalles del cliente */}
+        <ClienteDetailModal
+          cliente={selectedCliente as unknown as any}
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          onClientUpdated={() => loadData(currentPage, searchTerm, statusFilter, channelFilter)}
+        />
+
+        {/* Modal para nuevo cliente */}
+        <NewClientModal
+          isOpen={isNewClientModalOpen}
+          onClose={() => setIsNewClientModalOpen(false)}
+          onSuccess={handleNewClientSuccess}
+        />
+
+        {/* Modal de actividad del cliente */}
+        {selectedClienteForActivity && (
+          <ClienteActivityModal
+            cliente={selectedClienteForActivity}
+            isOpen={isActivityModalOpen}
+            onClose={handleCloseActivityModal}
+          />
+        )}
+        </div>
+      </ERPLayout>
+    </Protected>
+  )
+}
