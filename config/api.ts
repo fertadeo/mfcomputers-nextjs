@@ -1,6 +1,6 @@
 // Configuración de la API
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8083/api/',
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8086/api/',
 } as const;
 
 // Función para obtener la URL base de la API
