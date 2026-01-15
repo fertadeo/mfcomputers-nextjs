@@ -37,7 +37,7 @@ const facturasData = [
   },
   {
     id: "FAC004",
-    cliente: "Distribuidora Norte",
+    cliente: "Distribuidora Tech Solutions",
     fecha: "2024-01-19",
     vencimiento: "2024-02-18",
     estado: "Enviada",

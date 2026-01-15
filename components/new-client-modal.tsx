@@ -257,7 +257,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   id="address"
                   value={formData.address}
                   onChange={(e) => handleInputChange("address", e.target.value)}
-                  placeholder="Av. Industrial 567, Zona Industrial Norte"
+                  placeholder="Av. Industrial 567, Zona Tecnológica"
                   disabled={loading}
                 />
               </div>

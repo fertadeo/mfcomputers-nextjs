@@ -231,7 +231,7 @@ export async function getClienteStats(): Promise<ClienteStats> {
 // Función para crear un nuevo cliente
 export async function createCliente(clienteData: {
   client_type: "minorista" | "mayorista" | "personalizado";
-  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_norte" | "manual" | "otro";
+  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_principal" | "manual" | "otro";
   name: string;
   email: string;
   phone: string;
@@ -347,7 +347,7 @@ export async function deleteCliente(id: number): Promise<any> {
 // Función para actualizar un cliente existente
 export async function updateCliente(id: number, clienteData: {
   client_type: "minorista" | "mayorista" | "personalizado";
-  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_norte" | "manual" | "otro";
+  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_principal" | "manual" | "otro";
   name: string;
   email: string;
   phone: string;

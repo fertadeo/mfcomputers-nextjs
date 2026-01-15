@@ -36,7 +36,7 @@ import { CuentaCorrienteModal } from "./cuenta-corriente-modal"
 interface Cliente {
   id: string // Código del cliente (MAY001, etc)
   dbId: number // ID numérico de la base de datos
-  salesChannel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_norte" | "manual" | "otro"
+  salesChannel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_principal" | "manual" | "otro"
   nombre: string
   email: string
   telefono: string
@@ -108,7 +108,7 @@ const comprasData: Compra[] = [
   {
     id: "COMP003",
     fecha: "2024-01-05",
-    producto: "Abanico Aire Pink Standard",
+    producto: "Laptop Professional Standard",
     cantidad: 3,
     precioUnitario: 18000,
     total: 54000,
@@ -636,7 +636,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                       <Badge variant="secondary">5 unidades</Badge>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm">Abanico Aire Pink Standard</span>
+                      <span className="text-sm">Laptop Professional Standard</span>
                       <Badge variant="secondary">3 unidades</Badge>
                     </div>
                   </div>

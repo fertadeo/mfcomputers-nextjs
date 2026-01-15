@@ -332,7 +332,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   type="text"
                   value={formData.address}
                   onChange={(e) => handleInputChange("address", e.target.value)}
-                  placeholder="Ej: Av. Industrial 567, Zona Industrial Norte"
+                  placeholder="Ej: Av. Industrial 567, Zona Tecnológica"
                 />
               </div>
 

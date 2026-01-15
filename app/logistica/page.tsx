@@ -90,7 +90,7 @@ const remitosData = [
     id: "REM004",
     numeroRemito: "0001-00000126",
     pedidoId: "PED004",
-    cliente: "Distribuidora Norte",
+    cliente: "Distribuidora Tech Solutions",
     direccion: "Belgrano 234, Córdoba",
     fecha: "2024-01-19",
     fechaEntrega: "2024-01-22",

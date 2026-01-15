@@ -110,13 +110,13 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
       doc.setTextColor(255, 255, 255)
       doc.setFontSize(22)
       doc.setFont('helvetica', 'bold')
-      doc.text('NORTE ABANICOS', margin, 15)
+      doc.text('MF COMPUTERS', margin, 15)
       
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
       doc.text('Sistema de Gestión ERP', margin, 21)
       doc.text('Av. Ejemplo 1234, CABA | Tel: (011) 4444-5555', margin, 26)
-      doc.text('info@norteabanicos.com', margin, 31)
+      doc.text('info@mfcomputers.com', margin, 31)
 
       // **RECUADRO DE REMITO**
       const boxX = pageWidth - margin - 50
@@ -368,7 +368,7 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
         { align: 'center' }
       )
       doc.text(
-        'Documento generado automáticamente por Norte ERP',
+        'Documento generado automáticamente por MF Computers ERP',
         pageWidth / 2,
         pageHeight - 6,
         { align: 'center' }
@@ -410,7 +410,7 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
         ? itemsDetalle.reduce((acc, item) => acc + (item.cantidad || 0), 0)
         : remito.items || 1)
 
-      const companyName = remito.empresaNombre || 'Abanicos Argentinos'
+      const companyName = remito.empresaNombre || 'MF Computers'
       const companyAddress = remito.empresaDireccion || 'LIMA 420 - BARRIO: CENTRO - Córdoba (Córdoba)'
       const companyCuit = remito.empresaCuit || 'CUIT: 30-71824921-6'
       const companyPhone = remito.empresaTelefono || 'Tel: 0810-777-2274'
@@ -781,7 +781,7 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
           {/* Footer */}
           <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground">
             <p>Este remito NO es un documento fiscal. Consulte su factura correspondiente.</p>
-            <p className="mt-1">Documento generado automáticamente por Norte ERP</p>
+            <p className="mt-1">Documento generado automáticamente por MF Computers ERP</p>
           </div>
         </div>
 

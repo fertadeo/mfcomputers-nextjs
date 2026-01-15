@@ -132,7 +132,7 @@ export function AuthLoading({ status = 'loading', errorMessage }: AuthLoadingPro
             status === 'success' ? 'bg-green-500' :
             'bg-turquoise-500'
           }`}>
-            <span className="text-3xl font-bold text-white">N</span>
+            <span className="text-3xl font-bold text-white">MF</span>
           </div>
         </div>
 
@@ -171,7 +171,7 @@ export function AuthLoading({ status = 'loading', errorMessage }: AuthLoadingPro
 
         {/* Información adicional */}
         <div className="text-xs text-muted-foreground opacity-70">
-          NORTE ABANICOS ERP
+          MF COMPUTERS ERP
         </div>
       </div>
     </div>

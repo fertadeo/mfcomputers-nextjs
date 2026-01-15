@@ -67,7 +67,7 @@ const cuentasHardcoded: CuentaCorriente[] = [
   {
     id: 3,
     client_id: 3,
-    client_name: "Comercial del Norte",
+    client_name: "Comercial Tech Solutions",
     client_code: "CLI003",
     balance: -50000,
     credit_limit: 500000,

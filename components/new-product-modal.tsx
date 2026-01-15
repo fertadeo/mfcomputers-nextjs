@@ -68,7 +68,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       console.error('Error al cargar categorías:', err)
       // Fallback a categorías hardcodeadas si falla la API
       const mockCategories: Category[] = [
-        { id: 1, name: "Abanicos", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { id: 1, name: "Computadoras", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
         { id: 2, name: "Accesorios", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
         { id: 3, name: "Repuestos", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
         { id: 4, name: "Herramientas", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },

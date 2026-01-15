@@ -57,7 +57,7 @@ const clientesHardcoded = [
   {
     id: 3,
     code: "CLI003",
-    name: "Comercial del Norte",
+    name: "Comercial Tech Solutions",
     email: "info@comercialnorte.com",
     phone: "+54 11 5555-1234",
     city: "Rosario",
@@ -188,7 +188,7 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
-  const [channelFilter, setChannelFilter] = useState<"all" | "sistema_norte" | "woocommerce_mayorista" | "woocommerce_minorista" | "mercadolibre" | "manual">("all")
+  const [channelFilter, setChannelFilter] = useState<"all" | "sistema_principal" | "woocommerce_mayorista" | "woocommerce_minorista" | "mercadolibre" | "manual">("all")
 
   // Función para cargar datos hardcodeados con filtros
   const loadData = async (page: number = 1, search: string = "", status: string = "all", channel: string = "all") => {
@@ -328,7 +328,7 @@ export default function ClientesPage() {
     const comprasPorCliente: Record<number, number> = {
       1: 450000, // Empresa ABC
       2: 850000, // Distribuidora XYZ  
-      3: 320000, // Comercial del Norte
+      3: 320000, // Comercial Tech Solutions
       4: 0,      // Ventas Directas (inactivo)
       5: 680000  // Importadora del Sur
     }
@@ -497,7 +497,7 @@ export default function ClientesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los Canales</SelectItem>
-                  <SelectItem value="sistema_norte">Sistema Norte</SelectItem>
+                  <SelectItem value="sistema_principal">Sistema Principal</SelectItem>
                   <SelectItem value="woocommerce_mayorista">WooCommerce Mayorista</SelectItem>
                   <SelectItem value="woocommerce_minorista">WooCommerce Minorista</SelectItem>
                   <SelectItem value="mercadolibre">MercadoLibre</SelectItem>

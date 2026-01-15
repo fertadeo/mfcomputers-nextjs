@@ -174,7 +174,7 @@ export function NewSupplierModal({ isOpen, onClose, onSuccess }: NewSupplierModa
                     </Label>
                     <Input
                       id="name"
-                      placeholder="Ej: Distribuidora Norte"
+                      placeholder="Ej: Distribuidora Tech Solutions"
                       value={formData.name}
                       onChange={(e) => handleInputChange("name", e.target.value)}
                       disabled={loading}

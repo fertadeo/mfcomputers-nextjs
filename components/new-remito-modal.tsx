@@ -83,7 +83,7 @@ export function NewRemitoModal({ isOpen, onClose, onSuccess }: NewRemitoModalPro
     { id: "1", nombre: "María González", direccion: "Av. Corrientes 1234, CABA" },
     { id: "2", nombre: "Comercial San Martín", direccion: "San Martín 567, Rosario" },
     { id: "3", nombre: "Juan Pérez", direccion: "Mitre 890, La Plata" },
-    { id: "4", nombre: "Distribuidora Norte", direccion: "Belgrano 234, Córdoba" },
+    { id: "4", nombre: "Distribuidora Tech Solutions", direccion: "Belgrano 234, Córdoba" },
   ]
 
   const pedidosEjemplo = [
