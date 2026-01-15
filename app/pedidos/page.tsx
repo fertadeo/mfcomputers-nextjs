@@ -19,6 +19,57 @@ import {
 } from "@/lib/api"
 import { toast } from "sonner"
 
+// Funciones auxiliares
+const formatDate = (dateString: string) => {
+  if (!dateString) return "-"
+  try {
+    return new Date(dateString).toLocaleDateString('es-AR')
+  } catch {
+    return dateString
+  }
+}
+
+const getStatusBadgeVariant = (status: string) => {
+  switch (status) {
+    case "completado":
+      return "default" as const
+    case "en_proceso":
+      return "secondary" as const
+    case "pendiente":
+      return "outline" as const
+    case "atrasado":
+      return "destructive" as const
+    case "cancelado":
+    case "cancelled":
+      return "destructive" as const
+    default:
+      return "outline" as const
+  }
+}
+
+const getStatusLabel = (status: string) => {
+  const statusMap: Record<string, string> = {
+    "pendiente": "Pendiente",
+    "en_proceso": "En Proceso",
+    "completado": "Completado",
+    "atrasado": "Atrasado",
+    "cancelado": "Cancelado",
+    "cancelled": "Cancelado"
+  }
+  return statusMap[status] || status
+}
+
+const getPriorityBadgeVariant = (priority?: string) => {
+  switch (priority) {
+    case "Crítica":
+      return "destructive" as const
+    case "Alta":
+      return "secondary" as const
+    default:
+      return "outline" as const
+  }
+}
+
 export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [stats, setStats] = useState<OrderStats | null>(null)
@@ -28,6 +79,63 @@ export default function PedidosPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  // Cargar pedidos cuando cambien los filtros
+  useEffect(() => {
+    loadOrders()
+  }, [searchTerm, statusFilter, currentPage])
+
+  const loadData = async () => {
+    setIsLoading(true)
+    try {
+      await Promise.all([
+        loadOrders(),
+        loadStats()
+      ])
+    } catch (error) {
+      console.error("Error al cargar datos:", error)
+      toast.error("Error al cargar los datos")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadOrders = async () => {
+    try {
+      const params: any = {
+        page: currentPage,
+        limit: 10
+      }
+
+      if (searchTerm) params.search = searchTerm
+      if (statusFilter !== "all") params.status = statusFilter
+
+      const response = await getOrders(params)
+      if (response.success) {
+        setOrders(response.data.orders)
+        setTotalPages(response.data.pagination.totalPages)
+      }
+    } catch (error) {
+      console.error("Error al cargar pedidos:", error)
+      toast.error("Error al cargar los pedidos")
+    }
+  }
+
+  const loadStats = async () => {
+    try {
+      const response = await getOrderStats()
+      if (response.success) {
+        setStats(response.data)
+      }
+    } catch (error) {
+      console.error("Error al cargar estadísticas:", error)
+    }
+  }
 
   return (
     <Protected requiredRoles={['gerencia', 'ventas', 'admin']}>
