@@ -13,6 +13,7 @@ import { getProducts, deleteProduct, getProductStats, ProductStats } from "@/lib
 import { useState, useEffect } from "react"
 import { Product } from "@/lib/api"
 import { ProductDetailModal } from "@/components/product-detail-modal"
+import { NewProductModal } from "@/components/new-product-modal"
 import { 
   Package, 
   Search, 
@@ -34,22 +35,26 @@ export default function ProductosPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalProducts, setTotalProducts] = useState(0)
   const [productStats, setProductStats] = useState<ProductStats | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [allProducts, setAllProducts] = useState<Product[]>([]) // Todos los productos cargados
+  const [productsLoaded, setProductsLoaded] = useState(false) // Flag para saber si ya se cargaron todos los productos
   const limit = 50 // Productos por página
 
   // Cargar productos y estadísticas al montar el componente
   useEffect(() => {
-    loadProducts()
+    loadAllProducts()
     loadProductStats()
   }, [])
 
-  // Recargar productos cuando cambie la página
+  // Actualizar productos mostrados cuando cambie la página o el término de búsqueda
   useEffect(() => {
-    loadProducts()
-  }, [currentPage])
+    updateDisplayedProducts()
+  }, [currentPage, searchTerm, allProducts])
 
   const loadProductStats = async () => {
     try {
@@ -60,36 +65,98 @@ export default function ProductosPage() {
     }
   }
 
-  const loadProducts = async () => {
+  // Cargar todos los productos una vez al inicio
+  const loadAllProducts = async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await getProducts(currentPage, limit)
+      // Cargar todos los productos para permitir búsqueda completa
+      const data = await getProducts(1, 10000)
+      
+      let allProductsData: Product[] = []
       
       // Verificar si la respuesta tiene estructura paginada
       if (data && typeof data === 'object' && 'products' in data && 'pagination' in data) {
-        setProducts(data.products)
-        setTotalPages(data.pagination.totalPages)
-        setTotalProducts(data.pagination.total)
+        allProductsData = data.products
       } else if (Array.isArray(data)) {
-        // Fallback: si es un array simple, usar paginación del lado del cliente
-        setProducts(data)
-        setTotalPages(Math.ceil(data.length / limit))
-        setTotalProducts(data.length)
-      } else {
-        setProducts([])
-        setTotalPages(1)
-        setTotalProducts(0)
+        allProductsData = data
       }
+      
+      // Guardar todos los productos para búsqueda
+      setAllProducts(allProductsData)
+      setProductsLoaded(true)
     } catch (err) {
       console.error('Error al cargar productos:', err)
       setError(err instanceof Error ? err.message : 'Error al cargar productos')
       setProducts([])
+      setAllProducts([])
       setTotalPages(1)
       setTotalProducts(0)
     } finally {
       setLoading(false)
     }
+  }
+
+  // Función para actualizar los productos mostrados según búsqueda y paginación
+  const updateDisplayedProducts = () => {
+    if (!productsLoaded) return
+
+    let productsToShow: Product[] = []
+
+    if (searchTerm.trim()) {
+      // Filtrar productos cuando hay búsqueda
+      const term = searchTerm.trim().toLowerCase()
+      
+      // Filtrar productos: buscar en SKU, nombre y categoría
+      const filtered = allProducts.filter((product) => {
+        const codeMatch = product.code?.toLowerCase().includes(term)
+        const nameMatch = product.name?.toLowerCase().includes(term)
+        const categoryMatch = product.category_name?.toLowerCase().includes(term)
+        
+        return codeMatch || nameMatch || categoryMatch
+      })
+
+      // Ordenar: primero coincidencias exactas en SKU, luego parciales en SKU, luego nombre, luego categoría
+      productsToShow = filtered.sort((a, b) => {
+        const aCode = a.code?.toLowerCase() || ""
+        const bCode = b.code?.toLowerCase() || ""
+        const aName = a.name?.toLowerCase() || ""
+        const bName = b.name?.toLowerCase() || ""
+        
+        // Coincidencia exacta en SKU tiene máxima prioridad
+        if (aCode === term && bCode !== term) return -1
+        if (bCode === term && aCode !== term) return 1
+        
+        // Coincidencia que empieza con el término en SKU
+        if (aCode.startsWith(term) && !bCode.startsWith(term)) return -1
+        if (bCode.startsWith(term) && !aCode.startsWith(term)) return 1
+        
+        // Coincidencia en SKU
+        if (aCode.includes(term) && !bCode.includes(term)) return -1
+        if (bCode.includes(term) && !aCode.includes(term)) return 1
+        
+        // Coincidencia en nombre
+        if (aName.includes(term) && !bName.includes(term)) return -1
+        if (bName.includes(term) && !aName.includes(term)) return 1
+        
+        return 0
+      })
+    } else {
+      // Sin búsqueda, usar todos los productos
+      productsToShow = allProducts
+    }
+
+    // Aplicar paginación
+    const startIndex = (currentPage - 1) * limit
+    const endIndex = startIndex + limit
+    setProducts(productsToShow.slice(startIndex, endIndex))
+    setTotalPages(Math.ceil(productsToShow.length / limit))
+    setTotalProducts(productsToShow.length)
+  }
+
+  // Función para recargar productos (usada después de crear/eliminar)
+  const loadProducts = async () => {
+    await loadAllProducts()
   }
 
   const handleDeleteProduct = async (id: number) => {
@@ -142,12 +209,10 @@ export default function ProductosPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Exportar
               </Button>
-              {canManageProducts && (
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nuevo Producto
-                </Button>
-              )}
+              <Button onClick={() => setIsNewProductModalOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Producto
+              </Button>
             </div>
           </div>
 
@@ -199,7 +264,9 @@ export default function ProductosPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  ${productStats?.total_stock_value?.replace(/[^\d.-]/g, '') || products?.reduce((sum, p) => sum + (p.price * p.stock), 0)?.toLocaleString() || '0'}
+                  ${productStats?.total_stock_value 
+                    ? parseFloat(productStats.total_stock_value.replace(/[^\d.-]/g, '') || '0').toLocaleString('es-AR', { maximumFractionDigits: 0 })
+                    : products?.reduce((sum, p) => sum + (p.price * p.stock), 0)?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}
                 </div>
                 <p className="text-xs text-muted-foreground">En inventario</p>
               </CardContent>
@@ -239,7 +306,15 @@ export default function ProductosPage() {
                 <div className="flex-1">
                   <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Buscar productos..." className="pl-8" />
+                    <Input 
+                      placeholder="Buscar por SKU, nombre o categoría..." 
+                      className="pl-8" 
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value)
+                        setCurrentPage(1) // Resetear a la primera página al buscar
+                      }}
+                    />
                   </div>
                 </div>
                 <Button variant="outline">
@@ -275,7 +350,7 @@ export default function ProductosPage() {
                         <TableCell>
                           <div className="font-medium">{product.name}</div>
                         </TableCell>
-                        <TableCell>${product.price.toLocaleString()}</TableCell>
+                        <TableCell>${product.price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{product.stock}</span>
@@ -359,6 +434,16 @@ export default function ProductosPage() {
           product={selectedProduct}
           isOpen={isDetailModalOpen}
           onClose={handleCloseDetailModal}
+        />
+
+        {/* Modal de nuevo producto */}
+        <NewProductModal
+          isOpen={isNewProductModalOpen}
+          onClose={() => setIsNewProductModalOpen(false)}
+          onSuccess={() => {
+            loadProducts()
+            loadProductStats()
+          }}
         />
       </ERPLayout>
     </Protected>

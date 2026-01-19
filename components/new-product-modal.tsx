@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { AlertTriangle, CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap } from "lucide-react"
 import Image from "next/image"
-import { createProduct, getCategories, Category, CreateProductData } from "@/lib/api"
+import { createProductNew, getCategories, Category, CreateProductData } from "@/lib/api"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -32,9 +32,11 @@ interface FormData {
   is_active: string
 }
 
-interface UploadedImage {
-  file: File
-  preview: string
+interface ImageItem {
+  url: string
+  file?: File
+  preview?: string
+  isFile: boolean
 }
 
 export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalProps) {
@@ -43,7 +45,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const [success, setSuccess] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
-  const [images, setImages] = useState<UploadedImage[]>([])
+  const [images, setImages] = useState<ImageItem[]>([])
+  const [imageUrlInput, setImageUrlInput] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState<FormData>({
@@ -54,7 +57,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     price: "",
     stock: "0",
     min_stock: "0",
-    max_stock: "0",
+    max_stock: "1000",
     is_active: "1"
   })
 
@@ -88,55 +91,135 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   }, [isOpen])
 
   const validateForm = () => {
+    // Validar código (requerido, máximo 20 caracteres)
     if (!formData.code.trim()) {
       setError("El código del producto es obligatorio")
       return false
     }
+    if (formData.code.trim().length > 20) {
+      setError("El código del producto no puede exceder 20 caracteres")
+      return false
+    }
+
+    // Validar nombre (requerido, máximo 100 caracteres)
     if (!formData.name.trim()) {
       setError("El nombre del producto es obligatorio")
       return false
     }
-    if (!formData.category_id) {
-      setError("Debe seleccionar una categoría")
+    if (formData.name.trim().length > 100) {
+      setError("El nombre del producto no puede exceder 100 caracteres")
       return false
     }
-    if (!formData.price || parseFloat(formData.price) <= 0) {
-      setError("El precio debe ser mayor a 0")
+
+    // Validar precio (requerido, debe ser numérico y mayor a 0)
+    if (!formData.price || isNaN(parseFloat(formData.price)) || parseFloat(formData.price) <= 0) {
+      setError("El precio debe ser un número mayor a 0")
       return false
     }
-    if (parseInt(formData.min_stock) < 0) {
+
+    // Validar stock (opcional, pero si se proporciona debe ser ≥ 0)
+    const stock = parseInt(formData.stock) || 0
+    if (stock < 0) {
+      setError("El stock inicial no puede ser negativo")
+      return false
+    }
+
+    // Validar min_stock (opcional, pero si se proporciona debe ser ≥ 0)
+    const minStock = parseInt(formData.min_stock) || 0
+    if (minStock < 0) {
       setError("El stock mínimo no puede ser negativo")
       return false
     }
-    if (parseInt(formData.max_stock) <= parseInt(formData.min_stock)) {
-      setError("El stock máximo debe ser mayor al mínimo")
+
+    // Validar max_stock (opcional, pero si se proporciona debe ser ≥ 0)
+    const maxStock = parseInt(formData.max_stock) || 1000
+    if (maxStock < 0) {
+      setError("El stock máximo no puede ser negativo")
       return false
     }
+
     return true
   }
 
   const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value }
+      
+      // Si el stock cambia a 0, automáticamente desactivar el producto
+      // Un producto no puede estar publicado sin stock
+      if (field === 'stock') {
+        const stockValue = parseInt(value) || 0
+        if (stockValue === 0) {
+          updated.is_active = "0"
+        }
+      }
+      
+      return updated
+    })
     setError(null)
   }
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddImageUrl = () => {
+    if (imageUrlInput.trim() && images.length < 5) {
+      // Validar que sea una URL válida
+      try {
+        const url = imageUrlInput.trim()
+        new URL(url)
+        setImages(prev => [...prev, { url, isFile: false }])
+        setImageUrlInput("")
+        setError(null)
+      } catch {
+        setError("Por favor, ingresa una URL válida")
+      }
+    } else if (images.length >= 5) {
+      setError("Máximo 5 imágenes permitidas")
+    } else {
+      setError("Por favor, ingresa una URL válida")
+    }
+  }
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files) return
 
-    Array.from(files).forEach(file => {
+    const remainingSlots = 5 - images.length
+    if (remainingSlots <= 0) {
+      setError("Máximo 5 imágenes permitidas")
+      return
+    }
+
+    Array.from(files).slice(0, remainingSlots).forEach(file => {
       if (file.type.startsWith('image/')) {
+        // Validar tamaño (máx 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          setError(`La imagen ${file.name} excede el tamaño máximo de 10MB`)
+          return
+        }
+
         const reader = new FileReader()
         reader.onload = (e) => {
           const preview = e.target?.result as string
-          setImages(prev => [...prev, { file, preview }])
+          setImages(prev => [...prev, {
+            url: preview, // Usar data URL como preview
+            file,
+            preview,
+            isFile: true
+          }])
+          setError(null)
+        }
+        reader.onerror = () => {
+          setError(`Error al leer el archivo ${file.name}`)
         }
         reader.readAsDataURL(file)
+      } else {
+        setError(`El archivo ${file.name} no es una imagen válida`)
       }
     })
+
+    // Limpiar el input para permitir seleccionar el mismo archivo de nuevo
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const removeImage = (index: number) => {
@@ -152,21 +235,41 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     setError(null)
 
     try {
-      // Preparar datos para la API
+      // Preparar datos para la API según los requisitos
+      // Campos requeridos: code, name, price
+      
+      // Convertir imágenes a URLs
+      // Si son archivos, usar data URLs (base64) o mantener URLs normales
+      const imageUrls: string[] = images.map(img => {
+        if (img.isFile && img.file) {
+          // Para archivos, usar la preview (data URL) que ya generamos
+          return img.url
+        }
+        // Para URLs normales, usar directamente
+        return img.url
+      })
+
+      const stock = parseInt(formData.stock) || 0
+      
+      // Si el stock es 0, el producto debe estar inactivo
+      // Un producto no puede estar publicado sin stock
+      const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : false
+
       const productData: CreateProductData = {
-        code: formData.code,
-        name: formData.name,
-        description: formData.description,
-        category_id: parseInt(formData.category_id),
+        code: formData.code.trim(),
+        name: formData.name.trim(),
         price: parseFloat(formData.price),
-        stock: parseInt(formData.stock),
-        min_stock: parseInt(formData.min_stock),
-        max_stock: parseInt(formData.max_stock),
-        is_active: parseInt(formData.is_active),
-        images: images.map(img => img.file)
+        // Campos opcionales con valores por defecto
+        ...(formData.description.trim() && { description: formData.description.trim() }),
+        ...(formData.category_id && { category_id: parseInt(formData.category_id) }),
+        stock: stock,
+        min_stock: parseInt(formData.min_stock) || 0,
+        max_stock: parseInt(formData.max_stock) || 1000,
+        is_active: isActive,
+        ...(imageUrls.length > 0 && { images: imageUrls })
       }
 
-      const responseData = await createProduct(productData)
+      const responseData = await createProductNew(productData)
       console.log('✅ [NEW PRODUCT] Producto creado exitosamente:', responseData)
 
       setSuccess(true)
@@ -194,12 +297,17 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       price: "",
       stock: "0",
       min_stock: "0",
-      max_stock: "0",
+      max_stock: "1000",
       is_active: "1"
     })
     setImages([])
+    setImageUrlInput("")
     setError(null)
     setSuccess(false)
+    // Limpiar input de archivos
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const handleClose = () => {
@@ -289,7 +397,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                 <div className="space-y-5">
                   <div className="space-y-2">
                     <Label htmlFor="code" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Código del Producto *
+                      Código del Producto * <span className="text-xs text-muted-foreground">(máx. 20 caracteres)</span>
                     </Label>
                     <div className="flex gap-2">
                       <Input
@@ -297,6 +405,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         value={formData.code}
                         onChange={(e) => handleInputChange('code', e.target.value)}
                         placeholder="PROD-001"
+                        maxLength={20}
                         className="flex-1 h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
                         required
                       />
@@ -314,13 +423,14 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
 
                   <div className="space-y-2">
                     <Label htmlFor="name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Nombre del Producto *
+                      Nombre del Producto * <span className="text-xs text-muted-foreground">(máx. 100 caracteres)</span>
                     </Label>
                     <Input
                       id="name"
                       value={formData.name}
                       onChange={(e) => handleInputChange('name', e.target.value)}
                       placeholder="Nombre del producto"
+                      maxLength={100}
                       className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
                       required
                     />
@@ -342,7 +452,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
 
                   <div className="space-y-2">
                     <Label htmlFor="category" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Categoría *
+                      Categoría
                     </Label>
                     <Select value={formData.category_id} onValueChange={(value) => handleInputChange('category_id', value)}>
                       <SelectTrigger className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500">
@@ -463,8 +573,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                     <Label htmlFor="status" className="text-sm font-medium text-slate-700 dark:text-slate-300">
                       Estado del Producto
                     </Label>
-                    <Select value={formData.is_active} onValueChange={(value) => handleInputChange('is_active', value)}>
-                      <SelectTrigger className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500">
+                    <Select 
+                      value={formData.is_active} 
+                      onValueChange={(value) => handleInputChange('is_active', value)}
+                      disabled={parseInt(formData.stock) === 0}
+                    >
+                      <SelectTrigger className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500 disabled:opacity-50 disabled:cursor-not-allowed">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -482,6 +596,11 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         </SelectItem>
                       </SelectContent>
                     </Select>
+                    {parseInt(formData.stock) === 0 && (
+                      <p className="text-xs text-orange-600 dark:text-orange-400">
+                        ⚠️ Un producto con stock 0 no puede estar activo. Se creará como inactivo.
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -502,44 +621,89 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
               </div>
 
               <div className="space-y-6">
-                <div className="flex items-center gap-4 p-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl hover:border-turquoise-400 dark:hover:border-turquoise-500 transition-colors bg-slate-50 dark:bg-slate-800/50">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 h-12 px-6 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200 dark:border-purple-700 dark:bg-gradient-to-r dark:from-slate-700 dark:to-slate-600 dark:hover:from-slate-600 dark:hover:to-slate-500 dark:text-slate-200"
-                  >
-                    <Upload className="h-5 w-5" />
-                    Cargar Imágenes
-                  </Button>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Arrastra y suelta o haz clic para seleccionar
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Máximo 5 imágenes • JPG, PNG, WebP • Hasta 10MB cada una
-                    </p>
+                {/* Opción 1: Cargar desde el ordenador */}
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Cargar desde el ordenador
+                  </Label>
+                  <div className="flex items-center gap-4 p-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl hover:border-turquoise-400 dark:hover:border-turquoise-500 transition-colors bg-slate-50 dark:bg-slate-800/50">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={images.length >= 5}
+                      className="flex items-center gap-2 h-12 px-6 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200 dark:border-purple-700 dark:bg-gradient-to-r dark:from-slate-700 dark:to-slate-600 dark:hover:from-slate-600 dark:hover:to-slate-500 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Upload className="h-5 w-5" />
+                      Seleccionar Archivos
+                    </Button>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Haz clic para seleccionar imágenes desde tu ordenador
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        JPG, PNG, WebP • Máx. 10MB por imagen
+                      </p>
+                    </div>
                   </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
                 </div>
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
+                <Separator />
+
+                {/* Opción 2: Agregar URL */}
+                <div className="space-y-4">
+                  <Label htmlFor="image-url" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    O agregar URL de imagen
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="image-url"
+                      type="url"
+                      value={imageUrlInput}
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                      placeholder="https://ejemplo.com/imagen.jpg"
+                      className="flex-1 h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleAddImageUrl()
+                        }
+                      }}
+                      disabled={images.length >= 5}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddImageUrl}
+                      disabled={!imageUrlInput.trim() || images.length >= 5}
+                      className="h-11 px-6 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200 dark:border-purple-700 dark:bg-gradient-to-r dark:from-slate-700 dark:to-slate-600 dark:hover:from-slate-600 dark:hover:to-slate-500 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Agregar URL
+                    </Button>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Máximo 5 imágenes • Ingresa URLs válidas (https://...) o carga archivos desde tu ordenador
+                  </p>
+                </div>
 
                 {/* Preview de imágenes */}
                 {images.length > 0 && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h4 className="font-medium text-slate-700 dark:text-slate-300">
-                        Imágenes seleccionadas ({images.length}/5)
+                        Imágenes agregadas ({images.length}/5)
                       </h4>
                       <Badge variant="secondary" className="bg-turquoise-100 text-turquoise-700 dark:bg-turquoise-800/50 dark:text-turquoise-300">
-                        {images.length} archivos
+                        {images.length} URLs
                       </Badge>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -547,10 +711,14 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         <div key={index} className="relative group">
                           <div className="aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
                             <Image
-                              src={image.preview}
-                              alt={`Preview ${index + 1}`}
+                              src={image.preview || image.url}
+                              alt={image.isFile && image.file ? image.file.name : `Imagen ${index + 1}`}
                               fill
                               className="object-cover transition-transform group-hover:scale-105"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.src = `https://via.placeholder.com/400x400?text=Imagen+${index + 1}`
+                              }}
                             />
                           </div>
                           <Button
@@ -563,9 +731,20 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                             <X className="h-3 w-3" />
                           </Button>
                           <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <p className="truncate">{image.file.name}</p>
-                            <p>{(image.file.size / 1024 / 1024).toFixed(1)} MB</p>
+                            {image.isFile && image.file ? (
+                              <>
+                                <p className="truncate">{image.file.name}</p>
+                                <p>{(image.file.size / 1024 / 1024).toFixed(1)} MB</p>
+                              </>
+                            ) : (
+                              <p className="truncate">{image.url}</p>
+                            )}
                           </div>
+                          {image.isFile && (
+                            <Badge className="absolute top-2 left-2 bg-blue-500 text-white text-xs">
+                              Archivo
+                            </Badge>
+                          )}
                         </div>
                       ))}
                     </div>

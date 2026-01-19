@@ -310,7 +310,7 @@ export default function StockPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : `$${uiStats.totalValue.toLocaleString()}`}
+                {statsLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : `$${uiStats.totalValue.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
               </div>
               <p className="text-xs text-muted-foreground">Valor del inventario</p>
             </CardContent>
@@ -506,7 +506,7 @@ export default function StockPage() {
                           <TableCell>
                             {product.min_stock} / {product.max_stock}
                           </TableCell>
-                          <TableCell>${product.price.toLocaleString()}</TableCell>
+                          <TableCell>${product.price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</TableCell>
                           <TableCell>
                             <Badge
                               variant={

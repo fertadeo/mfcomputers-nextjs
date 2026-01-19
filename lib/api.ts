@@ -452,11 +452,11 @@ export interface CreateProductData {
   description?: string
   category_id?: number
   price: number
-  stock: number
-  min_stock: number
-  max_stock: number
+  stock?: number
+  min_stock?: number
+  max_stock?: number
   is_active?: boolean
-  images?: File[]
+  images?: string[]
 }
 
 export interface UpdateProductData {
@@ -1398,10 +1398,13 @@ export async function createProductNew(productData: CreateProductData): Promise<
         throw new Error(responseData.error || responseData.message || 'Error de validación en los datos del producto')
       }
       if (response.status === 401) {
-        throw new Error(responseData.message || 'Token de autorización inválido')
+        throw new Error(responseData.message || 'No autorizado - Token de autenticación inválido o faltante')
       }
       if (response.status === 403) {
-        throw new Error(responseData.message || 'No tienes permisos para crear productos')
+        throw new Error(responseData.message || 'Sin permisos - Se requiere rol de gerencia para crear productos')
+      }
+      if (response.status === 409) {
+        throw new Error(responseData.message || 'El código de producto ya existe')
       }
       
       throw new Error(responseData.message || `Error al crear producto: ${response.status}`)
