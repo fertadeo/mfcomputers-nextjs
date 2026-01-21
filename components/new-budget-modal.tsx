@@ -49,7 +49,7 @@ interface BudgetItem {
   subtotal: number
 }
 
-interface FormData {
+interface BudgetFormData {
   date: string
   client: string
   currency: string
@@ -71,7 +71,7 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
   const [success, setSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState<'general' | 'texts' | 'observations'>('general')
   
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<BudgetFormData>({
     date: new Date().toISOString().split('T')[0],
     client: "",
     currency: "pesos",
@@ -101,7 +101,7 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
 
   const [items, setItems] = useState<BudgetItem[]>([])
 
-  const handleInputChange = (field: keyof FormData, value: string | number | boolean) => {
+  const handleInputChange = (field: keyof BudgetFormData, value: string | number | boolean) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
