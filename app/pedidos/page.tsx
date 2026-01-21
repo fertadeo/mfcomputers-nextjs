@@ -18,6 +18,7 @@ import {
   type OrderStats 
 } from "@/lib/api"
 import { toast } from "sonner"
+import { OrderDetailModal } from "@/components/order-detail-modal"
 
 // Funciones auxiliares
 const formatDate = (dateString: string) => {
@@ -99,6 +100,8 @@ export default function PedidosPage() {
   const [stats, setStats] = useState<OrderStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -321,7 +324,14 @@ export default function PedidosPage() {
                   </TableHeader>
                   <TableBody>
                     {orders.map((order) => (
-                      <TableRow key={order.id}>
+                      <TableRow 
+                        key={order.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => {
+                          setSelectedOrder(order)
+                          setIsDetailModalOpen(true)
+                        }}
+                      >
                         <TableCell className="font-medium">
                           {order.order_number || `PED${order.id.toString().padStart(3, '0')}`}
                         </TableCell>
@@ -338,15 +348,27 @@ export default function PedidosPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>{order.items_count || 0}</TableCell>
-                        <TableCell>${order.total_amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell>
+                          ${typeof order.total_amount === 'string' 
+                            ? parseFloat(order.total_amount).toLocaleString('es-AR', { minimumFractionDigits: 2 })
+                            : order.total_amount.toLocaleString('es-AR', { minimumFractionDigits: 2 })
+                          }
+                        </TableCell>
                         <TableCell>{formatDate(order.delivery_date || "")}</TableCell>
                         <TableCell>
                           <Badge variant={getPriorityBadgeVariant(order.priority)}>
                             {order.priority || "Normal"}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              setSelectedOrder(order)
+                              setIsDetailModalOpen(true)
+                            }}
+                          >
                             <Eye className="h-4 w-4 mr-1" />
                             Ver
                           </Button>
@@ -395,6 +417,16 @@ export default function PedidosPage() {
             setIsNewOrderOpen(false)
             loadData()
             toast.success("Pedido creado exitosamente")
+          }}
+        />
+
+        {/* Modal de Detalles del Pedido */}
+        <OrderDetailModal
+          order={selectedOrder}
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false)
+            setSelectedOrder(null)
           }}
         />
       </ERPLayout>
