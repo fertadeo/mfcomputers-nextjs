@@ -70,6 +70,18 @@ const getPriorityBadgeVariant = (priority?: string) => {
   }
 }
 
+const getSalesChannelLabel = (channel?: string) => {
+  const channelMap: Record<string, string> = {
+    "woocommerce_minorista": "WooCommerce",
+    "sistema_mf": "Venta en Local",
+    "sistema_principal": "Venta en Local",
+    "manual": "Venta en Local",
+    "mercadolibre": "MercadoLibre",
+    "otro": "Otro"
+  }
+  return channelMap[channel || ""] || "-"
+}
+
 export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [stats, setStats] = useState<OrderStats | null>(null)
@@ -276,6 +288,7 @@ export default function PedidosPage() {
                       <TableHead>Cliente</TableHead>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Canal de Venta</TableHead>
                       <TableHead>Items</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Entrega</TableHead>
@@ -294,6 +307,11 @@ export default function PedidosPage() {
                         <TableCell>
                           <Badge variant={getStatusBadgeVariant(order.status)}>
                             {getStatusLabel(order.status)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {getSalesChannelLabel(order.sales_channel)}
                           </Badge>
                         </TableCell>
                         <TableCell>{order.items_count || 0}</TableCell>

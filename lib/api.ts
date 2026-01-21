@@ -650,8 +650,209 @@ export interface Category {
   id: number
   name: string
   description?: string
+  parent_id?: number | null
+  is_active?: boolean
+  woocommerce_id?: number | null
+  woocommerce_slug?: string | null
   created_at: string
   updated_at: string
+}
+
+// Función helper para obtener headers con API Key
+function getCategoryHeaders(): HeadersInit {
+  const token = getAuthToken();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Intentar obtener API Key del localStorage, si no existe usar token Bearer
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('apiKey');
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    } else if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } else if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  return headers;
+}
+
+// Interfaz para crear categoría
+export interface CreateCategoryData {
+  name: string
+  description?: string
+  parent_id?: number | null
+  woocommerce_id?: number | null
+  woocommerce_slug?: string | null
+}
+
+// Interfaz para actualizar categoría
+export interface UpdateCategoryData {
+  name?: string
+  description?: string
+  parent_id?: number | null
+  is_active?: boolean
+  woocommerce_id?: number | null
+  woocommerce_slug?: string | null
+}
+
+// Función para crear una categoría
+export async function createCategory(categoryData: CreateCategoryData): Promise<Category> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}categories`
+    
+    console.log('📂 [API] Creando categoría:', categoryData)
+    console.log('🌐 [API] URL completa:', fullUrl)
+
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: getCategoryHeaders(),
+      body: JSON.stringify(categoryData)
+    })
+
+    console.log('📥 [API] Respuesta de creación recibida:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ [API] Error al crear categoría:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      })
+      
+      let errorMessage = `Error al crear categoría: ${response.status} ${response.statusText}`
+      try {
+        const errorData = JSON.parse(errorText)
+        errorMessage = errorData.message || errorMessage
+      } catch {
+        // Si no se puede parsear, usar el mensaje por defecto
+      }
+      
+      throw new Error(errorMessage)
+    }
+
+    const responseData: ApiResponse<{ category: Category }> = await response.json()
+    console.log('✅ [API] Categoría creada exitosamente:', responseData.data?.category)
+    
+    return responseData.data?.category!
+  } catch (error) {
+    console.error('💥 [API] Error al crear categoría:', {
+      error: error,
+      message: error instanceof Error ? error.message : 'Error desconocido'
+    })
+    throw error
+  }
+}
+
+// Función para actualizar una categoría
+export async function updateCategory(id: number, categoryData: UpdateCategoryData): Promise<Category> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}categories/${id}`
+    
+    console.log('📂 [API] Actualizando categoría:', { id, data: categoryData })
+    console.log('🌐 [API] URL completa:', fullUrl)
+
+    const response = await fetch(fullUrl, {
+      method: 'PUT',
+      headers: getCategoryHeaders(),
+      body: JSON.stringify(categoryData)
+    })
+
+    console.log('📥 [API] Respuesta de actualización recibida:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ [API] Error al actualizar categoría:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      })
+      
+      let errorMessage = `Error al actualizar categoría: ${response.status} ${response.statusText}`
+      try {
+        const errorData = JSON.parse(errorText)
+        errorMessage = errorData.message || errorMessage
+      } catch {
+        // Si no se puede parsear, usar el mensaje por defecto
+      }
+      
+      throw new Error(errorMessage)
+    }
+
+    const responseData: ApiResponse<{ category: Category }> = await response.json()
+    console.log('✅ [API] Categoría actualizada exitosamente:', responseData.data?.category)
+    
+    return responseData.data?.category!
+  } catch (error) {
+    console.error('💥 [API] Error al actualizar categoría:', {
+      error: error,
+      message: error instanceof Error ? error.message : 'Error desconocido'
+    })
+    throw error
+  }
+}
+
+// Función para eliminar una categoría (soft delete)
+export async function deleteCategory(id: number): Promise<void> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}categories/${id}`
+    
+    console.log('📂 [API] Eliminando categoría:', id)
+    console.log('🌐 [API] URL completa:', fullUrl)
+
+    const response = await fetch(fullUrl, {
+      method: 'DELETE',
+      headers: getCategoryHeaders()
+    })
+
+    console.log('📥 [API] Respuesta de eliminación recibida:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ [API] Error al eliminar categoría:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      })
+      
+      let errorMessage = `Error al eliminar categoría: ${response.status} ${response.statusText}`
+      try {
+        const errorData = JSON.parse(errorText)
+        errorMessage = errorData.message || errorMessage
+      } catch {
+        // Si no se puede parsear, usar el mensaje por defecto
+      }
+      
+      throw new Error(errorMessage)
+    }
+
+    const responseData: ApiResponse<{ id: number; name: string; woocommerce_id: number | null }> = await response.json()
+    console.log('✅ [API] Categoría eliminada exitosamente:', responseData.data)
+  } catch (error) {
+    console.error('💥 [API] Error al eliminar categoría:', {
+      error: error,
+      message: error instanceof Error ? error.message : 'Error desconocido'
+    })
+    throw error
+  }
 }
 
 // Función para obtener estadísticas de productos
@@ -2118,6 +2319,7 @@ export interface Order {
   shipping_company?: string;
   packages_count?: number;
   final_discount?: number;
+  sales_channel?: "woocommerce_minorista" | "mercadolibre" | "sistema_mf" | "sistema_principal" | "manual" | "otro";
   created_at: string;
   updated_at: string;
 }
@@ -2595,6 +2797,75 @@ export async function getOrders(params?: {
     if (params?.all) queryParams.append('all', 'true');
 
     const url = `${getApiUrl()}orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const headers = getAuthHeaders();
+    const token = getAuthToken();
+    
+    console.log('📡 [ORDERS] Obteniendo pedidos:', {
+      url,
+      hasToken: !!token,
+      tokenLength: token?.length || 0
+    });
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      // Manejar error 401 (token expirado o inválido)
+      if (response.status === 401) {
+        console.error('🔒 [ORDERS] Token expirado o inválido, limpiando sesión');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+          
+          // Redirigir al login si no estamos ya ahí
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login';
+          }
+        }
+        throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+      }
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('💥 [ORDERS] Error al obtener pedidos:', error);
+    throw error;
+  }
+}
+
+// Función para obtener pedidos desde WooCommerce
+export async function getWooCommerceOrders(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  data: {
+    orders: Order[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
+  timestamp: string;
+}> {
+  try {
+    const queryParams = new URLSearchParams();
+    
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.status) queryParams.append('status', params.status);
+
+    const url = `https://api.sistema.mfcomputers.com.ar/api/integration/webhook/woocommerce/order${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -2607,7 +2878,7 @@ export async function getOrders(params?: {
 
     return await response.json();
   } catch (error) {
-    console.error('💥 [ORDERS] Error al obtener pedidos:', error);
+    console.error('💥 [WOOCOMMERCE ORDERS] Error al obtener pedidos de WooCommerce:', error);
     throw error;
   }
 }
@@ -4252,6 +4523,270 @@ export async function deleteUser(id: number): Promise<void> {
     }
   } catch (error) {
     console.error('💥 [USERS] Error al eliminar usuario:', error)
+    throw error
+  }
+}
+
+// ============================================================================
+// PRESUPUESTOS / BUDGETS API
+// ============================================================================
+
+export interface BudgetItem {
+  id?: string
+  service: string
+  description?: string
+  equipmentType?: string
+  equipmentModel?: string
+  problemDescription?: string
+  quantity: number
+  vat: number
+  recovery?: number
+  unitPrice: number
+  subtotal: number
+}
+
+export interface Budget {
+  id: string
+  numero: string
+  cliente_id: number
+  cliente_name: string
+  cliente_email?: string
+  cliente_telefono?: string
+  cliente_direccion?: string
+  fecha: string
+  fecha_vencimiento: string
+  estado: "pendiente" | "enviado" | "aprobado" | "revision" | "rechazado"
+  items: BudgetItem[]
+  subtotal: number
+  vat21: number
+  vat105: number
+  total: number
+  observaciones?: string
+  validez?: number
+  forma_pago?: string
+  vendedor?: string
+  currency?: string
+  quote?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface BudgetsResponse {
+  budgets: Budget[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+export interface BudgetStats {
+  total_budgets: number
+  pending_budgets: number
+  sent_budgets: number
+  approved_budgets: number
+  rejected_budgets: number
+  total_value: number
+}
+
+export interface CreateBudgetRequest {
+  cliente_id: number
+  fecha: string
+  fecha_vencimiento: string
+  items: BudgetItem[]
+  observaciones?: string
+  validez?: number
+  forma_pago?: string
+  vendedor?: string
+  currency?: string
+  quote?: number
+}
+
+export interface UpdateBudgetRequest {
+  estado?: "pendiente" | "enviado" | "aprobado" | "revision" | "rechazado"
+  fecha_vencimiento?: string
+  items?: BudgetItem[]
+  observaciones?: string
+}
+
+/**
+ * Obtener todos los presupuestos con filtros opcionales
+ */
+export async function getBudgets(
+  page: number = 1,
+  limit: number = 10,
+  search?: string,
+  status?: string,
+  clientId?: number
+): Promise<BudgetsResponse> {
+  const apiUrl = getApiUrl()
+  
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString()
+  })
+  
+  if (search && search.trim()) {
+    params.append('search', search.trim())
+  }
+  
+  if (status) {
+    params.append('status', status)
+  }
+  
+  if (clientId) {
+    params.append('client_id', clientId.toString())
+  }
+  
+  const fullUrl = `${apiUrl}budgets?${params.toString()}`
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Error al obtener presupuestos: ${response.status} ${response.statusText}`)
+    }
+
+    const responseData: ApiResponse<BudgetsResponse> = await response.json()
+    return responseData.data || { budgets: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
+  } catch (error) {
+    console.error('💥 [API] Error al obtener presupuestos:', error)
+    throw error
+  }
+}
+
+/**
+ * Obtener estadísticas de presupuestos
+ */
+export async function getBudgetStats(): Promise<BudgetStats> {
+  const apiUrl = getApiUrl()
+  const fullUrl = `${apiUrl}budgets/stats`
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener estadísticas: ${response.status} ${response.statusText}`)
+    }
+
+    const responseData: ApiResponse<BudgetStats> = await response.json()
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [API] Error al obtener estadísticas de presupuestos:', error)
+    throw error
+  }
+}
+
+/**
+ * Obtener un presupuesto por ID
+ */
+export async function getBudget(id: string): Promise<Budget> {
+  const apiUrl = getApiUrl()
+  const fullUrl = `${apiUrl}budgets/${id}`
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener presupuesto: ${response.status} ${response.statusText}`)
+    }
+
+    const responseData: ApiResponse<Budget> = await response.json()
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [API] Error al obtener presupuesto:', error)
+    throw error
+  }
+}
+
+/**
+ * Crear un nuevo presupuesto
+ */
+export async function createBudget(data: CreateBudgetRequest): Promise<Budget> {
+  const apiUrl = getApiUrl()
+  const fullUrl = `${apiUrl}budgets`
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `Error al crear presupuesto: ${response.status} ${response.statusText}`)
+    }
+
+    const responseData: ApiResponse<Budget> = await response.json()
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [API] Error al crear presupuesto:', error)
+    throw error
+  }
+}
+
+/**
+ * Actualizar un presupuesto existente
+ */
+export async function updateBudget(id: string, data: UpdateBudgetRequest): Promise<Budget> {
+  const apiUrl = getApiUrl()
+  const fullUrl = `${apiUrl}budgets/${id}`
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `Error al actualizar presupuesto: ${response.status} ${response.statusText}`)
+    }
+
+    const responseData: ApiResponse<Budget> = await response.json()
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [API] Error al actualizar presupuesto:', error)
+    throw error
+  }
+}
+
+/**
+ * Enviar presupuesto por email
+ */
+export async function sendBudgetByEmail(id: string, email?: string): Promise<{ success: boolean; message: string }> {
+  const apiUrl = getApiUrl()
+  const fullUrl = `${apiUrl}budgets/${id}/send-email`
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ email }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `Error al enviar presupuesto: ${response.status} ${response.statusText}`)
+    }
+
+    const responseData: ApiResponse<{ success: boolean; message: string }> = await response.json()
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [API] Error al enviar presupuesto por email:', error)
     throw error
   }
 }

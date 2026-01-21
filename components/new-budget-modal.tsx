@@ -37,8 +37,11 @@ interface NewBudgetModalProps {
 
 interface BudgetItem {
   id: string
-  product: string
+  service: string
   description: string
+  equipmentType?: string
+  equipmentModel?: string
+  problemDescription?: string
   quantity: number
   vat: number
   recovery: number
@@ -85,8 +88,11 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
   })
 
   const [currentItem, setCurrentItem] = useState({
-    product: "",
+    service: "",
     description: "",
+    equipmentType: "",
+    equipmentModel: "",
+    problemDescription: "",
     quantity: 1,
     vat: 21.0,
     recovery: 0.0,
@@ -111,16 +117,19 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
   }
 
   const addItem = () => {
-    if (!currentItem.product.trim()) {
-      setError("Debe ingresar un producto")
+    if (!currentItem.service.trim()) {
+      setError("Debe ingresar un servicio o reparación")
       return
     }
 
     const subtotal = currentItem.quantity * currentItem.unitPrice
     const newItem: BudgetItem = {
       id: Date.now().toString(),
-      product: currentItem.product,
+      service: currentItem.service,
       description: currentItem.description,
+      equipmentType: currentItem.equipmentType,
+      equipmentModel: currentItem.equipmentModel,
+      problemDescription: currentItem.problemDescription,
       quantity: currentItem.quantity,
       vat: currentItem.vat,
       recovery: currentItem.recovery,
@@ -130,8 +139,11 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
 
     setItems(prev => [...prev, newItem])
     setCurrentItem({
-      product: "",
+      service: "",
       description: "",
+      equipmentType: "",
+      equipmentModel: "",
+      problemDescription: "",
       quantity: 1,
       vat: 21.0,
       recovery: 0.0,
@@ -167,7 +179,7 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
       return false
     }
     if (items.length === 0) {
-      setError("Debe agregar al menos un producto")
+      setError("Debe agregar al menos un servicio o reparación")
       return false
     }
     return true
@@ -182,8 +194,43 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
     setError(null)
 
     try {
-      // Aquí iría la lógica para enviar el presupuesto a la API
-      console.log('Creando presupuesto:', { formData, items, totals })
+      // Obtener cliente_id del nombre del cliente (esto se mejorará cuando se conecte con la API de clientes)
+      const clienteId = formData.client ? parseInt(formData.client) || 1 : 1
+      
+      // Calcular fecha de vencimiento
+      const fechaVencimiento = new Date(formData.date)
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + formData.validity)
+      
+      // Preparar datos para la API
+      const budgetData = {
+        cliente_id: clienteId,
+        fecha: formData.date,
+        fecha_vencimiento: fechaVencimiento.toISOString().split('T')[0],
+        items: items.map(item => ({
+          service: item.service,
+          description: item.description,
+          equipmentType: item.equipmentType,
+          equipmentModel: item.equipmentModel,
+          problemDescription: item.problemDescription,
+          quantity: item.quantity,
+          vat: item.vat,
+          recovery: item.recovery || 0,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal
+        })),
+        observaciones: formData.internalObservations,
+        validez: formData.validity,
+        forma_pago: formData.paymentMethod,
+        vendedor: formData.seller,
+        currency: formData.currency,
+        quote: formData.quote
+      }
+      
+      console.log('Creando presupuesto:', budgetData)
+      
+      // TODO: Descomentar cuando la API esté lista
+      // const { createBudget } = await import('@/lib/api')
+      // await createBudget(budgetData)
       
       setSuccess(true)
       setTimeout(() => {
@@ -219,8 +266,11 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
     })
     setItems([])
     setCurrentItem({
-      product: "",
+      service: "",
       description: "",
+      equipmentType: "",
+      equipmentModel: "",
+      problemDescription: "",
       quantity: 1,
       vat: 21.0,
       recovery: 0.0,
@@ -446,7 +496,7 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
                 </CardContent>
               </Card>
 
-              {/* Productos */}
+              {/* Servicios y Reparaciones */}
               <Card className="border-0 shadow-lg bg-modal-card border-slate-200 dark:border-slate-600">
                 <CardContent className="p-6 lg:p-10 space-y-8 lg:space-y-10">
                   <div className="flex items-center gap-3 pb-4 border-b border-slate-200 dark:border-slate-700">
@@ -454,22 +504,121 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
                       <ShoppingCart className="h-5 w-5 text-turquoise-600 dark:text-turquoise-400" />
                     </div>
                     <div>
-                    <h3 className="font-semibold text-lg text-white">Productos</h3>
-                    <p className="text-sm text-slate-300">Agregar productos al presupuesto</p>
+                    <h3 className="font-semibold text-lg text-white">Servicios y Reparaciones</h3>
+                    <p className="text-sm text-slate-300">Agregar servicios o reparaciones al presupuesto</p>
                     </div>
                   </div>
 
-                  {/* Formulario para agregar productos */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 lg:gap-6 p-6 lg:p-8 bg-soft/50 rounded-lg">
-                    <div className="space-y-6">
-                      <Label className="text-xs font-medium text-slate-300">Producto</Label>
+                  {/* Información del equipo (si aplica) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-800/50 rounded-lg border border-slate-600">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-slate-300">Tipo de Equipo</Label>
+                      <Select value={currentItem.equipmentType} onValueChange={(value) => handleItemChange('equipmentType', value)}>
+                        <SelectTrigger className="h-9 bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white">
+                          <SelectValue placeholder="Seleccionar tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pc">PC/Computadora</SelectItem>
+                          <SelectItem value="notebook">Notebook/Laptop</SelectItem>
+                          <SelectItem value="impresora">Impresora</SelectItem>
+                          <SelectItem value="monitor">Monitor</SelectItem>
+                          <SelectItem value="tablet">Tablet</SelectItem>
+                          <SelectItem value="servidor">Servidor</SelectItem>
+                          <SelectItem value="red">Equipos de Red</SelectItem>
+                          <SelectItem value="otro">Otro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-slate-300">Modelo/Marca</Label>
                       <Input
-                        value={currentItem.product}
-                        onChange={(e) => handleItemChange('product', e.target.value)}
-                        placeholder="Código/Nombre"
+                        value={currentItem.equipmentModel}
+                        onChange={(e) => handleItemChange('equipmentModel', e.target.value)}
+                        placeholder="Ej: HP LaserJet Pro, Dell XPS..."
+                        className="h-9 text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white"
+                      />
+                    </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <Label className="text-sm font-medium text-slate-300">Descripción del Problema</Label>
+                      <Textarea
+                        value={currentItem.problemDescription}
+                        onChange={(e) => handleItemChange('problemDescription', e.target.value)}
+                        placeholder="Describa el problema o síntoma del equipo..."
+                        rows={2}
+                        className="text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Formulario para agregar servicios */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 lg:gap-6 p-6 lg:p-8 bg-soft/50 rounded-lg">
+                    <div className="lg:col-span-2 space-y-2">
+                      <Label className="text-xs font-medium text-slate-300">Servicio/Reparación *</Label>
+                      <Input
+                        value={currentItem.service}
+                        onChange={(e) => handleItemChange('service', e.target.value)}
+                        placeholder="Ej: Reparación de placa, Limpieza, Instalación..."
                         className="h-9 text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-300">I.V.A.</Label>
+                      <Select value={currentItem.vat.toString()} onValueChange={(value) => handleItemChange('vat', parseFloat(value))}>
+                        <SelectTrigger className="h-9 text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">0%</SelectItem>
+                          <SelectItem value="10.5">10,5%</SelectItem>
+                          <SelectItem value="21">21%</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-300">Cantidad</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={currentItem.quantity}
+                        onChange={(e) => handleItemChange('quantity', parseFloat(e.target.value) || 0)}
+                        className="h-9 text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-300">P.Unitario</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={currentItem.unitPrice}
+                        onChange={(e) => handleItemChange('unitPrice', parseFloat(e.target.value) || 0)}
+                        className="h-9 text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-600 dark:text-slate-400 invisible">Agregar</Label>
+                      <Button
+                        type="button"
+                        onClick={addItem}
+                        className="h-9 w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {currentItem.description && (
+                    <div className="space-y-2 px-6">
+                      <Label className="text-xs font-medium text-slate-300">Descripción Detallada</Label>
+                      <Textarea
+                        value={currentItem.description}
+                        onChange={(e) => handleItemChange('description', e.target.value)}
+                        placeholder="Descripción detallada del servicio..."
+                        rows={2}
+                        className="text-sm bg-soft-input border-slate-300 dark:border-slate-500 text-slate-800 dark:text-white resize-none"
+                      />
+                    </div>
+                  )}
                     <div className="space-y-6">
                       <Label className="text-xs font-medium text-slate-300">I.V.A.</Label>
                       <Select value={currentItem.vat.toString()} onValueChange={(value) => handleItemChange('vat', parseFloat(value))}>
@@ -528,16 +677,16 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
                     </div>
                   </div>
 
-                  {/* Tabla de productos */}
+                  {/* Tabla de servicios */}
                   {items.length > 0 && (
                     <div className="border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden overflow-x-auto">
-                      <Table className="min-w-[600px]">
+                      <Table className="min-w-[800px]">
                         <TableHeader>
                           <TableRow className="bg-slate-50 dark:bg-soft-card">
                             <TableHead className="w-20">Cant.</TableHead>
-                            <TableHead>Descripción</TableHead>
-                            <TableHead className="w-20">Alicuota</TableHead>
-                            <TableHead className="w-20">% Rec.</TableHead>
+                            <TableHead>Servicio/Reparación</TableHead>
+                            <TableHead>Equipo</TableHead>
+                            <TableHead>Alicuota</TableHead>
                             <TableHead className="w-24">P.Unitario</TableHead>
                             <TableHead className="w-24">Sub Total</TableHead>
                             <TableHead className="w-12"></TableHead>
@@ -547,9 +696,28 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
                           {items.map((item) => (
                             <TableRow key={item.id}>
                               <TableCell className="font-medium">{item.quantity}</TableCell>
-                              <TableCell>{item.product}</TableCell>
+                              <TableCell>
+                                <div>
+                                  <div className="font-medium">{item.service}</div>
+                                  {item.description && (
+                                    <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                                  )}
+                                  {item.problemDescription && (
+                                    <div className="text-xs text-orange-300 mt-1 italic">Problema: {item.problemDescription}</div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-sm">
+                                  {item.equipmentType && (
+                                    <div className="font-medium capitalize">{item.equipmentType.replace('_', ' ')}</div>
+                                  )}
+                                  {item.equipmentModel && (
+                                    <div className="text-xs text-muted-foreground">{item.equipmentModel}</div>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell>{item.vat}%</TableCell>
-                              <TableCell>{item.recovery}%</TableCell>
                               <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
                               <TableCell className="font-medium">{formatCurrency(item.subtotal)}</TableCell>
                               <TableCell>
@@ -688,7 +856,7 @@ export function NewBudgetModal({ isOpen, onClose, onSuccess }: NewBudgetModalPro
 
                   <div className="space-y-6">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-slate-300">Productos:</span>
+                      <span className="text-sm text-slate-300">Servicios:</span>
                       <span className="font-medium text-white">{items.length}</span>
                     </div>
                     <div className="flex justify-between items-center">
