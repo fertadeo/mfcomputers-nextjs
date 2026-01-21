@@ -34,9 +34,15 @@ const getStatusBadgeVariant = (status: string) => {
     case "completado":
       return "default" as const
     case "en_proceso":
+    case "aprobado":
       return "secondary" as const
+    case "pendiente_preparacion":
     case "pendiente":
       return "outline" as const
+    case "listo_despacho":
+      return "secondary" as const
+    case "pagado":
+      return "default" as const
     case "atrasado":
       return "destructive" as const
     case "cancelado":
@@ -49,6 +55,10 @@ const getStatusBadgeVariant = (status: string) => {
 
 const getStatusLabel = (status: string) => {
   const statusMap: Record<string, string> = {
+    "pendiente_preparacion": "Pendiente Preparación",
+    "listo_despacho": "Listo Despacho",
+    "pagado": "Pagado",
+    "aprobado": "Aprobado",
     "pendiente": "Pendiente",
     "en_proceso": "En Proceso",
     "completado": "Completado",
@@ -72,7 +82,9 @@ const getPriorityBadgeVariant = (priority?: string) => {
 
 const getSalesChannelLabel = (channel?: string) => {
   const channelMap: Record<string, string> = {
-    "woocommerce_minorista": "WooCommerce",
+    "woocommerce": "WooCommerce",
+    "local": "Venta en Local",
+    "woocommerce_minorista": "WooCommerce", // Compatibilidad con datos antiguos
     "sistema_mf": "Venta en Local",
     "sistema_principal": "Venta en Local",
     "manual": "Venta en Local",
@@ -130,7 +142,16 @@ export default function PedidosPage() {
       const response = await getOrders(params)
       if (response.success) {
         setOrders(response.data.orders)
-        setTotalPages(response.data.pagination.totalPages)
+        // La respuesta puede tener pagination o solo total
+        if (response.data.pagination) {
+          setTotalPages(response.data.pagination.totalPages)
+        } else if (response.data.total) {
+          // Calcular totalPages basado en total y limit
+          const limit = params.limit || 10
+          setTotalPages(Math.ceil(response.data.total / limit))
+        } else {
+          setTotalPages(1)
+        }
       }
     } catch (error) {
       console.error("Error al cargar pedidos:", error)
@@ -256,10 +277,12 @@ export default function PedidosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                  <SelectItem value="pendiente_preparacion">Pendiente Preparación</SelectItem>
+                  <SelectItem value="listo_despacho">Listo Despacho</SelectItem>
+                  <SelectItem value="pagado">Pagado</SelectItem>
+                  <SelectItem value="aprobado">Aprobado</SelectItem>
                   <SelectItem value="en_proceso">En Proceso</SelectItem>
                   <SelectItem value="completado">Completado</SelectItem>
-                  <SelectItem value="atrasado">Atrasado</SelectItem>
                   <SelectItem value="cancelado">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
@@ -311,7 +334,7 @@ export default function PedidosPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
-                            {getSalesChannelLabel(order.sales_channel)}
+                            {getSalesChannelLabel(order.canal_venta || order.sales_channel)}
                           </Badge>
                         </TableCell>
                         <TableCell>{order.items_count || 0}</TableCell>

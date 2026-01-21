@@ -2299,13 +2299,17 @@ export interface SupplierStats {
 export interface Order {
   id: number;
   order_number?: string;
+  woocommerce_order_id?: number;
+  canal_venta?: 'woocommerce' | 'local';
+  json?: any; // JSON completo con todos los datos originales
   client_id: number;
   client_name?: string;
+  client_email?: string;
   client_code?: string;
   order_date: string;
   delivery_date?: string;
-  status: 'pendiente' | 'en_proceso' | 'completado' | 'atrasado' | 'cancelado' | 'cancelled';
-  total_amount: number;
+  status: 'pendiente_preparacion' | 'listo_despacho' | 'pagado' | 'aprobado' | 'en_proceso' | 'completado' | 'cancelado' | 'pendiente' | 'atrasado' | 'cancelled';
+  total_amount: number | string;
   items_count?: number;
   priority?: 'Normal' | 'Alta' | 'Crítica';
   currency?: string;
@@ -2315,11 +2319,23 @@ export interface Order {
   responsible?: string;
   invoice?: boolean;
   delivery_address?: string;
+  delivery_city?: string;
+  delivery_contact?: string;
+  delivery_phone?: string;
+  transport_company?: string;
+  transport_cost?: string;
+  payment_method?: string;
+  payment_method_title?: string;
   observations?: string;
   shipping_company?: string;
   packages_count?: number;
   final_discount?: number;
   sales_channel?: "woocommerce_minorista" | "mercadolibre" | "sistema_mf" | "sistema_principal" | "manual" | "otro";
+  remito_status?: 'sin_remito' | 'remito_generado' | 'remito_despachado' | 'remito_entregado';
+  stock_reserved?: boolean;
+  has_remito?: boolean;
+  is_active?: boolean;
+  items?: OrderItem[];
   created_at: string;
   updated_at: string;
 }
@@ -2765,17 +2781,21 @@ export async function getOrders(params?: {
   page?: number;
   limit?: number;
   search?: string;
-  status?: 'pendiente' | 'en_proceso' | 'completado' | 'atrasado' | 'cancelado' | 'cancelled';
+  status?: 'pendiente_preparacion' | 'listo_despacho' | 'pagado' | 'aprobado' | 'en_proceso' | 'completado' | 'cancelado';
   client_id?: number;
-  date_from?: string;
-  date_to?: string;
-  all?: boolean;
+  canal_venta?: 'woocommerce' | 'local';
+  remito_status?: 'sin_remito' | 'remito_generado' | 'remito_despachado' | 'remito_entregado';
+  date_from?: string; // ISO 8601 format
+  date_to?: string; // ISO 8601 format
+  stock_reserved?: boolean;
+  has_remito?: boolean;
 }): Promise<{
   success: boolean;
   message: string;
   data: {
     orders: Order[];
-    pagination: {
+    total?: number;
+    pagination?: {
       page: number;
       limit: number;
       total: number;
@@ -2787,23 +2807,75 @@ export async function getOrders(params?: {
   try {
     const queryParams = new URLSearchParams();
     
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.search) queryParams.append('search', params.search);
-    if (params?.status) queryParams.append('status', params.status);
-    if (params?.client_id) queryParams.append('client_id', params.client_id.toString());
-    if (params?.date_from) queryParams.append('date_from', params.date_from);
-    if (params?.date_to) queryParams.append('date_to', params.date_to);
-    if (params?.all) queryParams.append('all', 'true');
+    // Validar y agregar parámetros solo si tienen valores válidos
+    if (params?.page && params.page > 0) {
+      queryParams.append('page', params.page.toString());
+    }
+    if (params?.limit && params.limit > 0) {
+      // Limitar el máximo según la documentación
+      const limit = Math.min(params.limit, 100);
+      queryParams.append('limit', limit.toString());
+    }
+    if (params?.search && params.search.trim()) {
+      queryParams.append('search', params.search.trim());
+    }
+    if (params?.status && params.status.trim()) {
+      queryParams.append('status', params.status);
+    }
+    if (params?.client_id && params.client_id > 0) {
+      queryParams.append('client_id', params.client_id.toString());
+    }
+    if (params?.canal_venta) {
+      queryParams.append('canal_venta', params.canal_venta);
+    }
+    if (params?.remito_status) {
+      queryParams.append('remito_status', params.remito_status);
+    }
+    if (params?.date_from && params.date_from.trim()) {
+      queryParams.append('date_from', params.date_from);
+    }
+    if (params?.date_to && params.date_to.trim()) {
+      queryParams.append('date_to', params.date_to);
+    }
+    if (params?.stock_reserved !== undefined) {
+      queryParams.append('stock_reserved', params.stock_reserved.toString());
+    }
+    if (params?.has_remito !== undefined) {
+      queryParams.append('has_remito', params.has_remito.toString());
+    }
 
     const url = `${getApiUrl()}orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const headers = getAuthHeaders();
     const token = getAuthToken();
+    
+    // Validar que el token existe antes de hacer la petición
+    if (!token) {
+      console.error('❌ [ORDERS] No hay token de autenticación disponible');
+      throw new Error('No hay token de autenticación. Por favor, inicia sesión nuevamente.');
+    }
+    
+    // Obtener headers con API Key si está disponible, sino usar Bearer token
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (typeof window !== 'undefined') {
+      const apiKey = localStorage.getItem('apiKey');
+      if (apiKey) {
+        headers['x-api-key'] = apiKey;
+      } else {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } else {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     
     console.log('📡 [ORDERS] Obteniendo pedidos:', {
       url,
+      params: params,
+      queryString: queryParams.toString(),
       hasToken: !!token,
-      tokenLength: token?.length || 0
+      tokenLength: token.length,
+      hasApiKey: typeof window !== 'undefined' ? !!localStorage.getItem('apiKey') : false
     });
     
     const response = await fetch(url, {
@@ -2812,10 +2884,40 @@ export async function getOrders(params?: {
     });
 
     if (!response.ok) {
-      throw new Error(`Error ${response.status}: ${response.statusText}`);
+      // Intentar obtener el mensaje de error del backend
+      let errorMessage = `Error ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        console.error('❌ [ORDERS] Error del backend:', {
+          status: response.status,
+          message: errorMessage,
+          errorData
+        });
+      } catch {
+        // Si no se puede parsear el JSON, usar el mensaje por defecto
+        console.error('❌ [ORDERS] Error sin JSON:', {
+          status: response.status,
+          statusText: response.statusText
+        });
+      }
+      throw new Error(errorMessage);
     }
 
-    return await response.json();
+    const responseData = await response.json();
+    
+    // Validar que la respuesta tenga la estructura esperada
+    if (!responseData.success) {
+      console.error('❌ [ORDERS] Respuesta no exitosa:', responseData);
+      throw new Error(responseData.message || responseData.error || 'Error al obtener pedidos');
+    }
+    
+    return responseData;
   } catch (error) {
     console.error('💥 [ORDERS] Error al obtener pedidos:', error);
     throw error;
