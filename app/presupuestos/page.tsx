@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { NewBudgetModal } from "@/components/new-budget-modal"
+// import { NewBudgetModal } from "@/components/new-budget-modal"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -505,7 +505,7 @@ export default function PresupuestosPage() {
         </Dialog>
 
         {/* Modal de Nuevo Presupuesto */}
-        <NewBudgetModal
+        {/* <NewBudgetModal
           isOpen={isNewPresupuestoOpen}
           onClose={() => setIsNewPresupuestoOpen(false)}
           onSuccess={() => {
@@ -513,7 +513,7 @@ export default function PresupuestosPage() {
             // Aquí podrías agregar lógica para refrescar la lista de presupuestos
             console.log('Presupuesto creado exitosamente')
           }}
-        />
+        /> */}
 
         {/* Modal de PDF del Presupuesto */}
         <BudgetPdfModal
