@@ -539,9 +539,9 @@ export async function createProduct(productData: CreateProductData): Promise<any
       formData.append('category_id', productData.category_id.toString())
     }
     formData.append('price', productData.price.toString())
-    formData.append('stock', productData.stock.toString())
-    formData.append('min_stock', productData.min_stock.toString())
-    formData.append('max_stock', productData.max_stock.toString())
+    formData.append('stock', (productData.stock ?? 0).toString())
+    formData.append('min_stock', (productData.min_stock ?? 0).toString())
+    formData.append('max_stock', (productData.max_stock ?? 0).toString())
     formData.append('is_active', (productData.is_active ?? true).toString())
 
     // Agregar imágenes si existen
@@ -2812,21 +2812,6 @@ export async function getOrders(params?: {
     });
 
     if (!response.ok) {
-      // Manejar error 401 (token expirado o inválido)
-      if (response.status === 401) {
-        console.error('🔒 [ORDERS] Token expirado o inválido, limpiando sesión');
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          localStorage.removeItem('user');
-          
-          // Redirigir al login si no estamos ya ahí
-          if (!window.location.pathname.startsWith('/login')) {
-            window.location.href = '/login';
-          }
-        }
-        throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
-      }
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
 
