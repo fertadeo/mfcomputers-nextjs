@@ -1,26 +1,130 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Order } from "@/lib/api"
+import { Order, updateOrder } from "@/lib/api"
+import { toast } from "sonner"
 
 interface OrderDetailModalProps {
   order: Order | null
   isOpen: boolean
   onClose: () => void
+  onStatusUpdate?: () => void // Callback para refrescar la lista después de actualizar
 }
 
-export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalProps) {
-  if (!order) return null
+export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: OrderDetailModalProps) {
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(order)
 
-  const jsonData = order.json || {}
+  // Actualizar el pedido cuando cambie el prop
+  React.useEffect(() => {
+    setCurrentOrder(order)
+  }, [order])
+
+  if (!currentOrder) return null
+
+  const jsonData = currentOrder.json || {}
   const billing = jsonData.billing || {}
   const shipping = jsonData.shipping || {}
   const lineItems = jsonData.line_items || []
   const shippingLines = jsonData.shipping_lines || []
+
+  // Estados de WooCommerce con sus mapeos
+  const woocommerceStatuses = [
+    { label: "Pendiente de pago", value: "pending", wcValue: "pending" },
+    { label: "Procesando", value: "processing", wcValue: "processing" },
+    { label: "En espera", value: "on-hold", wcValue: "on-hold" },
+    { label: "Completado", value: "completed", wcValue: "completed" },
+    { label: "Cancelado", value: "cancelled", wcValue: "cancelled" },
+    { label: "Reembolsado", value: "refunded", wcValue: "refunded" },
+    { label: "Fallido", value: "failed", wcValue: "failed" },
+    { label: "Borrador", value: "draft", wcValue: "draft" },
+  ]
+
+  // Obtener el estado actual
+  const currentStatus = (jsonData.status || currentOrder.status || '').toLowerCase()
+  
+  // Mapear estado actual a valor de WooCommerce
+  const getCurrentWooCommerceStatus = () => {
+    const statusMap: Record<string, string> = {
+      "pending": "pending",
+      "pendiente": "pending",
+      "pendiente_preparacion": "pending",
+      "processing": "processing",
+      "en_proceso": "processing",
+      "aprobado": "processing",
+      "listo_despacho": "processing",
+      "pagado": "processing",
+      "on-hold": "on-hold",
+      "atrasado": "on-hold",
+      "completed": "completed",
+      "completado": "completed",
+      "cancelled": "cancelled",
+      "cancelado": "cancelled",
+      "refunded": "refunded",
+      "reembolsado": "refunded",
+      "failed": "failed",
+      "fallido": "failed",
+      "draft": "draft",
+      "borrador": "draft",
+    }
+    return statusMap[currentStatus] || "pending"
+  }
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (isUpdating) return
+    
+    setIsUpdating(true)
+    try {
+      // Mapear el valor de WooCommerce al estado del sistema
+      const statusMap: Record<string, string> = {
+        "pending": "pendiente",
+        "processing": "en_proceso",
+        "on-hold": "atrasado",
+        "completed": "completado",
+        "cancelled": "cancelado",
+        "refunded": "cancelado", // Reembolsado se mapea a cancelado
+        "failed": "cancelado", // Fallido se mapea a cancelado
+        "draft": "pendiente", // Borrador se mapea a pendiente
+      }
+      
+      const systemStatus = statusMap[newStatus] || "pendiente"
+      
+      // Actualizar el pedido
+      const response = await updateOrder(currentOrder.id, {
+        status: systemStatus as any,
+      })
+
+      if (response.success) {
+        // Actualizar el estado local
+        const updatedOrder = { ...currentOrder, status: systemStatus as any }
+        if (updatedOrder.json) {
+          updatedOrder.json.status = newStatus
+        } else {
+          updatedOrder.json = { status: newStatus }
+        }
+        setCurrentOrder(updatedOrder)
+        
+        toast.success(`Estado del pedido actualizado a "${woocommerceStatuses.find(s => s.value === newStatus)?.label}"`)
+        
+        // Llamar al callback para refrescar la lista
+        if (onStatusUpdate) {
+          onStatusUpdate()
+        }
+      } else {
+        throw new Error(response.message || "Error al actualizar el estado")
+      }
+    } catch (error) {
+      console.error("Error al actualizar estado:", error)
+      toast.error("Error al actualizar el estado del pedido")
+    } finally {
+      setIsUpdating(false)
+    }
+  }
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return "-"
@@ -75,12 +179,13 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
     billing.address_1 === shipping.address_1 &&
     billing.city === shipping.city
 
-  const statusInfo = getStatusBadgeStyle(jsonData.status || order.status)
+  const statusInfo = getStatusBadgeStyle(jsonData.status || currentOrder.status)
   const clientName = billing.first_name && billing.last_name 
     ? `${billing.first_name} ${billing.last_name}`
-    : order.client_name || `Cliente #${order.client_id}`
-  const clientEmail = billing.email || order.client_email
-  const clientPhone = billing.phone || order.delivery_phone || shipping.phone
+    : currentOrder.client_name || `Cliente #${currentOrder.client_id}`
+  const clientEmail = billing.email || currentOrder.client_email
+  const clientPhone = billing.phone || currentOrder.delivery_phone || shipping.phone
+  const currentWooCommerceStatus = getCurrentWooCommerceStatus()
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -89,7 +194,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
         <DialogHeader className="px-6 py-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-semibold">
-              Pedido {order.order_number || `#${order.id}`}
+              Pedido {currentOrder.order_number || `#${currentOrder.id}`}
             </DialogTitle>
             <Badge 
               variant="outline"
@@ -148,7 +253,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                   )}
                   <p className="mt-3 text-muted-foreground">
                     <span className="font-medium">Método de pago:</span>{" "}
-                    {jsonData.payment_method_title || jsonData.payment_method || order.payment_method_title || "-"}
+                    {jsonData.payment_method_title || jsonData.payment_method || currentOrder.payment_method_title || "-"}
                   </p>
                   {jsonData.transaction_id && (
                     <p className="text-xs text-muted-foreground">
@@ -205,8 +310,8 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                   <p className="mt-3 text-muted-foreground">
                     <span className="font-medium">Método de envío:</span>{" "}
                     {shippingLines.length > 0 
-                      ? shippingLines.map((s: any) => s.method_title || order.transport_company || "-").join(", ")
-                      : order.transport_company || "-"
+                      ? shippingLines.map((s: any) => s.method_title || currentOrder.transport_company || "-").join(", ")
+                      : currentOrder.transport_company || "-"
                     }
                     {(jsonData.shipping_total && parseFloat(jsonData.shipping_total) > 0) && (
                       <span className="ml-1">({formatCurrency(jsonData.shipping_total)})</span>
@@ -279,9 +384,41 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                 <Separator />
                 <div className="flex justify-between text-base font-bold">
                   <span>Total:</span>
-                  <span>{formatCurrency(jsonData.total || order.total_amount)}</span>
+                  <span>{formatCurrency(jsonData.total || currentOrder.total_amount)}</span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Botones para cambiar estado - Estilo WooCommerce */}
+          <div className="border-t pt-4 mt-4">
+            <div className="flex flex-wrap gap-2">
+              {woocommerceStatuses.map((status) => {
+                const isCurrentStatus = status.value === currentWooCommerceStatus
+                const statusStyle = getStatusBadgeStyle(status.value)
+                
+                return (
+                  <Button
+                    key={status.value}
+                    variant={isCurrentStatus ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleStatusChange(status.value)}
+                    disabled={isUpdating || isCurrentStatus}
+                    className="font-medium"
+                    style={
+                      isCurrentStatus
+                        ? {
+                            backgroundColor: statusStyle.bgColor,
+                            color: statusStyle.textColor,
+                            borderColor: statusStyle.borderColor || statusStyle.bgColor,
+                          }
+                        : undefined
+                    }
+                  >
+                    {status.label}
+                  </Button>
+                )
+              })}
             </div>
           </div>
         </div>

@@ -964,6 +964,9 @@ export default function PedidosPage() {
             setIsDetailModalOpen(false)
             setSelectedOrder(null)
           }}
+          onStatusUpdate={() => {
+            loadData() // Recargar datos cuando se actualice el estado
+          }}
         />
       </ERPLayout>
     </Protected>
