@@ -19,6 +19,7 @@ import {
 } from "@/lib/api"
 import { toast } from "sonner"
 import { OrderDetailModal } from "@/components/order-detail-modal"
+import { Pagination } from "@/components/ui/pagination"
 
 // Datos hardcodeados para desarrollo/demo
 const MOCK_ORDERS: Order[] = [
@@ -503,6 +504,7 @@ const getSalesChannelLabel = (channel?: string) => {
 export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [stats, setStats] = useState<OrderStats | null>(null)
+  const [allOrders, setAllOrders] = useState<Order[]>([]) // Almacenar todos los pedidos para calcular stats
   const [isLoading, setIsLoading] = useState(true)
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
@@ -511,6 +513,7 @@ export default function PedidosPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [totalOrders, setTotalOrders] = useState(0)
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -518,6 +521,10 @@ export default function PedidosPage() {
   }, [])
 
   // Cargar pedidos cuando cambien los filtros
+  useEffect(() => {
+    setCurrentPage(1) // Resetear a página 1 cuando cambian los filtros
+  }, [searchTerm, statusFilter])
+
   useEffect(() => {
     loadOrders()
   }, [searchTerm, statusFilter, currentPage])
@@ -558,13 +565,21 @@ export default function PedidosPage() {
         // La respuesta puede tener pagination o solo total
         if (response.data.pagination) {
           setTotalPages(response.data.pagination.totalPages)
+          setTotalOrders(response.data.pagination.total)
         } else if (response.data.total) {
           // Calcular totalPages basado en total y limit
           const limit = params.limit || 10
-          setTotalPages(Math.ceil(response.data.total / limit))
+          const total = response.data.total
+          setTotalPages(Math.ceil(total / limit))
+          setTotalOrders(total)
         } else {
           setTotalPages(1)
+          setTotalOrders(response.data.orders.length)
         }
+        // Guardar todos los pedidos para calcular estadísticas
+        // Nota: Si la API devuelve paginación, solo tenemos los pedidos de la página actual
+        // En ese caso, las estadísticas deben venir de la API
+        setAllOrders(response.data.orders)
       } else {
         // Usar datos hardcodeados cuando no hay datos de la BD
         let filteredOrders = [...MOCK_ORDERS]
@@ -592,6 +607,12 @@ export default function PedidosPage() {
         
         setOrders(paginatedOrders)
         setTotalPages(Math.ceil(filteredOrders.length / limit))
+        setTotalOrders(filteredOrders.length)
+        // Guardar todos los pedidos filtrados para calcular estadísticas
+        setAllOrders(filteredOrders)
+        // Recalcular estadísticas basándose en los pedidos filtrados
+        const calculatedStats = calculateStatsFromOrders(filteredOrders)
+        setStats(calculatedStats)
       }
     } catch (error) {
       console.error("Error al cargar pedidos:", error)
@@ -601,6 +622,57 @@ export default function PedidosPage() {
       const endIndex = startIndex + limit
       setOrders(MOCK_ORDERS.slice(startIndex, endIndex))
       setTotalPages(Math.ceil(MOCK_ORDERS.length / limit))
+      setTotalOrders(MOCK_ORDERS.length)
+      setAllOrders(MOCK_ORDERS)
+      // Recalcular estadísticas basándose en los pedidos mock
+      const calculatedStats = calculateStatsFromOrders(MOCK_ORDERS)
+      setStats(calculatedStats)
+    }
+  }
+
+  // Función para calcular estadísticas basándose en los pedidos
+  const calculateStatsFromOrders = (ordersList: Order[]): OrderStats => {
+    const total = ordersList.length
+    
+    // Estados que se consideran completados
+    const completedStatuses = ['completado', 'completed']
+    // Estados que se consideran pendientes
+    const pendingStatuses = ['pendiente', 'pending', 'pendiente_preparacion', 'en_proceso', 'processing', 'aprobado', 'listo_despacho', 'pagado']
+    // Estados que se consideran atrasados
+    const delayedStatuses = ['atrasado', 'on-hold']
+    
+    const completed = ordersList.filter(order => {
+      const status = (order.json?.status || order.status || '').toLowerCase()
+      return completedStatuses.includes(status)
+    }).length
+    
+    const pending = ordersList.filter(order => {
+      const status = (order.json?.status || order.status || '').toLowerCase()
+      return pendingStatuses.includes(status) && !completedStatuses.includes(status)
+    }).length
+    
+    const delayed = ordersList.filter(order => {
+      const status = (order.json?.status || order.status || '').toLowerCase()
+      return delayedStatuses.includes(status)
+    }).length
+    
+    // Calcular total y promedio de montos
+    const totalAmount = ordersList.reduce((sum, order) => {
+      const amount = typeof order.total_amount === 'string' 
+        ? parseFloat(order.total_amount) 
+        : order.total_amount
+      return sum + (amount || 0)
+    }, 0)
+    
+    const averageAmount = total > 0 ? totalAmount / total : 0
+    
+    return {
+      total_orders: total,
+      pending_orders: pending,
+      completed_orders: completed,
+      delayed_orders: delayed,
+      total_amount: totalAmount,
+      average_amount: averageAmount
     }
   }
 
@@ -615,15 +687,20 @@ export default function PedidosPage() {
         // Usar datos reales de la BD
         setStats(response.data)
       } else {
-        // Usar datos hardcodeados cuando no hay datos de la BD
-        setStats(MOCK_STATS)
+        // Calcular estadísticas desde los pedidos disponibles (mock o cargados)
+        const ordersToUse = allOrders.length > 0 ? allOrders : MOCK_ORDERS
+        const calculatedStats = calculateStatsFromOrders(ordersToUse)
+        setStats(calculatedStats)
       }
     } catch (error) {
       console.error("Error al cargar estadísticas:", error)
-      // En caso de error, usar datos hardcodeados
-      setStats(MOCK_STATS)
+      // En caso de error, calcular desde los pedidos disponibles
+      const ordersToUse = allOrders.length > 0 ? allOrders : MOCK_ORDERS
+      const calculatedStats = calculateStatsFromOrders(ordersToUse)
+      setStats(calculatedStats)
     }
   }
+
 
   return (
     <Protected requiredRoles={['gerencia', 'ventas', 'admin']}>
@@ -843,31 +920,25 @@ export default function PedidosPage() {
                   </TableBody>
                 </Table>
                 
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-4">
-                    <p className="text-sm text-muted-foreground">
-                      Página {currentPage} de {totalPages}
+                {/* Información de resultados y paginación */}
+                <div className="mt-4 space-y-3">
+                  {/* Información de resultados */}
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <p>
+                      Mostrando {orders.length > 0 ? (currentPage - 1) * 10 + 1 : 0} - {Math.min(currentPage * 10, totalOrders)} de {totalOrders} pedidos
                     </p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                        disabled={currentPage === 1 || isLoading}
-                      >
-                        Anterior
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                        disabled={currentPage === totalPages || isLoading}
-                      >
-                        Siguiente
-                      </Button>
-                    </div>
                   </div>
-                )}
+                  
+                  {/* Componente de paginación */}
+                  {totalPages > 1 && (
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={(page) => setCurrentPage(page)}
+                      isLoading={isLoading}
+                    />
+                  )}
+                </div>
               </>
             )}
           </CardContent>
