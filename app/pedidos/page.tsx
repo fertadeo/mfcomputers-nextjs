@@ -424,28 +424,39 @@ const formatDate = (dateString: string) => {
   }
 }
 
-const getStatusBadgeVariant = (status: string) => {
-  switch (status) {
-    case "completado":
-      return "default" as const
-    case "en_proceso":
-    case "aprobado":
-      return "secondary" as const
-    case "pendiente_preparacion":
-    case "pendiente":
-      return "outline" as const
-    case "listo_despacho":
-      return "secondary" as const
-    case "pagado":
-      return "default" as const
-    case "atrasado":
-      return "destructive" as const
-    case "cancelado":
-    case "cancelled":
-      return "destructive" as const
-    default:
-      return "outline" as const
+// Colores de WooCommerce para estados
+const getStatusBadgeStyle = (status: string) => {
+  const statusLower = status.toLowerCase()
+  
+  // Mapeo de estados locales a estados WooCommerce
+  const statusMap: Record<string, { bgColor: string; textColor: string; borderColor?: string }> = {
+    // Estados WooCommerce directos
+    "pending": { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7" },
+    "processing": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a" },
+    "on-hold": { bgColor: "#f8dda7", textColor: "#94660c", borderColor: "#f0b849" },
+    "completed": { bgColor: "#c8e6c9", textColor: "#155724", borderColor: "#46b450" },
+    "cancelled": { bgColor: "#f1adad", textColor: "#761919", borderColor: "#dc3232" },
+    "refunded": { bgColor: "#e5e5e5", textColor: "#777", borderColor: "#999" },
+    "failed": { bgColor: "#f1adad", textColor: "#761919", borderColor: "#a00" },
+    
+    // Estados locales mapeados a WooCommerce
+    "pendiente": { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7" },
+    "pendiente_preparacion": { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7" },
+    "en_proceso": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a" },
+    "aprobado": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a" },
+    "listo_despacho": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a" },
+    "pagado": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a" },
+    "completado": { bgColor: "#c8e6c9", textColor: "#155724", borderColor: "#46b450" },
+    "cancelado": { bgColor: "#f1adad", textColor: "#761919", borderColor: "#dc3232" },
+    "atrasado": { bgColor: "#f8dda7", textColor: "#94660c", borderColor: "#f0b849" },
   }
+  
+  return statusMap[statusLower] || { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7" }
+}
+
+const getStatusBadgeVariant = (status: string) => {
+  // Mantener compatibilidad con el sistema de variantes, pero usaremos estilos personalizados
+  return "outline" as const
 }
 
 const getStatusLabel = (status: string) => {
@@ -779,9 +790,22 @@ export default function PedidosPage() {
                         <TableCell>{order.client_name || `Cliente #${order.client_id}`}</TableCell>
                         <TableCell>{formatDate(order.order_date)}</TableCell>
                         <TableCell>
-                          <Badge variant={getStatusBadgeVariant(order.status)}>
-                            {getStatusLabel(order.status)}
-                          </Badge>
+                          {(() => {
+                            const style = getStatusBadgeStyle(order.status)
+                            return (
+                              <Badge 
+                                variant="outline"
+                                className="font-medium border-2"
+                                style={{
+                                  backgroundColor: style.bgColor,
+                                  color: style.textColor,
+                                  borderColor: style.borderColor || style.bgColor,
+                                }}
+                              >
+                                {getStatusLabel(order.status)}
+                              </Badge>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
