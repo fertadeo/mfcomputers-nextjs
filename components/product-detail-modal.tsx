@@ -282,7 +282,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                 Información de Stock
               </h4>
 
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="space-y-1">
                   <p className="text-2xl font-bold text-turquoise-600">{product.stock}</p>
                   <p className="text-xs text-muted-foreground">Actual</p>
@@ -290,10 +290,6 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                 <div className="space-y-1">
                   <p className="text-2xl font-bold text-orange-600">{product.min_stock}</p>
                   <p className="text-xs text-muted-foreground">Mínimo</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-2xl font-bold text-turquoise-500">{product.max_stock}</p>
-                  <p className="text-xs text-muted-foreground">Máximo</p>
                 </div>
               </div>
 

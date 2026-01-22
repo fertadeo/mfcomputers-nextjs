@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Order, updateOrder } from "@/lib/api"
 import { toast } from "sonner"
@@ -19,37 +20,14 @@ interface OrderDetailModalProps {
 export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: OrderDetailModalProps) {
   const [isUpdating, setIsUpdating] = useState(false)
   const [currentOrder, setCurrentOrder] = useState<Order | null>(order)
+  const [selectedStatus, setSelectedStatus] = useState<string>("")
 
-  // Actualizar el pedido cuando cambie el prop
-  React.useEffect(() => {
-    setCurrentOrder(order)
-  }, [order])
-
-  if (!currentOrder) return null
-
-  const jsonData = currentOrder.json || {}
-  const billing = jsonData.billing || {}
-  const shipping = jsonData.shipping || {}
-  const lineItems = jsonData.line_items || []
-  const shippingLines = jsonData.shipping_lines || []
-
-  // Estados de WooCommerce con sus mapeos
-  const woocommerceStatuses = [
-    { label: "Pendiente de pago", value: "pending", wcValue: "pending" },
-    { label: "Procesando", value: "processing", wcValue: "processing" },
-    { label: "En espera", value: "on-hold", wcValue: "on-hold" },
-    { label: "Completado", value: "completed", wcValue: "completed" },
-    { label: "Cancelado", value: "cancelled", wcValue: "cancelled" },
-    { label: "Reembolsado", value: "refunded", wcValue: "refunded" },
-    { label: "Fallido", value: "failed", wcValue: "failed" },
-    { label: "Borrador", value: "draft", wcValue: "draft" },
-  ]
-
-  // Obtener el estado actual
-  const currentStatus = (jsonData.status || currentOrder.status || '').toLowerCase()
-  
   // Mapear estado actual a valor de WooCommerce
   const getCurrentWooCommerceStatus = () => {
+    if (!currentOrder) return "pending"
+    const jsonData = currentOrder.json || {}
+    const currentStatus = (jsonData.status || currentOrder.status || '').toLowerCase()
+    
     const statusMap: Record<string, string> = {
       "pending": "pending",
       "pendiente": "pending",
@@ -75,8 +53,64 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
     return statusMap[currentStatus] || "pending"
   }
 
-  const handleStatusChange = async (newStatus: string) => {
-    if (isUpdating) return
+  // Actualizar el pedido cuando cambie el prop
+  React.useEffect(() => {
+    setCurrentOrder(order)
+    if (order) {
+      const jsonData = order.json || {}
+      const currentStatus = (jsonData.status || order.status || '').toLowerCase()
+      
+      const statusMap: Record<string, string> = {
+        "pending": "pending",
+        "pendiente": "pending",
+        "pendiente_preparacion": "pending",
+        "processing": "processing",
+        "en_proceso": "processing",
+        "aprobado": "processing",
+        "listo_despacho": "processing",
+        "pagado": "processing",
+        "on-hold": "on-hold",
+        "atrasado": "on-hold",
+        "completed": "completed",
+        "completado": "completed",
+        "cancelled": "cancelled",
+        "cancelado": "cancelled",
+        "refunded": "refunded",
+        "reembolsado": "refunded",
+        "failed": "failed",
+        "fallido": "failed",
+        "draft": "draft",
+        "borrador": "draft",
+      }
+      const wooCommerceStatus = statusMap[currentStatus] || "pending"
+      setSelectedStatus(wooCommerceStatus)
+    }
+  }, [order])
+
+  if (!currentOrder) return null
+
+  const jsonData = currentOrder.json || {}
+  const billing = jsonData.billing || {}
+  const shipping = jsonData.shipping || {}
+  const lineItems = jsonData.line_items || []
+  const shippingLines = jsonData.shipping_lines || []
+
+  // Estados de WooCommerce con sus mapeos
+  const woocommerceStatuses = [
+    { label: "Pendiente de pago", value: "pending", wcValue: "pending" },
+    { label: "Procesando", value: "processing", wcValue: "processing" },
+    { label: "En espera", value: "on-hold", wcValue: "on-hold" },
+    { label: "Completado", value: "completed", wcValue: "completed" },
+    { label: "Cancelado", value: "cancelled", wcValue: "cancelled" },
+    { label: "Reembolsado", value: "refunded", wcValue: "refunded" },
+    { label: "Fallido", value: "failed", wcValue: "failed" },
+    { label: "Borrador", value: "draft", wcValue: "draft" },
+  ]
+
+
+  const handleApplyStatusChange = async () => {
+    const currentWooCommerceStatus = getCurrentWooCommerceStatus()
+    if (isUpdating || !selectedStatus || selectedStatus === currentWooCommerceStatus) return
     
     setIsUpdating(true)
     try {
@@ -92,7 +126,7 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
         "draft": "pendiente", // Borrador se mapea a pendiente
       }
       
-      const systemStatus = statusMap[newStatus] || "pendiente"
+      const systemStatus = statusMap[selectedStatus] || "pendiente"
       
       // Actualizar el pedido
       const response = await updateOrder(currentOrder.id, {
@@ -103,13 +137,13 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
         // Actualizar el estado local
         const updatedOrder = { ...currentOrder, status: systemStatus as any }
         if (updatedOrder.json) {
-          updatedOrder.json.status = newStatus
+          updatedOrder.json.status = selectedStatus
         } else {
-          updatedOrder.json = { status: newStatus }
+          updatedOrder.json = { status: selectedStatus }
         }
         setCurrentOrder(updatedOrder)
         
-        toast.success(`Estado del pedido actualizado a "${woocommerceStatuses.find(s => s.value === newStatus)?.label}"`)
+        toast.success(`Estado del pedido actualizado a "${woocommerceStatuses.find(s => s.value === selectedStatus)?.label}"`)
         
         // Llamar al callback para refrescar la lista
         if (onStatusUpdate) {
@@ -390,35 +424,37 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
             </div>
           </div>
 
-          {/* Botones para cambiar estado - Estilo WooCommerce */}
+          {/* Selector de estado - Estilo WooCommerce */}
           <div className="border-t pt-4 mt-4">
-            <div className="flex flex-wrap gap-2">
-              {woocommerceStatuses.map((status) => {
-                const isCurrentStatus = status.value === currentWooCommerceStatus
-                const statusStyle = getStatusBadgeStyle(status.value)
-                
-                return (
-                  <Button
-                    key={status.value}
-                    variant={isCurrentStatus ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handleStatusChange(status.value)}
-                    disabled={isUpdating || isCurrentStatus}
-                    className="font-medium"
-                    style={
-                      isCurrentStatus
-                        ? {
-                            backgroundColor: statusStyle.bgColor,
-                            color: statusStyle.textColor,
-                            borderColor: statusStyle.borderColor || statusStyle.bgColor,
-                          }
-                        : undefined
-                    }
-                  >
-                    {status.label}
-                  </Button>
-                )
-              })}
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="text-sm font-medium mb-2 block">Cambiar estado</label>
+                <Select
+                  value={selectedStatus}
+                  onValueChange={setSelectedStatus}
+                  disabled={isUpdating}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {woocommerceStatuses.map((status) => (
+                      <SelectItem key={status.value} value={status.value}>
+                        {status.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="pt-6">
+                <Button
+                  onClick={handleApplyStatusChange}
+                  disabled={isUpdating || !selectedStatus || selectedStatus === getCurrentWooCommerceStatus()}
+                  className="font-medium"
+                >
+                  {isUpdating ? "Aplicando..." : "Aplicar cambios"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

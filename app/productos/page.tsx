@@ -364,9 +364,9 @@ export default function ProductosPage() {
                         </TableCell>
                         <TableCell>
                           <Badge 
-                            variant={product.is_active ? "default" : "secondary"}
+                            variant={(product.is_active && product.stock > 0) ? "default" : "secondary"}
                           >
-                            {product.is_active ? "Activo" : "Inactivo"}
+                            {(product.is_active && product.stock > 0) ? "Activo" : "Inactivo"}
                           </Badge>
                         </TableCell>
                         <TableCell>
