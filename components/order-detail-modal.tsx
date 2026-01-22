@@ -1,12 +1,10 @@
 "use client"
 
 import React from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Package } from "lucide-react"
 import { Order } from "@/lib/api"
 
 interface OrderDetailModalProps {
@@ -48,17 +46,28 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
     }).format(numAmount)
   }
 
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-      "on-hold": { label: "En Espera", variant: "outline" },
-      "processing": { label: "Procesando", variant: "secondary" },
-      "completed": { label: "Completado", variant: "default" },
-      "cancelled": { label: "Cancelado", variant: "destructive" },
-      "refunded": { label: "Reembolsado", variant: "destructive" },
-      "pending": { label: "Pendiente", variant: "outline" }
+  // Colores de WooCommerce para estados (igual que en la tabla)
+  const getStatusBadgeStyle = (status: string) => {
+    const statusLower = status.toLowerCase()
+    const statusMap: Record<string, { bgColor: string; textColor: string; borderColor?: string; label: string }> = {
+      "pending": { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7", label: "Pendiente" },
+      "processing": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a", label: "Procesando" },
+      "on-hold": { bgColor: "#f8dda7", textColor: "#94660c", borderColor: "#f0b849", label: "En Espera" },
+      "completed": { bgColor: "#c8e6c9", textColor: "#155724", borderColor: "#46b450", label: "Completado" },
+      "cancelled": { bgColor: "#f1adad", textColor: "#761919", borderColor: "#dc3232", label: "Cancelado" },
+      "refunded": { bgColor: "#e5e5e5", textColor: "#777", borderColor: "#999", label: "Reembolsado" },
+      "failed": { bgColor: "#f1adad", textColor: "#761919", borderColor: "#a00", label: "Fallido" },
+      "pendiente": { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7", label: "Pendiente" },
+      "pendiente_preparacion": { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7", label: "Pendiente Preparación" },
+      "en_proceso": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a", label: "En Proceso" },
+      "aprobado": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a", label: "Aprobado" },
+      "listo_despacho": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a", label: "Listo Despacho" },
+      "pagado": { bgColor: "#c6e1c6", textColor: "#5b841b", borderColor: "#7ad03a", label: "Pagado" },
+      "completado": { bgColor: "#c8e6c9", textColor: "#155724", borderColor: "#46b450", label: "Completado" },
+      "cancelado": { bgColor: "#f1adad", textColor: "#761919", borderColor: "#dc3232", label: "Cancelado" },
+      "atrasado": { bgColor: "#f8dda7", textColor: "#94660c", borderColor: "#f0b849", label: "Atrasado" },
     }
-    const statusInfo = statusMap[status] || { label: status, variant: "outline" as const }
-    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+    return statusMap[statusLower] || { bgColor: "#f0f0f1", textColor: "#50575e", borderColor: "#c3c4c7", label: status }
   }
 
   // Verificar si las direcciones son iguales
@@ -66,242 +75,215 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
     billing.address_1 === shipping.address_1 &&
     billing.city === shipping.city
 
+  const statusInfo = getStatusBadgeStyle(jsonData.status || order.status)
+  const clientName = billing.first_name && billing.last_name 
+    ? `${billing.first_name} ${billing.last_name}`
+    : order.client_name || `Cliente #${order.client_id}`
+  const clientEmail = billing.email || order.client_email
+  const clientPhone = billing.phone || order.delivery_phone || shipping.phone
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-4">
-        <DialogHeader className="pb-3 flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Package className="h-5 w-5 flex-shrink-0" />
-            <span className="break-words">Pedido {order.order_number || `#${order.id}`}</span>
-            <div className="ml-auto">
-              {getStatusBadge(jsonData.status || order.status)}
-            </div>
-          </DialogTitle>
-          <DialogDescription className="text-xs">
-            {order.canal_venta === 'woocommerce' ? 'WooCommerce' : 'Local'} • {formatDate(jsonData.date_created || order.order_date)}
-          </DialogDescription>
+      <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        {/* Header estilo WooCommerce */}
+        <DialogHeader className="px-6 py-4 border-b flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-xl font-semibold">
+              Pedido {order.order_number || `#${order.id}`}
+            </DialogTitle>
+            <Badge 
+              variant="outline"
+              className="font-medium border-2"
+              style={{
+                backgroundColor: statusInfo.bgColor,
+                color: statusInfo.textColor,
+                borderColor: statusInfo.borderColor || statusInfo.bgColor,
+              }}
+            >
+              {statusInfo.label}
+            </Badge>
+          </div>
         </DialogHeader>
 
-        <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-          {/* Información General y Cliente - Combinada */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-0.5">Total</p>
-                  <p className="font-semibold text-base break-words">{formatCurrency(jsonData.total || order.total_amount)}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-0.5">Cliente</p>
-                  <p className="font-semibold text-sm break-words">
-                    {billing.first_name && billing.last_name 
-                      ? `${billing.first_name} ${billing.last_name}`
-                      : order.client_name || `Cliente #${order.client_id}`
-                    }
-                  </p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-0.5">Email</p>
-                  <p className="font-semibold text-xs break-all">{billing.email || order.client_email || "-"}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-0.5">Teléfono</p>
-                  <p className="font-semibold text-xs break-words">{billing.phone || order.delivery_phone || "-"}</p>
-                </div>
-                {billing.company && (
-                  <div className="min-w-0 col-span-2">
-                    <p className="text-xs text-muted-foreground mb-0.5">Empresa</p>
-                    <p className="font-semibold text-xs break-words">{billing.company}</p>
-                  </div>
-                )}
-                {jsonData.date_paid && (
-                  <div className="min-w-0 col-span-2">
-                    <p className="text-xs text-muted-foreground mb-0.5">Fecha de Pago</p>
-                    <p className="font-semibold text-xs break-words">{formatDate(jsonData.date_paid)}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Direcciones - Combinadas si son iguales */}
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {/* Detalles de Facturación y Envío - Dos columnas como WooCommerce */}
           {(billing.address_1 || shipping.address_1) && (
-            <Card>
-              <CardContent className="p-4">
-                {addressesMatch ? (
-                  <div>
-                    <p className="text-xs font-semibold mb-2 text-muted-foreground">Dirección (Facturación y Envío)</p>
-                    <div className="text-sm space-y-0.5">
-                      <p className="font-semibold break-words">
-                        {billing.first_name} {billing.last_name}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* Columna Facturación */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Detalles de facturación</h3>
+                <div className="space-y-1.5 text-sm">
+                  <p className="font-medium">{clientName}</p>
+                  {billing.address_1 && (
+                    <>
+                      <p className="text-muted-foreground">{billing.address_1}</p>
+                      {billing.address_2 && <p className="text-muted-foreground">{billing.address_2}</p>}
+                      <p className="text-muted-foreground">
+                        {[billing.city, billing.state, billing.postcode].filter(Boolean).join(", ")}
                       </p>
-                      <p className="break-words">{billing.address_1}</p>
-                      {billing.address_2 && <p className="break-words text-xs">{billing.address_2}</p>}
-                      <p className="break-words text-xs">
-                        {billing.city}, {billing.state} {billing.postcode}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {billing.address_1 && (
-                      <div>
-                        <p className="text-xs font-semibold mb-1.5 text-muted-foreground">Facturación</p>
-                        <div className="text-sm space-y-0.5">
-                          <p className="font-semibold break-words text-xs">
-                            {billing.first_name} {billing.last_name}
-                          </p>
-                          <p className="break-words text-xs">{billing.address_1}</p>
-                          {billing.address_2 && <p className="break-words text-xs">{billing.address_2}</p>}
-                          <p className="break-words text-xs">
-                            {billing.city}, {billing.state} {billing.postcode}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {shipping.address_1 && (
-                      <div>
-                        <p className="text-xs font-semibold mb-1.5 text-muted-foreground">Envío</p>
-                        <div className="text-sm space-y-0.5">
-                          <p className="font-semibold break-words text-xs">
-                            {shipping.first_name} {shipping.last_name}
-                          </p>
-                          <p className="break-words text-xs">{shipping.address_1}</p>
-                          {shipping.address_2 && <p className="break-words text-xs">{shipping.address_2}</p>}
-                          <p className="break-words text-xs">
-                            {shipping.city}, {shipping.state} {shipping.postcode}
-                          </p>
-                          {shipping.phone && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Tel: {shipping.phone}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Items del Pedido */}
-          {lineItems.length > 0 && (
-            <Card>
-              <CardHeader className="p-3 pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Package className="h-4 w-4 flex-shrink-0" />
-                  <span>Items ({lineItems.length})</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-visible">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="h-8">
-                        <TableHead className="text-xs py-2">Producto</TableHead>
-                        <TableHead className="text-xs py-2 text-right hidden sm:table-cell">SKU</TableHead>
-                        <TableHead className="text-xs py-2 text-right w-16">Cant.</TableHead>
-                        <TableHead className="text-xs py-2 text-right w-20">Precio</TableHead>
-                        <TableHead className="text-xs py-2 text-right w-24">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lineItems.map((item: any, index: number) => (
-                        <TableRow key={item.id || index} className="h-auto">
-                          <TableCell className="py-2 text-xs">
-                            <div>
-                              <p className="font-medium break-words">{item.name}</p>
-                              <p className="text-xs text-muted-foreground sm:hidden mt-0.5">{item.sku || "Sin SKU"}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground hidden sm:table-cell py-2 break-words">{item.sku || "-"}</TableCell>
-                          <TableCell className="text-right text-xs py-2">{item.quantity}</TableCell>
-                          <TableCell className="text-right text-xs py-2 whitespace-nowrap">{formatCurrency(item.price)}</TableCell>
-                          <TableCell className="text-right text-xs font-semibold py-2 whitespace-nowrap">
-                            {formatCurrency(item.total)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Pago, Envío y Resumen - Combinados */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">Pago</p>
-                  <p className="font-semibold text-xs break-words">
+                      {billing.country && <p className="text-muted-foreground">{billing.country}</p>}
+                    </>
+                  )}
+                  {clientEmail && (
+                    <p className="mt-2">
+                      <a 
+                        href={`mailto:${clientEmail}`} 
+                        className="text-blue-600 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {clientEmail}
+                      </a>
+                    </p>
+                  )}
+                  {clientPhone && (
+                    <p>
+                      <a 
+                        href={`tel:${clientPhone.replace(/\s/g, '')}`} 
+                        className="text-blue-600 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {clientPhone}
+                      </a>
+                    </p>
+                  )}
+                  <p className="mt-3 text-muted-foreground">
+                    <span className="font-medium">Método de pago:</span>{" "}
                     {jsonData.payment_method_title || jsonData.payment_method || order.payment_method_title || "-"}
                   </p>
                   {jsonData.transaction_id && (
-                    <p className="text-xs text-muted-foreground mt-0.5 break-all">
-                      ID: {jsonData.transaction_id}
+                    <p className="text-xs text-muted-foreground">
+                      ID Transacción: {jsonData.transaction_id}
                     </p>
                   )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">Envío</p>
-                  {shippingLines.length > 0 ? (
-                    <div>
-                      {shippingLines.map((shipping: any, index: number) => (
-                        <div key={shipping.id || index}>
-                          <p className="font-semibold text-xs break-words">
-                            {shipping.method_title || order.transport_company || "-"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrency(shipping.total)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="font-semibold text-xs break-words">
-                      {order.transport_company || "-"}
-                      {order.transport_cost && (
-                        <span className="text-xs text-muted-foreground ml-1">
-                          ({formatCurrency(order.transport_cost)})
-                        </span>
-                      )}
-                    </p>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">Resumen</p>
-                  <div className="space-y-0.5 text-xs">
-                    {jsonData.shipping_total && parseFloat(jsonData.shipping_total) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Envío:</span>
-                        <span className="font-medium">{formatCurrency(jsonData.shipping_total)}</span>
-                      </div>
-                    )}
-                    {jsonData.tax_total && parseFloat(jsonData.tax_total) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Impuestos:</span>
-                        <span className="font-medium">{formatCurrency(jsonData.tax_total)}</span>
-                      </div>
-                    )}
-                    {jsonData.discount_total && parseFloat(jsonData.discount_total) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Descuento:</span>
-                        <span className="font-medium text-green-600">-{formatCurrency(jsonData.discount_total)}</span>
-                      </div>
-                    )}
-                    <Separator className="my-1" />
-                    <div className="flex justify-between font-bold text-sm">
-                      <span>Total:</span>
-                      <span>{formatCurrency(jsonData.total || order.total_amount)}</span>
-                    </div>
-                  </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Columna Envío */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Detalles de envío</h3>
+                <div className="space-y-1.5 text-sm">
+                  {shipping.address_1 ? (
+                    <>
+                      <p className="font-medium">
+                        {shipping.first_name && shipping.last_name 
+                          ? `${shipping.first_name} ${shipping.last_name}`
+                          : clientName
+                        }
+                      </p>
+                      <p className="text-muted-foreground">{shipping.address_1}</p>
+                      {shipping.address_2 && <p className="text-muted-foreground">{shipping.address_2}</p>}
+                      <p className="text-muted-foreground">
+                        {[shipping.city, shipping.state, shipping.postcode].filter(Boolean).join(", ")}
+                      </p>
+                      {shipping.country && <p className="text-muted-foreground">{shipping.country}</p>}
+                      {shipping.phone && (
+                        <p className="mt-2">
+                          <a 
+                            href={`tel:${shipping.phone.replace(/\s/g, '')}`} 
+                            className="text-blue-600 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {shipping.phone}
+                          </a>
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium">{clientName}</p>
+                      {billing.address_1 && (
+                        <>
+                          <p className="text-muted-foreground">{billing.address_1}</p>
+                          {billing.address_2 && <p className="text-muted-foreground">{billing.address_2}</p>}
+                          <p className="text-muted-foreground">
+                            {[billing.city, billing.state, billing.postcode].filter(Boolean).join(", ")}
+                          </p>
+                        </>
+                      )}
+                    </>
+                  )}
+                  <p className="mt-3 text-muted-foreground">
+                    <span className="font-medium">Método de envío:</span>{" "}
+                    {shippingLines.length > 0 
+                      ? shippingLines.map((s: any) => s.method_title || order.transport_company || "-").join(", ")
+                      : order.transport_company || "-"
+                    }
+                    {(jsonData.shipping_total && parseFloat(jsonData.shipping_total) > 0) && (
+                      <span className="ml-1">({formatCurrency(jsonData.shipping_total)})</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tabla de Productos - Estilo WooCommerce */}
+          {lineItems.length > 0 && (
+            <div className="mb-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40%]">Producto</TableHead>
+                    <TableHead className="text-right w-[12%]">Cantidad</TableHead>
+                    <TableHead className="text-right w-[16%]">Impuesto</TableHead>
+                    <TableHead className="text-right w-[16%]">Precio</TableHead>
+                    <TableHead className="text-right w-[16%]">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lineItems.map((item: any, index: number) => (
+                    <TableRow key={item.id || index}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          {item.sku && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{item.sku}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {item.tax_total ? formatCurrency(item.tax_total) : formatCurrency(0)}
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatCurrency(item.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Resumen Financiero - Al final como WooCommerce */}
+          <div className="border-t pt-4">
+            <div className="flex justify-end">
+              <div className="w-full max-w-xs space-y-2 text-sm">
+                {jsonData.shipping_total && parseFloat(jsonData.shipping_total) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Envío:</span>
+                    <span>{formatCurrency(jsonData.shipping_total)}</span>
+                  </div>
+                )}
+                {jsonData.tax_total && parseFloat(jsonData.tax_total) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Impuestos:</span>
+                    <span>{formatCurrency(jsonData.tax_total)}</span>
+                  </div>
+                )}
+                {jsonData.discount_total && parseFloat(jsonData.discount_total) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Descuento:</span>
+                    <span className="text-green-600">-{formatCurrency(jsonData.discount_total)}</span>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex justify-between text-base font-bold">
+                  <span>Total:</span>
+                  <span>{formatCurrency(jsonData.total || order.total_amount)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
