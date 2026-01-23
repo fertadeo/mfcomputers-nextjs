@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import { AlertTriangle, CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap, Plus, Edit, Trash2, Save } from "lucide-react"
 import Image from "next/image"
 import { createProductNew, getCategories, createCategory, updateCategory, deleteCategory, Category, CreateProductData, CreateCategoryData, UpdateCategoryData } from "@/lib/api"
+import { generateProductCodes } from "@/lib/product-codes"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -72,6 +73,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     max_stock: "1000",
     is_active: "1"
   })
+  const [barcode, setBarcode] = useState<string>("")
+  const [qrCode, setQrCode] = useState<string>("")
 
   // Cargar categorías desde la API
   const loadCategories = async () => {
@@ -369,6 +372,15 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       // Un producto no puede estar publicado sin stock
       const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : false
 
+      // Si no hay barcode o qr_code pero hay código, generarlos automáticamente
+      let finalBarcode = barcode
+      let finalQrCode = qrCode
+      if (formData.code.trim() && (!barcode || !qrCode)) {
+        const codes = generateProductCodes(formData.code.trim())
+        finalBarcode = codes.barcode
+        finalQrCode = codes.qr_code
+      }
+
       const productData: CreateProductData = {
         code: formData.code.trim(),
         name: formData.name.trim(),
@@ -380,7 +392,10 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
-        ...(imageUrls.length > 0 && { images: imageUrls })
+        ...(imageUrls.length > 0 && { images: imageUrls }),
+        // Incluir códigos de barras y QR si existen
+        ...(finalBarcode && { barcode: finalBarcode }),
+        ...(finalQrCode && { qr_code: finalQrCode })
       }
 
       const responseData = await createProductNew(productData)
@@ -414,6 +429,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       max_stock: "1000",
       is_active: "1"
     })
+    setBarcode("")
+    setQrCode("")
     setImages([])
     setImageUrlInput("")
     setError(null)
@@ -436,10 +453,17 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const generateCode = () => {
     const timestamp = Date.now().toString().slice(-6)
     const random = Math.random().toString(36).substring(2, 5).toUpperCase()
+    const generatedCode = `PROD-${timestamp}-${random}`
+    
+    // Generar código de barras y QR automáticamente
+    const codes = generateProductCodes(generatedCode)
+    
     setFormData(prev => ({
       ...prev,
-      code: `PROD-${timestamp}-${random}`
+      code: generatedCode
     }))
+    setBarcode(codes.barcode)
+    setQrCode(codes.qr_code)
   }
 
   const autoFillStockLevels = () => {

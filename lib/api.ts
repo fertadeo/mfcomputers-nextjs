@@ -443,7 +443,10 @@ export interface Product {
   image_url?: string  // URL de imagen desde la API
   woocommerce_image_url?: string  // URL específica de WooCommerce
   woocommerce_id?: number  // ID del producto en WooCommerce (si existe)
+  woocommerce_slug?: string | null  // Slug del producto en WooCommerce (para URL amigable)
   images?: string[]  // Array de URLs de imágenes del producto
+  barcode?: string  // Código de barras del producto (para lectoras)
+  qr_code?: string  // URL del código QR para consulta pública
 }
 
 export interface CreateProductData {
@@ -457,6 +460,8 @@ export interface CreateProductData {
   max_stock?: number
   is_active?: boolean
   images?: string[]
+  barcode?: string  // Código de barras del producto
+  qr_code?: string  // URL del código QR para consulta pública
 }
 
 export interface UpdateProductData {
@@ -543,6 +548,16 @@ export async function createProduct(productData: CreateProductData): Promise<any
     formData.append('min_stock', (productData.min_stock ?? 0).toString())
     formData.append('max_stock', (productData.max_stock ?? 0).toString())
     formData.append('is_active', (productData.is_active ?? true).toString())
+
+    // Agregar código de barras si existe
+    if (productData.barcode) {
+      formData.append('barcode', productData.barcode)
+    }
+
+    // Agregar código QR si existe
+    if (productData.qr_code) {
+      formData.append('qr_code', productData.qr_code)
+    }
 
     // Agregar imágenes si existen
     if (productData.images && productData.images.length > 0) {
@@ -1669,6 +1684,39 @@ export async function updateProduct(id: number, productData: UpdateProductData):
   } catch (error) {
     console.error('💥 [PRODUCTS] Error al actualizar producto:', error)
     throw error
+  }
+}
+
+/**
+ * Obtiene un producto por código (público, sin autenticación)
+ * Usado para consulta pública desde códigos QR
+ */
+export async function getProductByCode(code: string): Promise<Product | null> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/code/${encodeURIComponent(code)}`
+    
+    console.log('📦 [PRODUCTS] Obteniendo producto por código (público):', fullUrl)
+    
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null
+      }
+      throw new Error(`Error al obtener producto: ${response.status}`)
+    }
+
+    const responseData: ProductResponse = await response.json()
+    return responseData.data || null
+  } catch (error) {
+    console.error('💥 [PRODUCTS] Error al obtener producto por código:', error)
+    return null
   }
 }
 

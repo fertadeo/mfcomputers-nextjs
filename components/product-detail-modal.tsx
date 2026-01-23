@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine } from "lucide-react"
 import Image from "next/image"
 import { Product } from "@/lib/api"
+import  QRCodeSVG  from "react-qr-code"
+import JsBarcode from "jsbarcode"
 
 interface ProductDetailModalProps {
   product: Product | null
@@ -18,6 +20,7 @@ interface ProductDetailModalProps {
 export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailModalProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isImageLoading, setIsImageLoading] = useState(true)
+  const barcodeCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // Resetear índice de imagen cuando cambia el producto o se abre el modal
   useEffect(() => {
@@ -31,6 +34,24 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   useEffect(() => {
     setIsImageLoading(true)
   }, [selectedImageIndex])
+
+  // Generar código de barras cuando el producto cambia
+  useEffect(() => {
+    if (product?.barcode && barcodeCanvasRef.current && isOpen) {
+      try {
+        JsBarcode(barcodeCanvasRef.current, product.barcode, {
+          format: "CODE128",
+          width: 2,
+          height: 60,
+          displayValue: true,
+          fontSize: 14,
+          margin: 8
+        })
+      } catch (err) {
+        console.error("Error al generar código de barras:", err)
+      }
+    }
+  }, [product, isOpen])
 
   if (!product) return null
 
@@ -304,6 +325,56 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             </div>
 
             <Separator />
+
+            {/* Códigos de barras y QR */}
+            {(product.barcode || product.qr_code) && (
+              <>
+                <div className="space-y-3">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <ScanLine className="h-4 w-4" />
+                    Códigos de Identificación
+                  </h4>
+                  
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {/* Código de barras */}
+                    {product.barcode && (
+                      <div className="bg-muted/50 p-4 rounded-lg border">
+                        <p className="text-xs text-muted-foreground mb-2 text-center">Código de barras</p>
+                        <div className="flex justify-center">
+                          <canvas ref={barcodeCanvasRef} className="max-w-full" />
+                        </div>
+                        <p className="text-xs text-center text-muted-foreground mt-2 font-mono">
+                          {product.barcode}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Código QR */}
+                    {product.qr_code && (
+                      <div className="bg-muted/50 p-4 rounded-lg border">
+                        <p className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-1">
+                          <QrCode className="h-3 w-3" />
+                          Código QR
+                        </p>
+                        <div className="flex justify-center">
+                          <div className="bg-white p-2 rounded">
+                            <QRCodeSVG
+                              value={product.qr_code || ''}
+                              size={150}
+                              level="M"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-center text-muted-foreground mt-2">
+                          Escanea para ver información pública
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
 
             {/* Información adicional */}
             <div className="space-y-3">
