@@ -385,17 +385,16 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         code: formData.code.trim(),
         name: formData.name.trim(),
         price: parseFloat(formData.price),
-        // Campos opcionales con valores por defecto
-        ...(formData.description.trim() && { description: formData.description.trim() }),
-        ...(formData.category_id && { category_id: parseInt(formData.category_id) }),
+        // Enviar NULL explícito para evitar undefined en el backend (SQL bind)
+        description: formData.description.trim() ? formData.description.trim() : null,
+        category_id: formData.category_id ? parseInt(formData.category_id) : null,
+        images: imageUrls.length > 0 ? imageUrls : null,
         stock: stock,
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
-        ...(imageUrls.length > 0 && { images: imageUrls }),
-        // Incluir códigos de barras y QR si existen
-        ...(finalBarcode && { barcode: finalBarcode }),
-        ...(finalQrCode && { qr_code: finalQrCode })
+        barcode: finalBarcode || null,
+        qr_code: finalQrCode || null
       }
 
       const responseData = await createProductNew(productData)

@@ -452,28 +452,31 @@ export interface Product {
 export interface CreateProductData {
   code: string
   name: string
-  description?: string
-  category_id?: number
+  description?: string | null
+  category_id?: number | null
   price: number
   stock?: number
   min_stock?: number
   max_stock?: number
   is_active?: boolean
-  images?: string[]
-  barcode?: string  // Código de barras del producto
-  qr_code?: string  // URL del código QR para consulta pública
+  images?: string[] | null
+  barcode?: string | null  // Código de barras del producto
+  qr_code?: string | null  // URL del código QR para consulta pública
 }
 
 export interface UpdateProductData {
   code?: string
   name?: string
-  description?: string
-  category_id?: number
+  description?: string | null
+  category_id?: number | null
   price?: number
   stock?: number
   min_stock?: number
   max_stock?: number
   is_active?: boolean
+  images?: string[] | null
+  barcode?: string | null
+  qr_code?: string | null
 }
 
 export interface UpdateStockData {

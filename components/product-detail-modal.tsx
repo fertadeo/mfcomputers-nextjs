@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer } from "lucide-react"
 import Image from "next/image"
-import { Product } from "@/lib/api"
+import { Product, updateProduct } from "@/lib/api"
 import  QRCodeSVG  from "react-qr-code"
 import JsBarcode from "jsbarcode"
+import { generateProductCodes } from "@/lib/product-codes"
 
 interface ProductDetailModalProps {
   product: Product | null
@@ -20,12 +21,17 @@ interface ProductDetailModalProps {
 export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailModalProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isImageLoading, setIsImageLoading] = useState(true)
+  const [isGeneratingCodes, setIsGeneratingCodes] = useState(false)
+  const [localProduct, setLocalProduct] = useState<Product | null>(null)
   const barcodeCanvasRef = useRef<HTMLCanvasElement>(null)
   const qrContainerRef = useRef<HTMLDivElement>(null)
+
+  const displayedProduct = localProduct ?? product
 
   // Resetear índice de imagen cuando cambia el producto o se abre el modal
   useEffect(() => {
     if (isOpen && product) {
+      setLocalProduct(null)
       setSelectedImageIndex(0)
       setIsImageLoading(true)
     }
@@ -38,9 +44,9 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
   // Generar código de barras cuando el producto cambia
   useEffect(() => {
-    if (product?.barcode && barcodeCanvasRef.current && isOpen) {
+    if (displayedProduct?.barcode && barcodeCanvasRef.current && isOpen) {
       try {
-        JsBarcode(barcodeCanvasRef.current, product.barcode, {
+        JsBarcode(barcodeCanvasRef.current, displayedProduct.barcode, {
           format: "CODE128",
           width: 2,
           height: 60,
@@ -52,10 +58,39 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
         console.error("Error al generar código de barras:", err)
       }
     }
-  }, [product, isOpen])
+  }, [displayedProduct, isOpen])
+
+  const handleGenerateCodes = async () => {
+    if (!displayedProduct) return
+
+    const alreadyGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
+    if (alreadyGenerated) return
+
+    try {
+      setIsGeneratingCodes(true)
+
+      const codes = generateProductCodes(
+        displayedProduct.code,
+        displayedProduct.woocommerce_id ?? null,
+        displayedProduct.woocommerce_slug ?? null
+      )
+
+      const updated = await updateProduct(displayedProduct.id, {
+        barcode: codes.barcode,
+        qr_code: codes.qr_code
+      })
+
+      setLocalProduct(updated)
+    } catch (err) {
+      console.error("Error al generar/guardar códigos:", err)
+      alert(err instanceof Error ? err.message : "Error al generar/guardar códigos")
+    } finally {
+      setIsGeneratingCodes(false)
+    }
+  }
 
   const handlePrintCodes = () => {
-    if (!product) return
+    if (!displayedProduct) return
 
     const escapeHtml = (input: string) =>
       input
@@ -66,9 +101,9 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
         .replace(/'/g, "&#039;")
 
     // Re-generar el código de barras por si el canvas aún no estaba listo
-    if (product.barcode && barcodeCanvasRef.current) {
+    if (displayedProduct.barcode && barcodeCanvasRef.current) {
       try {
-        JsBarcode(barcodeCanvasRef.current, product.barcode, {
+        JsBarcode(barcodeCanvasRef.current, displayedProduct.barcode, {
           format: "CODE128",
           width: 2,
           height: 80,
@@ -82,19 +117,19 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     }
 
     const barcodeDataUrl =
-      product.barcode && barcodeCanvasRef.current
+      displayedProduct.barcode && barcodeCanvasRef.current
         ? barcodeCanvasRef.current.toDataURL("image/png")
         : null
 
     const qrSvg =
-      product.qr_code
+      displayedProduct.qr_code
         ? qrContainerRef.current?.querySelector("svg")?.outerHTML ?? null
         : null
 
     const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=650")
     if (!printWindow) return
 
-    const title = `Códigos - ${product.code}`
+    const title = `Códigos - ${displayedProduct.code}`
 
     printWindow.document.open()
     printWindow.document.write(`<!doctype html>
@@ -126,8 +161,8 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   <body>
     <div class="wrap">
       <div class="header">
-        <p class="name">${escapeHtml(product.name)}</p>
-        <p class="meta">Código: <strong>${escapeHtml(product.code)}</strong></p>
+        <p class="name">${escapeHtml(displayedProduct.name)}</p>
+        <p class="meta">Código: <strong>${escapeHtml(displayedProduct.code)}</strong></p>
       </div>
 
       <div class="grid">
@@ -137,7 +172,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             <div class="center">
               <img src="${barcodeDataUrl}" alt="Código de barras" />
             </div>
-            <div class="hint">${escapeHtml(product.barcode || "")}</div>
+            <div class="hint">${escapeHtml(displayedProduct.barcode || "")}</div>
           </div>
         ` : ``}
 
@@ -167,7 +202,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     printWindow.document.close()
   }
 
-  if (!product) return null
+  if (!displayedProduct) return null
 
   // Función para obtener todas las imágenes disponibles del producto
   const getAllProductImages = (product: Product): string[] => {
@@ -213,8 +248,8 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     return "normal"
   }
 
-  const stockStatus = getStockStatus(product.stock, product.min_stock, product.max_stock)
-  const allImages = getAllProductImages(product)
+  const stockStatus = getStockStatus(displayedProduct.stock, displayedProduct.min_stock, displayedProduct.max_stock)
+  const allImages = getAllProductImages(displayedProduct)
   const hasImages = allImages.length > 0
   const currentImage = hasImages ? allImages[selectedImageIndex] : null
 
@@ -248,11 +283,13 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     }
   }
 
+  const codesGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">{product.name}</DialogTitle>
+          <DialogTitle className="text-xl font-bold">{displayedProduct.name}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -270,7 +307,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                   )}
                   <Image
                     src={currentImage}
-                    alt={`${product.name || 'Producto'} - Imagen ${selectedImageIndex + 1}`}
+                    alt={`${displayedProduct.name || 'Producto'} - Imagen ${selectedImageIndex + 1}`}
                     fill
                     className={`object-cover transition-opacity duration-300 ${
                       isImageLoading ? 'opacity-0' : 'opacity-100'
@@ -287,7 +324,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     onError={(e) => {
                       // Fallback si la imagen falla al cargar
                       const target = e.target as HTMLImageElement
-                      target.src = `https://via.placeholder.com/400x400?text=${encodeURIComponent(product.name || 'Producto')}`
+                      target.src = `https://via.placeholder.com/400x400?text=${encodeURIComponent(displayedProduct.name || 'Producto')}`
                       setIsImageLoading(false)
                     }}
                   />
@@ -345,7 +382,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                       sizes="80px"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement
-                        target.src = `https://via.placeholder.com/80x80?text=${encodeURIComponent(product.name || 'Producto')}`
+                        target.src = `https://via.placeholder.com/80x80?text=${encodeURIComponent(displayedProduct.name || 'Producto')}`
                       }}
                     />
                   </button>
@@ -375,10 +412,10 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
           {/* Detalles del producto */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{product.category_name || 'Sin categoría'}</Badge>
+              <Badge variant="outline">{displayedProduct.category_name || 'Sin categoría'}</Badge>
               <Badge variant={getEstadoColor(stockStatus)}>{getEstadoText(stockStatus)}</Badge>
-              <Badge variant={product.is_active ? "default" : "secondary"}>
-                {product.is_active ? "Activo" : "Inactivo"}
+              <Badge variant={displayedProduct.is_active ? "default" : "secondary"}>
+                {displayedProduct.is_active ? "Activo" : "Inactivo"}
               </Badge>
             </div>
 
@@ -386,25 +423,25 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">Precio:</span>
-                <span className="font-semibold text-lg">${Math.round(product.price).toLocaleString('es-ES')}</span>
+                <span className="font-semibold text-lg">${Math.round(displayedProduct.price).toLocaleString('es-ES')}</span>
               </div>
 
               <div className="flex items-center gap-2">
                 <Package className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">Código:</span>
-                <span className="font-mono">{product.code}</span>
+                <span className="font-mono">{displayedProduct.code}</span>
               </div>
 
-              {product.woocommerce_id && (
+              {displayedProduct.woocommerce_id && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">ID WooCommerce:</span>
-                  <span className="font-mono text-sm">{product.woocommerce_id}</span>
+                  <span className="font-mono text-sm">{displayedProduct.woocommerce_id}</span>
                 </div>
               )}
 
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">ID:</span>
-                <span className="font-mono text-sm">{product.id}</span>
+                <span className="font-mono text-sm">{displayedProduct.id}</span>
               </div>
             </div>
 
@@ -419,16 +456,16 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="space-y-1">
-                  <p className="text-2xl font-bold text-turquoise-600">{product.stock}</p>
+                  <p className="text-2xl font-bold text-turquoise-600">{displayedProduct.stock}</p>
                   <p className="text-xs text-muted-foreground">Actual</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-2xl font-bold text-orange-600">{product.min_stock}</p>
+                  <p className="text-2xl font-bold text-orange-600">{displayedProduct.min_stock}</p>
                   <p className="text-xs text-muted-foreground">Mínimo</p>
                 </div>
               </div>
 
-              {product.stock <= product.min_stock && (
+              {displayedProduct.stock <= displayedProduct.min_stock && (
                 <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                   <span className="text-sm text-red-700 dark:text-red-400">
@@ -441,7 +478,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             <Separator />
 
             {/* Códigos de barras y QR */}
-            {(product.barcode || product.qr_code) && (
+            {(displayedProduct.barcode || displayedProduct.qr_code) && (
               <>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
@@ -449,33 +486,47 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                       <ScanLine className="h-4 w-4" />
                       Códigos de Identificación
                     </h4>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handlePrintCodes}
-                      disabled={!product.barcode && !product.qr_code}
-                    >
-                      <Printer className="h-4 w-4 mr-2" />
-                      Imprimir códigos
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={codesGenerated
+                          ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-50 hover:text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
+                          : "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-50 hover:text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200"
+                        }
+                        onClick={codesGenerated ? undefined : handleGenerateCodes}
+                        disabled={codesGenerated || isGeneratingCodes}
+                      >
+                        {codesGenerated ? "Códigos Generados" : (isGeneratingCodes ? "Generando..." : "Este producto no tiene códigos generados")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePrintCodes}
+                        disabled={!displayedProduct.barcode && !displayedProduct.qr_code}
+                      >
+                        <Printer className="h-4 w-4 mr-2" />
+                        Imprimir códigos
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="grid gap-4 md:grid-cols-2">
                     {/* Código de barras */}
-                    {product.barcode && (
+                    {displayedProduct.barcode && (
                       <div className="bg-muted/50 p-4 rounded-lg border">
                         <p className="text-xs text-muted-foreground mb-2 text-center">Código de barras</p>
                         <div className="flex justify-center">
                           <canvas ref={barcodeCanvasRef} className="max-w-full" />
                         </div>
                         <p className="text-xs text-center text-muted-foreground mt-2 font-mono">
-                          {product.barcode}
+                          {displayedProduct.barcode}
                         </p>
                       </div>
                     )}
 
                     {/* Código QR */}
-                    {product.qr_code && (
+                    {displayedProduct.qr_code && (
                       <div className="bg-muted/50 p-4 rounded-lg border">
                         <p className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-1">
                           <QrCode className="h-3 w-3" />
@@ -484,7 +535,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                         <div className="flex justify-center">
                           <div ref={qrContainerRef} className="bg-white p-2 rounded">
                             <QRCodeSVG
-                              value={product.qr_code || ''}
+                              value={displayedProduct.qr_code || ''}
                               size={150}
                               level="M"
                             />
@@ -507,7 +558,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Creado:</span>
-                  <span>{new Date(product.created_at).toLocaleDateString('es-ES', {
+                  <span>{new Date(displayedProduct.created_at).toLocaleDateString('es-ES', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
@@ -515,7 +566,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Actualizado:</span>
-                  <span>{new Date(product.updated_at).toLocaleDateString('es-ES', {
+                  <span>{new Date(displayedProduct.updated_at).toLocaleDateString('es-ES', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric'
@@ -527,7 +578,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
         </div>
 
         {/* Descripción - Ocupa todo el ancho */}
-        {product.description && (
+        {displayedProduct.description && (
           <>
             <Separator />
             <div className="space-y-2">
@@ -543,7 +594,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                   [&_li]:my-1 [&_li]:text-muted-foreground
                   [&_a]:text-primary [&_a]:underline hover:[&_a]:text-primary/80
                   [&_br]:block [&_br]:content-[''] [&_br]:my-1"
-                dangerouslySetInnerHTML={{ __html: product.description }}
+                dangerouslySetInnerHTML={{ __html: displayedProduct.description }}
               />
             </div>
           </>
