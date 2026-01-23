@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine } from "lucide-react"
+import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer } from "lucide-react"
 import Image from "next/image"
 import { Product } from "@/lib/api"
 import  QRCodeSVG  from "react-qr-code"
@@ -21,6 +21,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isImageLoading, setIsImageLoading] = useState(true)
   const barcodeCanvasRef = useRef<HTMLCanvasElement>(null)
+  const qrContainerRef = useRef<HTMLDivElement>(null)
 
   // Resetear índice de imagen cuando cambia el producto o se abre el modal
   useEffect(() => {
@@ -52,6 +53,119 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
       }
     }
   }, [product, isOpen])
+
+  const handlePrintCodes = () => {
+    if (!product) return
+
+    const escapeHtml = (input: string) =>
+      input
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;")
+
+    // Re-generar el código de barras por si el canvas aún no estaba listo
+    if (product.barcode && barcodeCanvasRef.current) {
+      try {
+        JsBarcode(barcodeCanvasRef.current, product.barcode, {
+          format: "CODE128",
+          width: 2,
+          height: 80,
+          displayValue: true,
+          fontSize: 16,
+          margin: 10
+        })
+      } catch (err) {
+        console.error("Error al generar código de barras (print):", err)
+      }
+    }
+
+    const barcodeDataUrl =
+      product.barcode && barcodeCanvasRef.current
+        ? barcodeCanvasRef.current.toDataURL("image/png")
+        : null
+
+    const qrSvg =
+      product.qr_code
+        ? qrContainerRef.current?.querySelector("svg")?.outerHTML ?? null
+        : null
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=650")
+    if (!printWindow) return
+
+    const title = `Códigos - ${product.code}`
+
+    printWindow.document.open()
+    printWindow.document.write(`<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      @page { margin: 12mm; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; }
+      .wrap { display: grid; gap: 16px; }
+      .header { margin-bottom: 8px; }
+      .name { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+      .meta { font-size: 12px; margin: 0; color: #555; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; }
+      .card h2 { font-size: 12px; margin: 0 0 10px; color: #333; letter-spacing: .02em; text-transform: uppercase; }
+      .center { display: flex; align-items: center; justify-content: center; }
+      img { max-width: 100%; height: auto; }
+      svg { max-width: 100%; height: auto; }
+      .hint { font-size: 11px; color: #666; margin-top: 10px; text-align: center; }
+      .actions { margin-top: 16px; display: flex; gap: 8px; }
+      .btn { border: 1px solid #111; background: #111; color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+      .btn.secondary { background: #fff; color: #111; }
+      @media print { .actions { display: none; } body { color-adjust: exact; -webkit-print-color-adjust: exact; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <p class="name">${escapeHtml(product.name)}</p>
+        <p class="meta">Código: <strong>${escapeHtml(product.code)}</strong></p>
+      </div>
+
+      <div class="grid">
+        ${barcodeDataUrl ? `
+          <div class="card">
+            <h2>Código de barras</h2>
+            <div class="center">
+              <img src="${barcodeDataUrl}" alt="Código de barras" />
+            </div>
+            <div class="hint">${escapeHtml(product.barcode || "")}</div>
+          </div>
+        ` : ``}
+
+        ${qrSvg ? `
+          <div class="card">
+            <h2>Código QR</h2>
+            <div class="center" style="background:#fff;border-radius:8px;padding:10px;">
+              ${qrSvg}
+            </div>
+            <div class="hint">Escaneá para ver el producto</div>
+          </div>
+        ` : `
+          <div class="card">
+            <h2>Código QR</h2>
+            <p class="meta">No disponible.</p>
+          </div>
+        `}
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="window.print()">Imprimir</button>
+        <button class="btn secondary" onclick="window.close()">Cerrar</button>
+      </div>
+    </div>
+  </body>
+</html>`)
+    printWindow.document.close()
+  }
 
   if (!product) return null
 
@@ -330,10 +444,21 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             {(product.barcode || product.qr_code) && (
               <>
                 <div className="space-y-3">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <ScanLine className="h-4 w-4" />
-                    Códigos de Identificación
-                  </h4>
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <ScanLine className="h-4 w-4" />
+                      Códigos de Identificación
+                    </h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintCodes}
+                      disabled={!product.barcode && !product.qr_code}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir códigos
+                    </Button>
+                  </div>
                   
                   <div className="grid gap-4 md:grid-cols-2">
                     {/* Código de barras */}
@@ -357,7 +482,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                           Código QR
                         </p>
                         <div className="flex justify-center">
-                          <div className="bg-white p-2 rounded">
+                          <div ref={qrContainerRef} className="bg-white p-2 rounded">
                             <QRCodeSVG
                               value={product.qr_code || ''}
                               size={150}
