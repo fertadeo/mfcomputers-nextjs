@@ -66,11 +66,14 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     return `PROD-${timestamp}-${random}`
   }
 
-  const handleGenerateCodes = async () => {
+  const isQrFromErpDomain = (qr: string | null | undefined) =>
+    Boolean(qr && /https?:\/\/sistema\.mfcomputers\.com\.ar\b/i.test(qr))
+
+  const handleGenerateCodes = async (opts?: { force?: boolean }) => {
     if (!displayedProduct) return
 
     const alreadyGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
-    if (alreadyGenerated) return
+    if (alreadyGenerated && !opts?.force) return
 
     try {
       setIsGeneratingCodes(true)
@@ -99,8 +102,11 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     }
   }
 
-  const handlePrintCodes = () => {
-    if (!displayedProduct) return
+  const openPrintWindow = (title: string, bodyHtml: string) => {
+    // OJO: con "noreferrer/noopener" algunos navegadores abren la ventana
+    // pero no devuelven referencia, quedando en blanco (about:blank).
+    const printWindow = window.open("about:blank", "_blank", "width=900,height=650")
+    if (!printWindow) return
 
     const escapeHtml = (input: string) =>
       input
@@ -109,37 +115,6 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;")
-
-    // Re-generar el código de barras por si el canvas aún no estaba listo
-    if (displayedProduct.barcode && barcodeCanvasRef.current) {
-      try {
-        JsBarcode(barcodeCanvasRef.current, displayedProduct.barcode, {
-          format: "CODE128",
-          width: 2,
-          height: 80,
-          displayValue: true,
-          fontSize: 16,
-          margin: 10
-        })
-      } catch (err) {
-        console.error("Error al generar código de barras (print):", err)
-      }
-    }
-
-    const barcodeDataUrl =
-      displayedProduct.barcode && barcodeCanvasRef.current
-        ? barcodeCanvasRef.current.toDataURL("image/png")
-        : null
-
-    const qrSvg =
-      displayedProduct.qr_code
-        ? qrContainerRef.current?.querySelector("svg")?.outerHTML ?? null
-        : null
-
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=650")
-    if (!printWindow) return
-
-    const title = `Códigos - ${displayedProduct.code}`
 
     printWindow.document.open()
     printWindow.document.write(`<!doctype html>
@@ -150,66 +125,110 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     <title>${escapeHtml(title)}</title>
     <style>
       @page { margin: 12mm; }
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; }
-      .wrap { display: grid; gap: 16px; }
-      .header { margin-bottom: 8px; }
+      body { background: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; }
+      .wrap { display: grid; gap: 14px; }
+      .header { margin-bottom: 4px; }
       .name { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
       .meta { font-size: 12px; margin: 0; color: #555; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
       .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; }
       .card h2 { font-size: 12px; margin: 0 0 10px; color: #333; letter-spacing: .02em; text-transform: uppercase; }
       .center { display: flex; align-items: center; justify-content: center; }
-      img { max-width: 100%; height: auto; }
-      svg { max-width: 100%; height: auto; }
-      .hint { font-size: 11px; color: #666; margin-top: 10px; text-align: center; }
-      .actions { margin-top: 16px; display: flex; gap: 8px; }
+      img { display:block; max-width: 100%; height: auto; }
+      .hint { font-size: 11px; color: #666; margin-top: 10px; text-align: center; word-break: break-word; }
+      .actions { margin-top: 10px; display: flex; gap: 8px; }
       .btn { border: 1px solid #111; background: #111; color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; }
       .btn.secondary { background: #fff; color: #111; }
-      @media print { .actions { display: none; } body { color-adjust: exact; -webkit-print-color-adjust: exact; } }
+      @media print { .actions { display: none; } }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <div class="header">
-        <p class="name">${escapeHtml(displayedProduct.name)}</p>
-        <p class="meta">Código: <strong>${escapeHtml(displayedProduct.code)}</strong></p>
-      </div>
-
-      <div class="grid">
-        ${barcodeDataUrl ? `
-          <div class="card">
-            <h2>Código de barras</h2>
-            <div class="center">
-              <img src="${barcodeDataUrl}" alt="Código de barras" />
-            </div>
-            <div class="hint">${escapeHtml(displayedProduct.barcode || "")}</div>
-          </div>
-        ` : ``}
-
-        ${qrSvg ? `
-          <div class="card">
-            <h2>Código QR</h2>
-            <div class="center" style="background:#fff;border-radius:8px;padding:10px;">
-              ${qrSvg}
-            </div>
-            <div class="hint">Escaneá para ver el producto</div>
-          </div>
-        ` : `
-          <div class="card">
-            <h2>Código QR</h2>
-            <p class="meta">No disponible.</p>
-          </div>
-        `}
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="window.print()">Imprimir</button>
-        <button class="btn secondary" onclick="window.close()">Cerrar</button>
-      </div>
-    </div>
+    ${bodyHtml}
   </body>
 </html>`)
     printWindow.document.close()
+    // Asegurar foco/render antes de imprimir
+    try {
+      printWindow.focus()
+    } catch {}
+  }
+
+  const getQrSvgDataUrl = () => {
+    const svgEl = qrContainerRef.current?.querySelector("svg")
+    if (!svgEl) return null
+    let svg = svgEl.outerHTML
+    if (!/xmlns=/.test(svg)) {
+      svg = svg.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"')
+    }
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  }
+
+  const handlePrintBarcode = () => {
+    if (!displayedProduct?.barcode) return
+    if (barcodeCanvasRef.current) {
+      try {
+        JsBarcode(barcodeCanvasRef.current, displayedProduct.barcode, {
+          format: "CODE128",
+          width: 2,
+          height: 90,
+          displayValue: true,
+          fontSize: 16,
+          margin: 10
+        })
+      } catch (err) {
+        console.error("Error al generar código de barras (print):", err)
+      }
+    }
+    const png =
+      barcodeCanvasRef.current ? barcodeCanvasRef.current.toDataURL("image/png") : null
+    if (!png) return
+
+    openPrintWindow(
+      `Código de barras - ${displayedProduct.code}`,
+      `<div class="wrap">
+        <div class="header">
+          <p class="name">${displayedProduct.name}</p>
+          <p class="meta">Código: <strong>${displayedProduct.code}</strong></p>
+        </div>
+        <div class="card">
+          <h2>Código de barras</h2>
+          <div class="center" style="background:#fff;border-radius:8px;padding:10px;">
+            <img src="${png}" alt="Código de barras" />
+          </div>
+          <div class="hint">${displayedProduct.barcode}</div>
+        </div>
+        <div class="actions">
+          <button class="btn" onclick="window.print()">Imprimir</button>
+          <button class="btn secondary" onclick="window.close()">Cerrar</button>
+        </div>
+      </div>`
+    )
+  }
+
+  const handlePrintQr = () => {
+    if (!displayedProduct?.qr_code) return
+    const qrImg = getQrSvgDataUrl()
+    if (!qrImg) return
+
+    openPrintWindow(
+      `Código QR - ${displayedProduct.code}`,
+      `<div class="wrap">
+        <div class="header">
+          <p class="name">${displayedProduct.name}</p>
+          <p class="meta">Código: <strong>${displayedProduct.code}</strong></p>
+        </div>
+        <div class="card">
+          <h2>Código QR</h2>
+          <div class="center" style="background:#fff;border-radius:8px;padding:10px;">
+            <img src="${qrImg}" alt="Código QR" style="width:260px;max-width:100%;" />
+          </div>
+          <div class="hint">Escaneá para ver el producto</div>
+        </div>
+        <div class="actions">
+          <button class="btn" onclick="window.print()">Imprimir</button>
+          <button class="btn secondary" onclick="window.close()">Cerrar</button>
+        </div>
+      </div>`
+    )
   }
 
   if (!displayedProduct) return null
@@ -294,16 +313,17 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   }
 
   const codesGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
+  const qrWrongDomain = isQrFromErpDomain(displayedProduct.qr_code ?? null)
   const skuMissing = !displayedProduct.code || !displayedProduct.code.trim()
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[96vw] max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">{displayedProduct.name}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-[minmax(360px,460px)_minmax(0,1fr)]">
           {/* Galería de imágenes del producto */}
           <div className="space-y-4">
             {/* Imagen principal */}
@@ -500,27 +520,20 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     <Button
                       variant="outline"
                       size="sm"
-                      className={codesGenerated
+                      className={(codesGenerated && !qrWrongDomain)
                         ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-50 hover:text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
                         : "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-50 hover:text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200"
                       }
-                      onClick={codesGenerated ? undefined : handleGenerateCodes}
-                      disabled={codesGenerated || isGeneratingCodes}
+                      onClick={(codesGenerated && !qrWrongDomain) ? undefined : () => handleGenerateCodes({ force: qrWrongDomain })}
+                      disabled={(codesGenerated && !qrWrongDomain) || isGeneratingCodes}
                     >
-                      {codesGenerated
+                      {(codesGenerated && !qrWrongDomain)
                         ? "Códigos Generados"
                         : (isGeneratingCodes
                           ? "Generando..."
-                          : (skuMissing ? "Este producto no tiene código (generar)" : "Este producto no tiene códigos generados"))}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handlePrintCodes}
-                      disabled={!displayedProduct.barcode && !displayedProduct.qr_code}
-                    >
-                      <Printer className="h-4 w-4 mr-2" />
-                      Imprimir
+                          : (qrWrongDomain
+                            ? "QR con dominio ERP (regenerar)"
+                            : (skuMissing ? "Este producto no tiene código (generar)" : "Este producto no tiene códigos generados")))}
                     </Button>
                   </div>
                 </div>
@@ -528,7 +541,19 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {/* Código de barras */}
                   <div className="min-w-0 bg-muted/50 p-4 rounded-lg border">
-                    <p className="text-xs text-muted-foreground mb-2 text-center">Código de barras</p>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-xs text-muted-foreground">Código de barras</p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={handlePrintBarcode}
+                        disabled={!displayedProduct.barcode}
+                        title="Imprimir código de barras"
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                    </div>
                     {displayedProduct.barcode ? (
                       <div className="overflow-x-auto">
                         <div className="flex justify-center min-w-fit">
@@ -547,10 +572,22 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
                   {/* Código QR */}
                   <div className="min-w-0 bg-muted/50 p-4 rounded-lg border">
-                    <p className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-1">
-                      <QrCode className="h-3 w-3" />
-                      Código QR
-                    </p>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <QrCode className="h-3 w-3" />
+                        Código QR
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={handlePrintQr}
+                        disabled={!displayedProduct.qr_code}
+                        title="Imprimir código QR"
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                    </div>
                     {displayedProduct.qr_code ? (
                       <div className="flex justify-center">
                         <div ref={qrContainerRef} className="bg-white p-2 rounded w-fit max-w-full">
