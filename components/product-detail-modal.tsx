@@ -48,10 +48,10 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
       try {
         JsBarcode(barcodeCanvasRef.current, displayedProduct.barcode, {
           format: "CODE128",
-          width: 2,
+          width: 1.6,
           height: 60,
           displayValue: true,
-          fontSize: 14,
+          fontSize: 12,
           margin: 8
         })
       } catch (err) {
@@ -59,6 +59,12 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
       }
     }
   }, [displayedProduct, isOpen])
+
+  const generateSku = () => {
+    const timestamp = Date.now().toString().slice(-6)
+    const random = Math.random().toString(36).substring(2, 5).toUpperCase()
+    return `PROD-${timestamp}-${random}`
+  }
 
   const handleGenerateCodes = async () => {
     if (!displayedProduct) return
@@ -69,13 +75,17 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
     try {
       setIsGeneratingCodes(true)
 
+      const hasSku = Boolean(displayedProduct.code && displayedProduct.code.trim())
+      const finalSku = hasSku ? displayedProduct.code.trim() : generateSku()
+
       const codes = generateProductCodes(
-        displayedProduct.code,
+        finalSku,
         displayedProduct.woocommerce_id ?? null,
         displayedProduct.woocommerce_slug ?? null
       )
 
       const updated = await updateProduct(displayedProduct.id, {
+        ...(hasSku ? {} : { code: finalSku }),
         barcode: codes.barcode,
         qr_code: codes.qr_code
       })
@@ -284,6 +294,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   }
 
   const codesGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
+  const skuMissing = !displayedProduct.code || !displayedProduct.code.trim()
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -429,7 +440,7 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
               <div className="flex items-center gap-2">
                 <Package className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">Código:</span>
-                <span className="font-mono">{displayedProduct.code}</span>
+                <span className="font-mono">{displayedProduct.code || "-"}</span>
               </div>
 
               {displayedProduct.woocommerce_id && (
@@ -478,79 +489,91 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             <Separator />
 
             {/* Códigos de barras y QR */}
-            {(displayedProduct.barcode || displayedProduct.qr_code) && (
-              <>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h4 className="font-semibold flex items-center gap-2">
-                      <ScanLine className="h-4 w-4" />
-                      Códigos de Identificación
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={codesGenerated
-                          ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-50 hover:text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
-                          : "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-50 hover:text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200"
-                        }
-                        onClick={codesGenerated ? undefined : handleGenerateCodes}
-                        disabled={codesGenerated || isGeneratingCodes}
-                      >
-                        {codesGenerated ? "Códigos Generados" : (isGeneratingCodes ? "Generando..." : "Este producto no tiene códigos generados")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePrintCodes}
-                        disabled={!displayedProduct.barcode && !displayedProduct.qr_code}
-                      >
-                        <Printer className="h-4 w-4 mr-2" />
-                        Imprimir códigos
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {/* Código de barras */}
-                    {displayedProduct.barcode && (
-                      <div className="bg-muted/50 p-4 rounded-lg border">
-                        <p className="text-xs text-muted-foreground mb-2 text-center">Código de barras</p>
-                        <div className="flex justify-center">
-                          <canvas ref={barcodeCanvasRef} className="max-w-full" />
-                        </div>
-                        <p className="text-xs text-center text-muted-foreground mt-2 font-mono">
-                          {displayedProduct.barcode}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Código QR */}
-                    {displayedProduct.qr_code && (
-                      <div className="bg-muted/50 p-4 rounded-lg border">
-                        <p className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-1">
-                          <QrCode className="h-3 w-3" />
-                          Código QR
-                        </p>
-                        <div className="flex justify-center">
-                          <div ref={qrContainerRef} className="bg-white p-2 rounded">
-                            <QRCodeSVG
-                              value={displayedProduct.qr_code || ''}
-                              size={150}
-                              level="M"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-xs text-center text-muted-foreground mt-2">
-                          Escanea para ver información pública
-                        </p>
-                      </div>
-                    )}
+            <>
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <ScanLine className="h-4 w-4" />
+                    Códigos de Identificación
+                  </h4>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={codesGenerated
+                        ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-50 hover:text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
+                        : "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-50 hover:text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200"
+                      }
+                      onClick={codesGenerated ? undefined : handleGenerateCodes}
+                      disabled={codesGenerated || isGeneratingCodes}
+                    >
+                      {codesGenerated
+                        ? "Códigos Generados"
+                        : (isGeneratingCodes
+                          ? "Generando..."
+                          : (skuMissing ? "Este producto no tiene código (generar)" : "Este producto no tiene códigos generados"))}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintCodes}
+                      disabled={!displayedProduct.barcode && !displayedProduct.qr_code}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir
+                    </Button>
                   </div>
                 </div>
-                <Separator />
-              </>
-            )}
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {/* Código de barras */}
+                  <div className="min-w-0 bg-muted/50 p-4 rounded-lg border">
+                    <p className="text-xs text-muted-foreground mb-2 text-center">Código de barras</p>
+                    {displayedProduct.barcode ? (
+                      <div className="overflow-x-auto">
+                        <div className="flex justify-center min-w-fit">
+                          <canvas ref={barcodeCanvasRef} className="block" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-[92px] flex items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
+                        No generado
+                      </div>
+                    )}
+                    <p className="text-[11px] text-center text-muted-foreground mt-2 font-mono break-all">
+                      {displayedProduct.barcode || "-"}
+                    </p>
+                  </div>
+
+                  {/* Código QR */}
+                  <div className="min-w-0 bg-muted/50 p-4 rounded-lg border">
+                    <p className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-1">
+                      <QrCode className="h-3 w-3" />
+                      Código QR
+                    </p>
+                    {displayedProduct.qr_code ? (
+                      <div className="flex justify-center">
+                        <div ref={qrContainerRef} className="bg-white p-2 rounded w-fit max-w-full">
+                          <QRCodeSVG
+                            value={displayedProduct.qr_code || ""}
+                            size={140}
+                            level="M"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-[156px] flex items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
+                        No generado
+                      </div>
+                    )}
+                    <p className="text-xs text-center text-muted-foreground mt-2">
+                      {displayedProduct.qr_code ? "Escaneá para ver el producto" : "Generalo para compartir"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Separator />
+            </>
 
             {/* Información adicional */}
             <div className="space-y-3">

@@ -28,22 +28,30 @@ export function generateQRCodeUrl(
   woocommerceId?: number | null, 
   woocommerceSlug?: string | null
 ): string {
-  // Obtener la URL base de WooCommerce
-  const woocommerceBaseUrl = process.env.NEXT_PUBLIC_WOOCOMMERCE_URL || ''
+  // Hardcode de WooCommerce para producción (evita que el QR apunte al ERP)
+  const DEFAULT_WOOCOMMERCE_BASE_URL = 'https://mfcomputers.com.ar'
+
+  // Obtener la URL base de WooCommerce (si existe, puede sobrescribir el hardcode)
+  const woocommerceBaseUrlRaw = process.env.NEXT_PUBLIC_WOOCOMMERCE_URL || DEFAULT_WOOCOMMERCE_BASE_URL
+  const woocommerceBaseUrl = woocommerceBaseUrlRaw.replace(/\/+$/, '')
   
   // Si hay información de WooCommerce, construir URL de WooCommerce
   if (woocommerceBaseUrl) {
     // Priorizar slug si está disponible (URL más amigable)
     if (woocommerceSlug) {
-      return `${woocommerceBaseUrl}/producto/${woocommerceSlug}`
+      // WooCommerce suele usar /product/<slug>/
+      return `${woocommerceBaseUrl}/product/${woocommerceSlug.replace(/^\/+|\/+$/g, '')}/`
     }
     // Si hay ID pero no slug, usar ID
     if (woocommerceId) {
       return `${woocommerceBaseUrl}/?p=${woocommerceId}`
     }
+
+    // Fallback: búsqueda en WooCommerce por SKU/código
+    return `${woocommerceBaseUrl}/?s=${encodeURIComponent(code)}&post_type=product`
   }
   
-  // Fallback: URL del sistema propio (si no hay WooCommerce)
+  // Último fallback: URL del sistema propio (solo si no hay base de WooCommerce)
   const baseUrl = typeof window !== 'undefined' 
     ? window.location.origin 
     : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
