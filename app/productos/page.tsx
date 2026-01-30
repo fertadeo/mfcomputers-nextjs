@@ -861,6 +861,11 @@ export default function ProductosPage() {
           product={selectedProduct}
           isOpen={isDetailModalOpen}
           onClose={handleCloseDetailModal}
+          onDelete={handleDeleteProduct}
+          onSyncSuccess={() => {
+            loadProducts()
+            loadProductStats()
+          }}
         />
 
         {/* Modal de nuevo producto */}

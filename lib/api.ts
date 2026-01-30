@@ -462,6 +462,7 @@ export interface CreateProductData {
   images?: string[] | null
   barcode?: string | null  // Código de barras del producto
   qr_code?: string | null  // URL del código QR para consulta pública
+  sync_to_woocommerce?: boolean  // Sincronizar con WooCommerce al crear
 }
 
 export interface UpdateProductData {
@@ -477,6 +478,7 @@ export interface UpdateProductData {
   images?: string[] | null
   barcode?: string | null
   qr_code?: string | null
+  sync_to_woocommerce?: boolean  // Sincronizar con WooCommerce al actualizar
 }
 
 export interface UpdateStockData {
@@ -1596,13 +1598,18 @@ export async function createProductNew(productData: CreateProductData): Promise<
     
     console.log('📦 [PRODUCTS] Creando nuevo producto:', fullUrl, productData)
     
+    const body: Record<string, unknown> = { ...productData }
+    if (productData.sync_to_woocommerce === true) {
+      body.sync_to_woocommerce = true
+    }
+
     const response = await fetch(fullUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(productData)
+      body: JSON.stringify(body)
     })
 
     const responseData: ProductResponse = await response.json()
@@ -1647,7 +1654,12 @@ export async function updateProduct(id: number, productData: UpdateProductData):
     const fullUrl = `${apiUrl}products/${id}`
     const token = getAccessToken()
     
-    console.log('📦 [PRODUCTS] Actualizando producto:', fullUrl, productData)
+    const body: Record<string, unknown> = { ...productData }
+    if (productData.sync_to_woocommerce === true) {
+      body.sync_to_woocommerce = true
+    }
+
+    console.log('📦 [PRODUCTS] Actualizando producto:', fullUrl, body)
     
     const response = await fetch(fullUrl, {
       method: 'PUT',
@@ -1655,7 +1667,7 @@ export async function updateProduct(id: number, productData: UpdateProductData):
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(productData)
+      body: JSON.stringify(body)
     })
 
     const responseData: ProductResponse = await response.json()
@@ -1764,9 +1776,69 @@ export async function deleteProduct(id: number): Promise<void> {
       throw new Error(responseData.message || `Error al eliminar producto: ${response.status}`)
     }
 
-    console.log('✅ [PRODUCTS] Producto eliminado exitosamente')
+    console.log('✅ [PRODUCTS] Producto eliminado exitosamente (soft delete)')
   } catch (error) {
     console.error('💥 [PRODUCTS] Error al eliminar producto:', error)
+    throw error
+  }
+}
+
+/**
+ * Sincroniza un producto del ERP con WooCommerce.
+ * Si el producto no tiene woocommerce_id, lo crea en WC. Si ya tiene, lo actualiza.
+ * Roles permitidos: gerencia (según documentación backend).
+ */
+export interface SyncToWooCommerceResponse {
+  success: boolean
+  data: {
+    woocommerce_id: number
+    created: boolean
+  }
+}
+
+export async function syncProductToWooCommerce(id: number): Promise<SyncToWooCommerceResponse['data']> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/${id}/sync-to-woocommerce`
+    const token = getAccessToken()
+
+    console.log('📦 [PRODUCTS] Sincronizando producto con WooCommerce:', fullUrl)
+
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    const responseData = await response.json()
+
+    if (!response.ok) {
+      console.error('❌ [PRODUCTS] Error al sincronizar con WooCommerce:', {
+        status: response.status,
+        responseData
+      })
+      if (response.status === 401) {
+        throw new Error(responseData.message || 'Token de autorización inválido')
+      }
+      if (response.status === 403) {
+        throw new Error(responseData.message || 'No tienes permisos para sincronizar con WooCommerce')
+      }
+      if (response.status === 404) {
+        throw new Error(responseData.message || 'Producto no encontrado')
+      }
+      throw new Error(responseData.message || `Error al sincronizar: ${response.status}`)
+    }
+
+    const data = responseData.data ?? responseData
+    console.log('✅ [PRODUCTS] Sincronización WooCommerce exitosa:', data)
+    return {
+      woocommerce_id: data.woocommerce_id ?? id,
+      created: Boolean(data.created)
+    }
+  } catch (error) {
+    console.error('💥 [PRODUCTS] Error al sincronizar con WooCommerce:', error)
     throw error
   }
 }

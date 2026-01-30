@@ -5,9 +5,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer } from "lucide-react"
+import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer, RefreshCw } from "lucide-react"
 import Image from "next/image"
-import { Product, updateProduct } from "@/lib/api"
+import { Product, updateProduct, syncProductToWooCommerce, getProductById } from "@/lib/api"
 import { getAllProductImages } from "@/lib/product-image-utils"
 import QRCodeSVG from "react-qr-code"
 import JsBarcode from "jsbarcode"
@@ -17,12 +17,16 @@ interface ProductDetailModalProps {
   product: Product | null
   isOpen: boolean
   onClose: () => void
+  onDelete?: (id: number) => void
+  onEdit?: (product: Product) => void
+  onSyncSuccess?: () => void
 }
 
-export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailModalProps) {
+export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit, onSyncSuccess }: ProductDetailModalProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isImageLoading, setIsImageLoading] = useState(true)
   const [isGeneratingCodes, setIsGeneratingCodes] = useState(false)
+  const [isSyncingWooCommerce, setIsSyncingWooCommerce] = useState(false)
   const [localProduct, setLocalProduct] = useState<Product | null>(null)
   const barcodeCanvasRef = useRef<HTMLCanvasElement>(null)
   const qrContainerRef = useRef<HTMLDivElement>(null)
@@ -69,6 +73,30 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
   const isQrFromErpDomain = (qr: string | null | undefined) =>
     Boolean(qr && /https?:\/\/sistema\.mfcomputers\.com\.ar\b/i.test(qr))
+
+  const handleSyncToWooCommerce = async () => {
+    if (!displayedProduct) return
+    try {
+      setIsSyncingWooCommerce(true)
+      await syncProductToWooCommerce(displayedProduct.id)
+      const updated = await getProductById(displayedProduct.id)
+      setLocalProduct(updated)
+      onSyncSuccess?.()
+    } catch (err) {
+      console.error("Error al sincronizar con WooCommerce:", err)
+      alert(err instanceof Error ? err.message : "Error al sincronizar con WooCommerce")
+    } finally {
+      setIsSyncingWooCommerce(false)
+    }
+  }
+
+  const handleDelete = () => {
+    if (!displayedProduct || !onDelete) return
+    if (window.confirm("¿Estás seguro de que quieres eliminar este producto? (borrado lógico)")) {
+      onDelete(displayedProduct.id)
+      onClose()
+    }
+  }
 
   const handleGenerateCodes = async (opts?: { force?: boolean }) => {
     if (!displayedProduct) return
@@ -396,21 +424,40 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
             )}
 
             {/* Acciones rápidas */}
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                className="flex-1 bg-transparent hover:bg-primary/10 hover:text-primary hover:border-primary/50 dark:hover:bg-primary/20 dark:hover:text-primary transition-colors"
+            <div className="flex flex-wrap gap-2">
+              {onEdit && (
+                <Button
+                  variant="outline"
+                  className="flex-1 min-w-0 bg-transparent hover:bg-primary/10 hover:text-primary hover:border-primary/50 dark:hover:bg-primary/20 dark:hover:text-primary transition-colors"
+                  onClick={() => onEdit(displayedProduct)}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                className="bg-transparent hover:bg-blue-500/10 hover:text-blue-600 hover:border-blue-500/50 dark:hover:text-blue-400 transition-colors"
+                onClick={handleSyncToWooCommerce}
+                disabled={isSyncingWooCommerce}
               >
-                <Edit className="h-4 w-4 mr-2" />
-                Editar
+                {isSyncingWooCommerce ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                {isSyncingWooCommerce ? "Sincronizando…" : "Sync WooCommerce"}
               </Button>
-              <Button 
-                variant="outline" 
-                size="icon"
-                className="bg-transparent hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 dark:hover:bg-destructive/20 dark:hover:text-destructive transition-colors"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {onDelete && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="bg-transparent hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 dark:hover:bg-destructive/20 dark:hover:text-destructive transition-colors"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
 

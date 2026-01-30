@@ -75,6 +75,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   })
   const [barcode, setBarcode] = useState<string>("")
   const [qrCode, setQrCode] = useState<string>("")
+  const [syncToWooCommerce, setSyncToWooCommerce] = useState(false)
 
   // Cargar categorías desde la API
   const loadCategories = async () => {
@@ -394,7 +395,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
         barcode: finalBarcode || null,
-        qr_code: finalQrCode || null
+        qr_code: finalQrCode || null,
+        sync_to_woocommerce: syncToWooCommerce
       }
 
       const responseData = await createProductNew(productData)
@@ -430,6 +432,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     })
     setBarcode("")
     setQrCode("")
+    setSyncToWooCommerce(false)
     setImages([])
     setImageUrlInput("")
     setError(null)
@@ -983,6 +986,19 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         ⚠️ Un producto con stock 0 no puede estar activo. Se creará como inactivo.
                       </p>
                     )}
+                  </div>
+
+                  <div className="flex items-center space-x-2 pt-2">
+                    <input
+                      type="checkbox"
+                      id="sync-woocommerce"
+                      checked={syncToWooCommerce}
+                      onChange={(e) => setSyncToWooCommerce(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-turquoise-600 focus:ring-turquoise-500"
+                    />
+                    <Label htmlFor="sync-woocommerce" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                      Sincronizar con WooCommerce al crear
+                    </Label>
                   </div>
                 </div>
               </CardContent>
