@@ -9,13 +9,20 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Pagination } from "@/components/ui/pagination"
 import { useRole } from "@/app/hooks/useRole"
-import { getProducts, deleteProduct, getProductStats, ProductStats } from "@/lib/api"
+import { getProducts, deleteProduct, getProductStats, getCategories, ProductStats, Category } from "@/lib/api"
 import { useState, useEffect } from "react"
 import { Product } from "@/lib/api"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { 
   Package, 
   Search, 
@@ -30,7 +37,8 @@ import {
   Download,
   LayoutGrid,
   LayoutList,
-  Image as ImageIcon
+  Image as ImageIcon,
+  X
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -49,6 +57,10 @@ export default function ProductosPage() {
   const [allProducts, setAllProducts] = useState<Product[]>([]) // Todos los productos cargados
   const [productsLoaded, setProductsLoaded] = useState(false) // Flag para saber si ya se cargaron todos los productos
   const [viewMode, setViewMode] = useState<"list" | "grid">("list")
+  const [categories, setCategories] = useState<Category[]>([])
+  const [filterCategory, setFilterCategory] = useState<string>("all")
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all")
+  const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all")
   const limit = 50 // Productos por página
 
   // Cargar preferencia de vista desde localStorage al montar
@@ -64,16 +76,27 @@ export default function ProductosPage() {
     }
   }
 
-  // Cargar productos y estadísticas al montar el componente
+  // Cargar productos, categorías y estadísticas al montar el componente
   useEffect(() => {
     loadAllProducts()
     loadProductStats()
+    loadCategories()
   }, [])
 
-  // Actualizar productos mostrados cuando cambie la página o el término de búsqueda
+  const loadCategories = async () => {
+    try {
+      const data = await getCategories()
+      setCategories(data ?? [])
+    } catch (err) {
+      console.error("Error al cargar categorías:", err)
+      setCategories([])
+    }
+  }
+
+  // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros o datos
   useEffect(() => {
     updateDisplayedProducts()
-  }, [currentPage, searchTerm, allProducts])
+  }, [currentPage, searchTerm, allProducts, filterCategory, filterStatus, filterStock])
 
   const loadProductStats = async () => {
     try {
@@ -116,7 +139,7 @@ export default function ProductosPage() {
     }
   }
 
-  // Función para actualizar los productos mostrados según búsqueda y paginación
+  // Función para actualizar los productos mostrados según búsqueda, filtros y paginación
   const updateDisplayedProducts = () => {
     if (!productsLoaded) return
 
@@ -125,13 +148,13 @@ export default function ProductosPage() {
     if (searchTerm.trim()) {
       // Filtrar productos cuando hay búsqueda
       const term = searchTerm.trim().toLowerCase()
-      
+
       // Filtrar productos: buscar en SKU, nombre y categoría
       const filtered = allProducts.filter((product) => {
         const codeMatch = product.code?.toLowerCase().includes(term)
         const nameMatch = product.name?.toLowerCase().includes(term)
         const categoryMatch = product.category_name?.toLowerCase().includes(term)
-        
+
         return codeMatch || nameMatch || categoryMatch
       })
 
@@ -141,28 +164,51 @@ export default function ProductosPage() {
         const bCode = b.code?.toLowerCase() || ""
         const aName = a.name?.toLowerCase() || ""
         const bName = b.name?.toLowerCase() || ""
-        
+
         // Coincidencia exacta en SKU tiene máxima prioridad
         if (aCode === term && bCode !== term) return -1
         if (bCode === term && aCode !== term) return 1
-        
+
         // Coincidencia que empieza con el término en SKU
         if (aCode.startsWith(term) && !bCode.startsWith(term)) return -1
         if (bCode.startsWith(term) && !aCode.startsWith(term)) return 1
-        
+
         // Coincidencia en SKU
         if (aCode.includes(term) && !bCode.includes(term)) return -1
         if (bCode.includes(term) && !aCode.includes(term)) return 1
-        
+
         // Coincidencia en nombre
         if (aName.includes(term) && !bName.includes(term)) return -1
         if (bName.includes(term) && !aName.includes(term)) return 1
-        
+
         return 0
       })
     } else {
-      // Sin búsqueda, usar todos los productos
-      productsToShow = allProducts
+      productsToShow = [...allProducts]
+    }
+
+    // Aplicar filtro de categoría
+    if (filterCategory !== "all") {
+      if (filterCategory === "none") {
+        productsToShow = productsToShow.filter((p) => !p.category_id)
+      } else {
+        const categoryId = parseInt(filterCategory, 10)
+        productsToShow = productsToShow.filter((p) => p.category_id === categoryId)
+      }
+    }
+
+    // Aplicar filtro de estado (activo/inactivo)
+    if (filterStatus === "active") {
+      productsToShow = productsToShow.filter((p) => p.is_active)
+    } else if (filterStatus === "inactive") {
+      productsToShow = productsToShow.filter((p) => !p.is_active)
+    }
+
+    // Aplicar filtro de stock
+    if (filterStock === "low") {
+      productsToShow = productsToShow.filter((p) => p.stock > 0 && p.stock <= p.min_stock)
+    } else if (filterStock === "out") {
+      productsToShow = productsToShow.filter((p) => p.stock === 0)
     }
 
     // Aplicar paginación
@@ -210,6 +256,16 @@ export default function ProductosPage() {
 
   // Verificar si el usuario puede realizar acciones de administración
   const canManageProducts = isAdmin()
+
+  const hasActiveFilters =
+    filterCategory !== "all" || filterStatus !== "all" || filterStock !== "all"
+
+  const clearFilters = () => {
+    setFilterCategory("all")
+    setFilterStatus("all")
+    setFilterStock("all")
+    setCurrentPage(1)
+  }
 
   return (
     <Protected requiredRoles={['gerencia', 'ventas', 'logistica', 'finanzas']}>
@@ -321,46 +377,110 @@ export default function ProductosPage() {
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Buscar por SKU, nombre o categoría..." 
-                      className="pl-8" 
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value)
-                        setCurrentPage(1) // Resetear a la primera página al buscar
-                      }}
-                    />
+              <div className="flex flex-col gap-4 mb-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar por SKU, nombre o categoría..."
+                        className="pl-8"
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value)
+                          setCurrentPage(1)
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex rounded-md border">
+                      <Button
+                        variant={viewMode === "list" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="rounded-r-none"
+                        onClick={() => handleViewModeChange("list")}
+                        title="Vista lista"
+                      >
+                        <LayoutList className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant={viewMode === "grid" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="rounded-l-none"
+                        onClick={() => handleViewModeChange("grid")}
+                        title="Vista cuadrícula"
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {hasActiveFilters && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Limpiar filtros
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex rounded-md border">
-                    <Button
-                      variant={viewMode === "list" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="rounded-r-none"
-                      onClick={() => handleViewModeChange("list")}
-                      title="Vista lista"
-                    >
-                      <LayoutList className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant={viewMode === "grid" ? "secondary" : "ghost"}
-                      size="sm"
-                      className="rounded-l-none"
-                      onClick={() => handleViewModeChange("grid")}
-                      title="Vista cuadrícula"
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <Button variant="outline">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filtros
-                  </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Select
+                    value={filterCategory}
+                    onValueChange={(v) => {
+                      setFilterCategory(v)
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <Filter className="h-4 w-4 mr-2 opacity-50" />
+                      <SelectValue placeholder="Categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las categorías</SelectItem>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id.toString()}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="none">Sin categoría</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={filterStatus}
+                    onValueChange={(v: "all" | "active" | "inactive") => {
+                      setFilterStatus(v)
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estados</SelectItem>
+                      <SelectItem value="active">Activos</SelectItem>
+                      <SelectItem value="inactive">Inactivos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={filterStock}
+                    onValueChange={(v: "all" | "low" | "out") => {
+                      setFilterStock(v)
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Stock" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todo el stock</SelectItem>
+                      <SelectItem value="low">Stock bajo</SelectItem>
+                      <SelectItem value="out">Sin stock</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
