@@ -23,13 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  Package, 
-  Search, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  TrendingUp, 
+import {
+  Package,
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  TrendingUp,
   AlertTriangle,
   CheckCircle,
   Eye,
@@ -38,7 +38,10 @@ import {
   LayoutGrid,
   LayoutList,
   Image as ImageIcon,
-  X
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -61,18 +64,47 @@ export default function ProductosPage() {
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all")
   const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all")
+  const [sortBy, setSortBy] = useState<"name" | "code" | "price" | "stock" | "category">("name")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const limit = 50 // Productos por página
 
-  // Cargar preferencia de vista desde localStorage al montar
+  const STORAGE_KEYS = {
+    viewMode: "productos-view-mode",
+    sortBy: "productos-sort-by",
+    sortOrder: "productos-sort-order",
+  } as const
+
+  // Cargar preferencias desde localStorage al montar (solo en cliente)
   useEffect(() => {
-    const saved = localStorage.getItem("productos-view-mode")
-    if (saved === "grid") setViewMode("grid")
+    if (typeof window === "undefined") return
+    const savedView = localStorage.getItem(STORAGE_KEYS.viewMode)
+    if (savedView === "grid") setViewMode("grid")
+    const savedSortBy = localStorage.getItem(STORAGE_KEYS.sortBy)
+    if (savedSortBy && ["name", "code", "price", "stock", "category"].includes(savedSortBy)) {
+      setSortBy(savedSortBy as typeof sortBy)
+    }
+    const savedSortOrder = localStorage.getItem(STORAGE_KEYS.sortOrder)
+    if (savedSortOrder === "asc" || savedSortOrder === "desc") {
+      setSortOrder(savedSortOrder)
+    }
   }, [])
 
   const handleViewModeChange = (mode: "list" | "grid") => {
     setViewMode(mode)
     if (typeof window !== "undefined") {
-      localStorage.setItem("productos-view-mode", mode)
+      localStorage.setItem(STORAGE_KEYS.viewMode, mode)
+    }
+  }
+
+  const handleSortChange = (field: typeof sortBy) => {
+    const newOrder =
+      sortBy === field && sortOrder === "asc" ? "desc" : sortBy === field ? "asc" : "asc"
+    setSortBy(field)
+    setSortOrder(newOrder)
+    setCurrentPage(1)
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEYS.sortBy, field)
+      localStorage.setItem(STORAGE_KEYS.sortOrder, newOrder)
     }
   }
 
@@ -93,10 +125,10 @@ export default function ProductosPage() {
     }
   }
 
-  // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros o datos
+  // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros, orden o datos
   useEffect(() => {
     updateDisplayedProducts()
-  }, [currentPage, searchTerm, allProducts, filterCategory, filterStatus, filterStock])
+  }, [currentPage, searchTerm, allProducts, filterCategory, filterStatus, filterStock, sortBy, sortOrder])
 
   const loadProductStats = async () => {
     try {
@@ -210,6 +242,31 @@ export default function ProductosPage() {
     } else if (filterStock === "out") {
       productsToShow = productsToShow.filter((p) => p.stock === 0)
     }
+
+    // Aplicar ordenamiento
+    productsToShow = [...productsToShow].sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case "name":
+          cmp = (a.name || "").localeCompare(b.name || "", "es")
+          break
+        case "code":
+          cmp = (a.code || "").localeCompare(b.code || "", "es")
+          break
+        case "price":
+          cmp = a.price - b.price
+          break
+        case "stock":
+          cmp = a.stock - b.stock
+          break
+        case "category":
+          cmp = (a.category_name || "").localeCompare(b.category_name || "", "es")
+          break
+        default:
+          cmp = 0
+      }
+      return sortOrder === "asc" ? cmp : -cmp
+    })
 
     // Aplicar paginación
     const startIndex = (currentPage - 1) * limit
@@ -481,6 +538,44 @@ export default function ProductosPage() {
                       <SelectItem value="out">Sin stock</SelectItem>
                     </SelectContent>
                   </Select>
+                  <div className="flex items-center gap-1 border-l pl-3 ml-1">
+                    <Select
+                      value={sortBy}
+                      onValueChange={(v: typeof sortBy) => handleSortChange(v)}
+                    >
+                      <SelectTrigger className="w-[140px] border-0 pl-0">
+                        <ArrowUpDown className="h-4 w-4 mr-1.5 opacity-50" />
+                        <SelectValue placeholder="Ordenar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="name">Nombre</SelectItem>
+                        <SelectItem value="code">Código</SelectItem>
+                        <SelectItem value="price">Precio</SelectItem>
+                        <SelectItem value="stock">Stock</SelectItem>
+                        <SelectItem value="category">Categoría</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        const newOrder = sortOrder === "asc" ? "desc" : "asc"
+                        setSortOrder(newOrder)
+                        setCurrentPage(1)
+                        if (typeof window !== "undefined") {
+                          localStorage.setItem(STORAGE_KEYS.sortOrder, newOrder)
+                        }
+                      }}
+                      title={sortOrder === "asc" ? "Ascendente (clic para descendente)" : "Descendente (clic para ascendente)"}
+                    >
+                      {sortOrder === "asc" ? (
+                        <ArrowUp className="h-4 w-4" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
 
