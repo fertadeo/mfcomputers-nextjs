@@ -40,7 +40,10 @@ export function generateQRCodeUrl(
     // Priorizar slug si está disponible (URL más amigable)
     if (woocommerceSlug) {
       // WooCommerce suele usar /product/<slug>/
-      return `${woocommerceBaseUrl}/product/${woocommerceSlug.replace(/^\/+|\/+$/g, '')}/`
+      const slugClean = woocommerceSlug.replace(/^\/+|\/+$/g, '')
+      if (slugClean) {
+        return `${woocommerceBaseUrl}/product/${slugClean}/`
+      }
     }
     // Si hay ID pero no slug, usar ID
     if (woocommerceId) {

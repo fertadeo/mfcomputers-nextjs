@@ -8,7 +8,8 @@ import { Separator } from "@/components/ui/separator"
 import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer } from "lucide-react"
 import Image from "next/image"
 import { Product, updateProduct } from "@/lib/api"
-import  QRCodeSVG  from "react-qr-code"
+import { getAllProductImages } from "@/lib/product-image-utils"
+import QRCodeSVG from "react-qr-code"
 import JsBarcode from "jsbarcode"
 import { generateProductCodes } from "@/lib/product-codes"
 
@@ -233,43 +234,6 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
 
   if (!displayedProduct) return null
 
-  // Función para obtener todas las imágenes disponibles del producto
-  const getAllProductImages = (product: Product): string[] => {
-    const images: string[] = []
-    
-    // 1. Prioridad: array de imágenes del producto
-    if (product.images && product.images.length > 0) {
-      return product.images
-    }
-    
-    // 2. Si hay URL de WooCommerce específica, usarla
-    if (product.woocommerce_image_url) {
-      images.push(product.woocommerce_image_url)
-    }
-    
-    // 3. Si hay URL de imagen general, usarla
-    if (product.image_url) {
-      images.push(product.image_url)
-    }
-    
-    // 4. Construir URL de WooCommerce basada en el código del producto
-    const woocommerceBaseUrl = process.env.NEXT_PUBLIC_WOOCOMMERCE_IMAGE_URL || process.env.NEXT_PUBLIC_WOOCOMMERCE_URL || ''
-    
-    if (woocommerceBaseUrl && images.length === 0) {
-      const codeSlug = product.code.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-      images.push(`${woocommerceBaseUrl}/wp-content/uploads/${codeSlug}.jpg`)
-    }
-    
-    // 5. Si no hay imágenes, retornar array vacío (se mostrará placeholder)
-    return images
-  }
-
-  // Función para obtener la URL de la imagen del producto (compatibilidad con código anterior)
-  const getProductImageUrl = (product: Product): string => {
-    const images = getAllProductImages(product)
-    return images.length > 0 ? images[0] : `https://via.placeholder.com/400x400?text=${encodeURIComponent(product.name)}`
-  }
-
   // Función para determinar el estado del stock
   const getStockStatus = (stock: number, minStock: number, maxStock: number) => {
     if (stock <= minStock) return "critico"
@@ -315,6 +279,16 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
   const codesGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
   const qrWrongDomain = isQrFromErpDomain(displayedProduct.qr_code ?? null)
   const skuMissing = !displayedProduct.code || !displayedProduct.code.trim()
+
+  const expectedQr = !skuMissing
+    ? generateProductCodes(
+        displayedProduct.code.trim(),
+        displayedProduct.woocommerce_id ?? null,
+        displayedProduct.woocommerce_slug ?? null
+      ).qr_code
+    : null
+
+  const qrNeedsUpdate = Boolean(expectedQr && displayedProduct.qr_code && displayedProduct.qr_code !== expectedQr)
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -520,20 +494,24 @@ export function ProductDetailModal({ product, isOpen, onClose }: ProductDetailMo
                     <Button
                       variant="outline"
                       size="sm"
-                      className={(codesGenerated && !qrWrongDomain)
+                      className={(codesGenerated && !qrWrongDomain && !qrNeedsUpdate)
                         ? "border-green-300 bg-green-50 text-green-800 hover:bg-green-50 hover:text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200"
                         : "border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-50 hover:text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200"
                       }
-                      onClick={(codesGenerated && !qrWrongDomain) ? undefined : () => handleGenerateCodes({ force: qrWrongDomain })}
-                      disabled={(codesGenerated && !qrWrongDomain) || isGeneratingCodes}
+                      onClick={(codesGenerated && !qrWrongDomain && !qrNeedsUpdate)
+                        ? undefined
+                        : () => handleGenerateCodes({ force: qrWrongDomain || qrNeedsUpdate })}
+                      disabled={(codesGenerated && !qrWrongDomain && !qrNeedsUpdate) || isGeneratingCodes}
                     >
-                      {(codesGenerated && !qrWrongDomain)
+                      {(codesGenerated && !qrWrongDomain && !qrNeedsUpdate)
                         ? "Códigos Generados"
                         : (isGeneratingCodes
                           ? "Generando..."
                           : (qrWrongDomain
                             ? "QR con dominio ERP (regenerar)"
-                            : (skuMissing ? "Este producto no tiene código (generar)" : "Este producto no tiene códigos generados")))}
+                            : (qrNeedsUpdate
+                              ? "Actualizar QR (usar slug)"
+                              : (skuMissing ? "Este producto no tiene código (generar)" : "Este producto no tiene códigos generados"))))}
                     </Button>
                   </div>
                 </div>

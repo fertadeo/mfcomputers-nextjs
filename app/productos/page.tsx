@@ -14,6 +14,8 @@ import { useState, useEffect } from "react"
 import { Product } from "@/lib/api"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
+import { getProductImageUrl } from "@/lib/product-image-utils"
+import Image from "next/image"
 import { 
   Package, 
   Search, 
@@ -25,7 +27,10 @@ import {
   CheckCircle,
   Eye,
   Filter,
-  Download
+  Download,
+  LayoutGrid,
+  LayoutList,
+  Image as ImageIcon
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -43,7 +48,21 @@ export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [allProducts, setAllProducts] = useState<Product[]>([]) // Todos los productos cargados
   const [productsLoaded, setProductsLoaded] = useState(false) // Flag para saber si ya se cargaron todos los productos
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list")
   const limit = 50 // Productos por página
+
+  // Cargar preferencia de vista desde localStorage al montar
+  useEffect(() => {
+    const saved = localStorage.getItem("productos-view-mode")
+    if (saved === "grid") setViewMode("grid")
+  }, [])
+
+  const handleViewModeChange = (mode: "list" | "grid") => {
+    setViewMode(mode)
+    if (typeof window !== "undefined") {
+      localStorage.setItem("productos-view-mode", mode)
+    }
+  }
 
   // Cargar productos y estadísticas al montar el componente
   useEffect(() => {
@@ -302,7 +321,7 @@ export default function ProductosPage() {
                 </div>
               )}
 
-              <div className="flex gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
                 <div className="flex-1">
                   <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -317,15 +336,138 @@ export default function ProductosPage() {
                     />
                   </div>
                 </div>
-                <Button variant="outline">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filtros
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex rounded-md border">
+                    <Button
+                      variant={viewMode === "list" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="rounded-r-none"
+                      onClick={() => handleViewModeChange("list")}
+                      title="Vista lista"
+                    >
+                      <LayoutList className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={viewMode === "grid" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="rounded-l-none"
+                      onClick={() => handleViewModeChange("grid")}
+                      title="Vista cuadrícula"
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Button variant="outline">
+                    <Filter className="h-4 w-4 mr-2" />
+                    Filtros
+                  </Button>
+                </div>
               </div>
 
               {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : viewMode === "grid" ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {products?.map((product) => (
+                    <Card
+                      key={product.id}
+                      className="overflow-hidden cursor-pointer hover:shadow-md hover:border-primary/50 transition-all group"
+                      onClick={() => handleViewProduct(product)}
+                    >
+                      <div className="relative aspect-square bg-muted overflow-hidden">
+                        <Image
+                          src={getProductImageUrl(product, { size: 200 })}
+                          alt={product.name}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement
+                            target.style.display = "none"
+                            const fallback = target.parentElement?.querySelector(".product-image-fallback")
+                            if (fallback) {
+                              const el = fallback as HTMLElement
+                              el.classList.remove("hidden")
+                              el.classList.add("flex", "items-center", "justify-center")
+                            }
+                          }}
+                        />
+                        <div className="product-image-fallback hidden absolute inset-0 bg-muted">
+                          <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                        </div>
+                        {product.stock <= product.min_stock && (
+                          <div className="absolute top-1 right-1">
+                            <AlertTriangle className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                          </div>
+                        )}
+                        {product.stock === 0 && (
+                          <div className="absolute top-1 right-1">
+                            <AlertTriangle className="h-4 w-4 text-red-500 fill-red-500" />
+                          </div>
+                        )}
+                      </div>
+                      <CardContent className="p-3">
+                        <p className="font-mono text-xs text-muted-foreground truncate" title={product.code}>
+                          {product.code}
+                        </p>
+                        <p className="font-medium text-sm truncate" title={product.name}>
+                          {product.name}
+                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="font-semibold text-turquoise-600">
+                            ${product.price.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                          </span>
+                          <Badge
+                            variant={(product.is_active && product.stock > 0) ? "default" : "secondary"}
+                            className="text-xs"
+                          >
+                            {product.stock} u.
+                          </Badge>
+                        </div>
+                        <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleViewProduct(product)
+                            }}
+                          >
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          {canManageProducts && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // TODO: Implementar edición
+                                }}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-red-600 hover:text-red-700"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteProduct(product.id)
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               ) : (
                 <Table>
