@@ -47,11 +47,16 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
     setIsImageLoading(true)
   }, [selectedImageIndex])
 
-  // Generar código de barras cuando el producto cambia
+  // Generar código de barras cuando el producto cambia. Se difiere al siguiente frame
+  // para que el canvas del Dialog esté montado y con dimensiones (evita que no se vea al abrir).
   useEffect(() => {
-    if (displayedProduct?.barcode && barcodeCanvasRef.current && isOpen) {
+    if (!displayedProduct?.barcode || !isOpen) return
+
+    const drawBarcode = () => {
+      const canvas = barcodeCanvasRef.current
+      if (!canvas) return
       try {
-        JsBarcode(barcodeCanvasRef.current, displayedProduct.barcode, {
+        JsBarcode(canvas, displayedProduct.barcode!, {
           format: "CODE128",
           width: 1.6,
           height: 60,
@@ -63,7 +68,12 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
         console.error("Error al generar código de barras:", err)
       }
     }
-  }, [displayedProduct, isOpen])
+
+    const rafId = requestAnimationFrame(() => {
+      requestAnimationFrame(drawBarcode)
+    })
+    return () => cancelAnimationFrame(rafId)
+  }, [displayedProduct?.barcode, displayedProduct?.id, isOpen])
 
   const generateSku = () => {
     const timestamp = Date.now().toString().slice(-6)
