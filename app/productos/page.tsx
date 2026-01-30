@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Package,
   Search,
@@ -580,9 +581,55 @@ export default function ProductosPage() {
               </div>
 
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
+                viewMode === "grid" ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <Card key={i} className="overflow-hidden">
+                        <Skeleton className="aspect-square w-full rounded-none" />
+                        <CardContent className="p-3 space-y-2">
+                          <Skeleton className="h-3 w-16" />
+                          <Skeleton className="h-4 w-full" />
+                          <div className="flex justify-between gap-2">
+                            <Skeleton className="h-4 w-14" />
+                            <Skeleton className="h-5 w-10 rounded-full" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Código</TableHead>
+                          <TableHead>Producto</TableHead>
+                          <TableHead>Precio</TableHead>
+                          <TableHead>Stock</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Array.from({ length: 10 }).map((_, i) => (
+                          <TableRow key={i}>
+                            <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Skeleton className="h-10 w-10 shrink-0 rounded-md" />
+                                <Skeleton className="h-4 w-32" />
+                              </div>
+                            </TableCell>
+                            <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                            <TableCell><Skeleton className="h-5 w-14 rounded-full" /></TableCell>
+                            <TableCell><Skeleton className="h-8 w-24" /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )
               ) : viewMode === "grid" ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                   {products?.map((product) => (
@@ -705,7 +752,30 @@ export default function ProductosPage() {
                       >
                         <TableCell className="font-medium">{product.code}</TableCell>
                         <TableCell>
-                          <div className="font-medium">{product.name}</div>
+                          <div className="flex items-center gap-3">
+                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+                              <Image
+                                src={getProductImageUrl(product, { size: 80 })}
+                                alt={product.name}
+                                fill
+                                className="object-cover"
+                                sizes="40px"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = "none"
+                                  const fallback = target.parentElement?.querySelector(".list-thumb-fallback")
+                                  if (fallback) {
+                                    (fallback as HTMLElement).classList.remove("hidden")
+                                    ;(fallback as HTMLElement).classList.add("flex", "items-center", "justify-center")
+                                  }
+                                }}
+                              />
+                              <div className="list-thumb-fallback hidden absolute inset-0 bg-muted">
+                                <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                            </div>
+                            <span className="font-medium truncate">{product.name}</span>
+                          </div>
                         </TableCell>
                         <TableCell>${product.price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</TableCell>
                         <TableCell>
