@@ -14,6 +14,7 @@ import { useState, useEffect } from "react"
 import { Product } from "@/lib/api"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
+import { EditProductModal } from "@/components/edit-product-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
 import {
@@ -53,6 +54,7 @@ export default function ProductosPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false)
+  const [productToEdit, setProductToEdit] = useState<Product | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalProducts, setTotalProducts] = useState(0)
@@ -708,7 +710,7 @@ export default function ProductosPage() {
                                 className="h-7"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  // TODO: Implementar edición
+                                  setProductToEdit(product)
                                 }}
                               >
                                 <Edit className="h-3 w-3" />
@@ -815,7 +817,7 @@ export default function ProductosPage() {
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    // TODO: Implementar edición
+                                    setProductToEdit(product)
                                   }}
                                 >
                                   <Edit className="h-4 w-4" />
@@ -862,7 +864,23 @@ export default function ProductosPage() {
           isOpen={isDetailModalOpen}
           onClose={handleCloseDetailModal}
           onDelete={handleDeleteProduct}
+          onEdit={(p) => {
+            setProductToEdit(p)
+            setIsDetailModalOpen(false)
+          }}
           onSyncSuccess={() => {
+            loadProducts()
+            loadProductStats()
+          }}
+        />
+
+        {/* Modal de edición de producto */}
+        <EditProductModal
+          product={productToEdit}
+          isOpen={!!productToEdit}
+          onClose={() => setProductToEdit(null)}
+          onSuccess={() => {
+            setProductToEdit(null)
             loadProducts()
             loadProductStats()
           }}
