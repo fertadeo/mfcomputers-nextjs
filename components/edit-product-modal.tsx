@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { AlertTriangle, CheckCircle, Package, DollarSign, BarChart3, Edit, Tag } from "lucide-react"
+import { AlertTriangle, Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X } from "lucide-react"
+import Image from "next/image"
 import {
   Product,
   updateProduct,
@@ -16,6 +17,8 @@ import {
   Category,
   UpdateProductData,
 } from "@/lib/api"
+import { getAllProductImages } from "@/lib/product-image-utils"
+import { useToast } from "@/contexts/ToastContext"
 
 interface EditProductModalProps {
   product: Product | null
@@ -37,12 +40,15 @@ interface FormData {
 }
 
 export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditProductModalProps) {
+  const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [syncToWooCommerce, setSyncToWooCommerce] = useState(false)
+  const [imageUrls, setImageUrls] = useState<string[]>([])
+  const [imageUrlInput, setImageUrlInput] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState<FormData>({
     code: "",
@@ -90,10 +96,67 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         is_active: product.is_active ? "1" : "0",
       })
       setSyncToWooCommerce(false)
+      setImageUrlInput("")
+      // Imágenes: prioridad a product.images, sino image_url, sino getAllProductImages (incluye WC)
+      if (product.images && product.images.length > 0) {
+        setImageUrls([...product.images])
+      } else if (product.image_url) {
+        setImageUrls([product.image_url])
+      } else {
+        const all = getAllProductImages(product)
+        setImageUrls(all.length > 0 ? all : [])
+      }
       setError(null)
-      setSuccess(false)
     }
   }, [isOpen, product])
+
+  const handleAddImageUrl = () => {
+    const url = imageUrlInput.trim()
+    if (!url) return
+    try {
+      new URL(url)
+      if (imageUrls.length >= 5) {
+        setError("Máximo 5 imágenes")
+        return
+      }
+      setImageUrls((prev) => [...prev, url])
+      setImageUrlInput("")
+      setError(null)
+    } catch {
+      setError("URL de imagen no válida")
+    }
+  }
+
+  const removeImage = (index: number) => {
+    setImageUrls((prev) => prev.filter((_, i) => i !== index))
+    setError(null)
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    const remaining = 5 - imageUrls.length
+    if (remaining <= 0) {
+      setError("Máximo 5 imágenes")
+      return
+    }
+    const toAdd = Array.from(files).slice(0, remaining).filter((f) => f.type.startsWith("image/"))
+    toAdd.forEach((file) => {
+      if (file.size > 10 * 1024 * 1024) {
+        setError(`La imagen ${file.name} supera 10 MB`)
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string
+        if (dataUrl) setImageUrls((prev) => [...prev, dataUrl])
+        setError(null)
+      }
+      reader.onerror = () => setError(`Error al leer ${file.name}`)
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ""
+  }
 
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -168,16 +231,15 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
+        images: imageUrls.length > 0 ? imageUrls : null,
         sync_to_woocommerce: syncToWooCommerce || undefined,
       }
 
       const updated = await updateProduct(product.id, payload)
 
-      setSuccess(true)
-      setTimeout(() => {
-        onSuccess(updated)
-        onClose()
-      }, 1200)
+      showToast({ message: "Producto actualizado correctamente.", type: "success" })
+      onSuccess(updated)
+      onClose()
     } catch (err) {
       console.error("Error al actualizar producto:", err)
       setError(err instanceof Error ? err.message : "Error al actualizar el producto")
@@ -189,7 +251,6 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const handleClose = () => {
     if (!loading) {
       setError(null)
-      setSuccess(false)
       onClose()
     }
   }
@@ -214,13 +275,6 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             <div className="flex items-center gap-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
               <AlertTriangle className="h-5 w-5 shrink-0" />
               <p className="text-sm">{error}</p>
-            </div>
-          )}
-
-          {success && (
-            <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-700 dark:text-green-400">
-              <CheckCircle className="h-5 w-5 shrink-0" />
-              <p className="text-sm">Producto actualizado correctamente.</p>
             </div>
           )}
 
@@ -387,6 +441,94 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                   <Label htmlFor="edit-sync-woo" className="text-sm cursor-pointer">
                     Sincronizar cambios con WooCommerce
                   </Label>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Imágenes</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Hasta 5 imágenes. Agregá URLs o elegí archivos desde tu equipo (JPG, PNG, WebP · máx. 10 MB c/u).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={imageUrls.length >= 5}
+                  className="h-10"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Seleccionar desde el equipo
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <div className="flex gap-2 flex-1 min-w-[200px]">
+                  <Input
+                    type="url"
+                    value={imageUrlInput}
+                    onChange={(e) => setImageUrlInput(e.target.value)}
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    className="h-10 flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        handleAddImageUrl()
+                      }
+                    }}
+                    disabled={imageUrls.length >= 5}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddImageUrl}
+                    disabled={!imageUrlInput.trim() || imageUrls.length >= 5}
+                    className="h-10 shrink-0"
+                  >
+                    Agregar URL
+                  </Button>
+                </div>
+              </div>
+              {imageUrls.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                  {imageUrls.map((url, index) => (
+                    <div key={index} className="relative group aspect-square rounded-lg overflow-hidden bg-muted border">
+                      <Image
+                        src={url}
+                        alt={`Imagen ${index + 1}`}
+                        fill
+                        className="object-cover"
+                        sizes="120px"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = `https://via.placeholder.com/120?text=Error`
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => removeImage(index)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+                        {index + 1}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
