@@ -14,6 +14,7 @@ import { AlertTriangle, CheckCircle, Upload, X, Image as ImageIcon, Package, Dol
 import Image from "next/image"
 import { createProductNew, getCategories, createCategory, updateCategory, deleteCategory, Category, CreateProductData, CreateCategoryData, UpdateCategoryData } from "@/lib/api"
 import { generateProductCodes } from "@/lib/product-codes"
+import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -38,6 +39,7 @@ interface ImageItem {
   file?: File
   preview?: string
   isFile: boolean
+  woocommerceId?: number  // ID en WordPress cuando se sube desde el equipo
 }
 
 export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalProps) {
@@ -48,6 +50,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [images, setImages] = useState<ImageItem[]>([])
   const [imageUrlInput, setImageUrlInput] = useState("")
+  const [uploadingImages, setUploadingImages] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Estados para gestión de categorías
@@ -296,47 +299,43 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     }
   }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files) return
 
     const remainingSlots = 5 - images.length
     if (remainingSlots <= 0) {
       setError("Máximo 5 imágenes permitidas")
+      event.target.value = ""
       return
     }
 
-    Array.from(files).slice(0, remainingSlots).forEach(file => {
-      if (file.type.startsWith('image/')) {
-        // Validar tamaño (máx 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-          setError(`La imagen ${file.name} excede el tamaño máximo de 10MB`)
-          return
-        }
+    const toAdd = Array.from(files)
+      .slice(0, remainingSlots)
+      .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
+    if (!toAdd.length) {
+      setError("Solo se permiten imágenes (jpeg, png, gif, webp)")
+      event.target.value = ""
+      return
+    }
 
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const preview = e.target?.result as string
-          setImages(prev => [...prev, {
-            url: preview, // Usar data URL como preview
-            file,
-            preview,
-            isFile: true
-          }])
-          setError(null)
-        }
-        reader.onerror = () => {
-          setError(`Error al leer el archivo ${file.name}`)
-        }
-        reader.readAsDataURL(file)
-      } else {
-        setError(`El archivo ${file.name} no es una imagen válida`)
-      }
-    })
-
-    // Limpiar el input para permitir seleccionar el mismo archivo de nuevo
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+    setUploadingImages(true)
+    setError(null)
+    try {
+      const uploads = await uploadImagesToWordPress(toAdd)
+      setImages((prev) => [
+        ...prev,
+        ...uploads.map((u) => ({
+          url: u.source_url,
+          isFile: true,
+          woocommerceId: u.id,
+        })),
+      ])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error subiendo imágenes")
+    } finally {
+      setUploadingImages(false)
+      event.target.value = ""
     }
   }
 
@@ -356,16 +355,10 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       // Preparar datos para la API según los requisitos
       // Campos requeridos: code, name, price
       
-      // Convertir imágenes a URLs
-      // Si son archivos, usar data URLs (base64) o mantener URLs normales
-      const imageUrls: string[] = images.map(img => {
-        if (img.isFile && img.file) {
-          // Para archivos, usar la preview (data URL) que ya generamos
-          return img.url
-        }
-        // Para URLs normales, usar directamente
-        return img.url
-      })
+      const imageUrls: string[] = images.map((img) => img.url)
+      const woocommerceImageIds = images
+        .map((img) => img.woocommerceId)
+        .filter((id): id is number => id != null)
 
       const stock = parseInt(formData.stock) || 0
       
@@ -390,6 +383,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         description: formData.description.trim() ? formData.description.trim() : null,
         category_id: formData.category_id ? parseInt(formData.category_id) : null,
         images: imageUrls.length > 0 ? imageUrls : null,
+        woocommerce_image_ids: woocommerceImageIds.length > 0 ? woocommerceImageIds : null,
         stock: stock,
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
@@ -1029,18 +1023,18 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                       type="button"
                       variant="outline"
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={images.length >= 5}
+                      disabled={images.length >= 5 || uploadingImages}
                       className="flex items-center gap-2 h-12 px-6 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200 dark:border-purple-700 dark:bg-gradient-to-r dark:from-slate-700 dark:to-slate-600 dark:hover:from-slate-600 dark:hover:to-slate-500 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Upload className="h-5 w-5" />
-                      Seleccionar Archivos
+                      {uploadingImages ? "Subiendo a WooCommerce…" : "Subir a WooCommerce"}
                     </Button>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Haz clic para seleccionar imágenes desde tu ordenador
+                        Las imágenes se suben a la galería de WooCommerce y se asocian al producto
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        JPG, PNG, WebP • Máx. 10MB por imagen
+                        JPG, PNG, GIF, WebP • Máx. 10MB por imagen
                       </p>
                     </div>
                   </div>
@@ -1048,7 +1042,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
                     onChange={handleFileUpload}
                     className="hidden"
                   />

@@ -445,6 +445,7 @@ export interface Product {
   woocommerce_id?: number  // ID del producto en WooCommerce (si existe)
   woocommerce_slug?: string | null  // Slug del producto en WooCommerce (para URL amigable)
   images?: string[]  // Array de URLs de imágenes del producto
+  woocommerce_image_ids?: number[]  // IDs de medios en WordPress para sincronizar con WooCommerce
   barcode?: string  // Código de barras del producto (para lectoras)
   qr_code?: string  // URL del código QR para consulta pública
 }
@@ -460,6 +461,7 @@ export interface CreateProductData {
   max_stock?: number
   is_active?: boolean
   images?: string[] | null
+  woocommerce_image_ids?: number[] | null  // IDs de medios en WordPress (mismo orden que images)
   barcode?: string | null  // Código de barras del producto
   qr_code?: string | null  // URL del código QR para consulta pública
   sync_to_woocommerce?: boolean  // Sincronizar con WooCommerce al crear
@@ -476,6 +478,7 @@ export interface UpdateProductData {
   max_stock?: number
   is_active?: boolean
   images?: string[] | null
+  woocommerce_image_ids?: number[] | null  // IDs de medios en WordPress (mismo orden que images)
   barcode?: string | null
   qr_code?: string | null
   sync_to_woocommerce?: boolean  // Sincronizar con WooCommerce al actualizar

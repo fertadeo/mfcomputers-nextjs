@@ -18,6 +18,7 @@ import {
   UpdateProductData,
 } from "@/lib/api"
 import { getAllProductImages } from "@/lib/product-image-utils"
+import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { useToast } from "@/contexts/ToastContext"
 
 interface EditProductModalProps {
@@ -47,6 +48,8 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [syncToWooCommerce, setSyncToWooCommerce] = useState(false)
   const [imageUrls, setImageUrls] = useState<string[]>([])
+  const [woocommerceImageIds, setWoocommerceImageIds] = useState<(number | null)[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
   const [imageUrlInput, setImageUrlInput] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -98,14 +101,22 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       setSyncToWooCommerce(false)
       setImageUrlInput("")
       // Imágenes: prioridad a product.images, sino image_url, sino getAllProductImages (incluye WC)
+      let urls: string[] = []
+      let ids: (number | null)[] = []
       if (product.images && product.images.length > 0) {
-        setImageUrls([...product.images])
+        urls = [...product.images]
+        const wcIds = product.woocommerce_image_ids ?? []
+        ids = urls.map((_, i) => (wcIds[i] != null ? wcIds[i]! : null))
       } else if (product.image_url) {
-        setImageUrls([product.image_url])
+        urls = [product.image_url]
+        ids = [null]
       } else {
         const all = getAllProductImages(product)
-        setImageUrls(all.length > 0 ? all : [])
+        urls = all.length > 0 ? all : []
+        ids = urls.map(() => null)
       }
+      setImageUrls(urls)
+      setWoocommerceImageIds(ids)
       setError(null)
     }
   }, [isOpen, product])
@@ -120,6 +131,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         return
       }
       setImageUrls((prev) => [...prev, url])
+      setWoocommerceImageIds((prev) => [...prev, null])
       setImageUrlInput("")
       setError(null)
     } catch {
@@ -129,33 +141,39 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
 
   const removeImage = (index: number) => {
     setImageUrls((prev) => prev.filter((_, i) => i !== index))
+    setWoocommerceImageIds((prev) => prev.filter((_, i) => i !== index))
     setError(null)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files?.length) return
     const remaining = 5 - imageUrls.length
     if (remaining <= 0) {
       setError("Máximo 5 imágenes")
+      e.target.value = ""
       return
     }
-    const toAdd = Array.from(files).slice(0, remaining).filter((f) => f.type.startsWith("image/"))
-    toAdd.forEach((file) => {
-      if (file.size > 10 * 1024 * 1024) {
-        setError(`La imagen ${file.name} supera 10 MB`)
-        return
-      }
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string
-        if (dataUrl) setImageUrls((prev) => [...prev, dataUrl])
-        setError(null)
-      }
-      reader.onerror = () => setError(`Error al leer ${file.name}`)
-      reader.readAsDataURL(file)
-    })
-    e.target.value = ""
+    const toAdd = Array.from(files)
+      .slice(0, remaining)
+      .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
+    if (!toAdd.length) {
+      setError("Solo se permiten imágenes (jpeg, png, gif, webp)")
+      e.target.value = ""
+      return
+    }
+    setUploadingImages(true)
+    setError(null)
+    try {
+      const uploads = await uploadImagesToWordPress(toAdd)
+      setImageUrls((prev) => [...prev, ...uploads.map((u) => u.source_url)])
+      setWoocommerceImageIds((prev) => [...prev, ...uploads.map((u) => u.id)])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error subiendo imágenes")
+    } finally {
+      setUploadingImages(false)
+      e.target.value = ""
+    }
   }
 
   const handleInputChange = (field: keyof FormData, value: string) => {
@@ -221,6 +239,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       const stock = parseInt(formData.stock) || 0
       const isActive = stock > 0 ? formData.is_active === "1" : false
 
+      const wcIds = woocommerceImageIds.filter((id): id is number => id != null)
       const payload: UpdateProductData = {
         code: formData.code.trim(),
         name: formData.name.trim(),
@@ -232,6 +251,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
         images: imageUrls.length > 0 ? imageUrls : null,
+        woocommerce_image_ids: wcIds.length > 0 ? wcIds : undefined,
         sync_to_woocommerce: syncToWooCommerce || undefined,
       }
 
@@ -453,23 +473,23 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                 <span className="font-medium">Imágenes</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Hasta 5 imágenes. Agregá URLs o elegí archivos desde tu equipo (JPG, PNG, WebP · máx. 10 MB c/u).
+                Hasta 5 imágenes. Agregá URLs o subí archivos al equipo (se cargan a la galería de WooCommerce). JPG, PNG, GIF, WebP · máx. 10 MB c/u.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={imageUrls.length >= 5}
+                  disabled={imageUrls.length >= 5 || uploadingImages}
                   className="h-10"
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Seleccionar desde el equipo
+                  {uploadingImages ? "Subiendo…" : "Subir a WooCommerce"}
                 </Button>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
                   multiple
                   className="hidden"
                   onChange={handleFileUpload}
