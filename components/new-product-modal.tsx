@@ -319,24 +319,49 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       return
     }
 
-    setUploadingImages(true)
     setError(null)
+
+    // Vista previa inmediata con FileReader para que se vean las miniaturas al instante
+    const newItems = await Promise.all(
+      toAdd.map(
+        (file) =>
+          new Promise<ImageItem>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) =>
+              resolve({
+                url: (e.target?.result as string) ?? "",
+                preview: (e.target?.result as string) ?? "",
+                file,
+                isFile: true,
+                woocommerceId: undefined,
+              })
+            reader.onerror = () => reject(reader.error)
+            reader.readAsDataURL(file)
+          })
+      )
+    )
+    setImages((prev) => [...prev, ...newItems])
+
+    // Subir a WooCommerce en segundo plano y actualizar URLs cuando termine
+    setUploadingImages(true)
     try {
       const uploads = await uploadImagesToWordPress(toAdd)
-      setImages((prev) => [
-        ...prev,
-        ...uploads.map((u) => ({
-          url: u.source_url,
-          isFile: true,
-          woocommerceId: u.id,
-        })),
-      ])
+      setImages((prev) => {
+        const start = prev.length - uploads.length
+        const next = [...prev]
+        uploads.forEach((u, i) => {
+          if (next[start + i]) {
+            next[start + i] = { ...next[start + i], url: u.source_url, woocommerceId: u.id }
+          }
+        })
+        return next
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error subiendo imágenes")
+      setError(err instanceof Error ? err.message : "Error subiendo imágenes a WooCommerce. Las miniaturas se mantienen; podés guardar con URL manual o reintentar.")
     } finally {
       setUploadingImages(false)
-      event.target.value = ""
     }
+    event.target.value = ""
   }
 
   const removeImage = (index: number) => {
