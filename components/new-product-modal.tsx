@@ -115,7 +115,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       const categoryData: CreateCategoryData = {
         name: categoryFormData.name.trim(),
         description: categoryFormData.description.trim() || undefined,
-        parent_id: categoryFormData.parent_id ? parseInt(categoryFormData.parent_id) : null
+        ...(categoryFormData.parent_id ? { parent_id: parseInt(categoryFormData.parent_id) } : {}),
       }
 
       const newCategory = await createCategory(categoryData)
@@ -148,7 +148,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       const updateData: UpdateCategoryData = {
         name: categoryFormData.name.trim(),
         description: categoryFormData.description.trim() || undefined,
-        parent_id: categoryFormData.parent_id ? parseInt(categoryFormData.parent_id) : null
+        ...(categoryFormData.parent_id ? { parent_id: parseInt(categoryFormData.parent_id) } : {}),
       }
 
       await updateCategory(editingCategory.id, updateData)
