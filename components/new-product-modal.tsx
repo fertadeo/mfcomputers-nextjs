@@ -380,8 +380,14 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       // Preparar datos para la API según los requisitos
       // Campos requeridos: code, name, price
       
-      const imageUrls: string[] = images.map((img) => img.url)
-      const woocommerceImageIds = images
+      // Solo enviar URLs públicas (http/https); nunca data: ni blob: para evitar "No URL Provided" en WooCommerce
+      const validImages = images.filter(
+        (img) =>
+          typeof img.url === "string" &&
+          (img.url.startsWith("http://") || img.url.startsWith("https://"))
+      )
+      const imageUrls: string[] = validImages.map((img) => img.url)
+      const woocommerceImageIds = validImages
         .map((img) => img.woocommerceId)
         .filter((id): id is number => id != null)
 

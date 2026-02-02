@@ -246,7 +246,19 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       const stock = parseInt(formData.stock) || 0
       const isActive = stock > 0 ? formData.is_active === "1" : false
 
-      const wcIds = woocommerceImageIds.filter((id): id is number => id != null)
+      // Solo enviar URLs públicas (http/https); nunca data: ni blob: para evitar "No URL Provided" en WooCommerce
+      const validEntries = imageUrls
+        .map((url, i) => ({ url, id: woocommerceImageIds[i] ?? null }))
+        .filter(
+          (e) =>
+            typeof e.url === "string" &&
+            (e.url.startsWith("http://") || e.url.startsWith("https://"))
+        )
+      const validImageUrls = validEntries.map((e) => e.url)
+      const validWcIds = validEntries
+        .map((e) => e.id)
+        .filter((id): id is number => id != null)
+
       const payload: UpdateProductData = {
         code: formData.code.trim(),
         name: formData.name.trim(),
@@ -257,8 +269,8 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
-        images: imageUrls.length > 0 ? imageUrls : null,
-        woocommerce_image_ids: wcIds.length > 0 ? wcIds : undefined,
+        images: validImageUrls.length > 0 ? validImageUrls : null,
+        woocommerce_image_ids: validWcIds.length > 0 ? validWcIds : undefined,
         sync_to_woocommerce: syncToWooCommerce || undefined,
       }
 
