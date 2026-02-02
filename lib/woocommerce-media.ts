@@ -25,6 +25,11 @@ export async function uploadImagesToWordPress(
   files: File[]
 ): Promise<WordPressMediaUpload[]> {
   if (!API_BASE || !API_KEY) {
+    console.error("[woocommerce-media] Configuración incompleta al subir imagen:", {
+      NEXT_PUBLIC_API_URL: API_BASE ? "definida" : "faltante",
+      NEXT_PUBLIC_API_KEY: API_KEY ? "definida" : "faltante",
+      hint: "En producción, NEXT_PUBLIC_* se inyectan en el build. Revisá las variables en el panel del hosting y volvé a desplegar.",
+    })
     throw new Error(ENV_ERROR_MESSAGE)
   }
   if (!files.length) return []
@@ -46,7 +51,10 @@ export async function uploadImagesToWordPress(
   const formData = new FormData()
   files.forEach((file) => formData.append("files", file))
 
-  const res = await fetch(`${API_BASE}woocommerce/media`, {
+  const uploadUrl = `${API_BASE}woocommerce/media`
+  console.log("[woocommerce-media] Subiendo", files.length, "archivo(s) a WooCommerce…")
+
+  const res = await fetch(uploadUrl, {
     method: "POST",
     headers: {
       "X-API-Key": API_KEY,
@@ -56,14 +64,15 @@ export async function uploadImagesToWordPress(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(
-      (err as { message?: string }).message || "Error subiendo imágenes"
-    )
+    const errMessage = (err as { message?: string }).message || "Error subiendo imágenes"
+    console.error("[woocommerce-media] Error en la subida:", res.status, errMessage, err)
+    throw new Error(errMessage)
   }
 
   const data = (await res.json()) as {
     data?: { uploads?: WordPressMediaUpload[] }
   }
   const uploads = data.data?.uploads ?? []
+  console.log("[woocommerce-media] Subida correcta:", uploads.length, "imagen(es)")
   return uploads
 }
