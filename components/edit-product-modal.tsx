@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { AlertTriangle, Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X } from "lucide-react"
+import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X } from "lucide-react"
 import Image from "next/image"
 import {
   Product,
@@ -43,7 +43,6 @@ interface FormData {
 export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditProductModalProps) {
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [syncToWooCommerce, setSyncToWooCommerce] = useState(false)
@@ -117,7 +116,6 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       }
       setImageUrls(urls)
       setWoocommerceImageIds(ids)
-      setError(null)
     }
   }, [isOpen, product])
 
@@ -127,22 +125,20 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     try {
       new URL(url)
       if (imageUrls.length >= 5) {
-        setError("Máximo 5 imágenes")
+        showToast({ message: "Máximo 5 imágenes", type: "error" })
         return
       }
       setImageUrls((prev) => [...prev, url])
       setWoocommerceImageIds((prev) => [...prev, null])
       setImageUrlInput("")
-      setError(null)
     } catch {
-      setError("URL de imagen no válida")
+      showToast({ message: "URL de imagen no válida", type: "error" })
     }
   }
 
   const removeImage = (index: number) => {
     setImageUrls((prev) => prev.filter((_, i) => i !== index))
     setWoocommerceImageIds((prev) => prev.filter((_, i) => i !== index))
-    setError(null)
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,7 +146,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     if (!files?.length) return
     const remaining = 5 - imageUrls.length
     if (remaining <= 0) {
-      setError("Máximo 5 imágenes")
+      showToast({ message: "Máximo 5 imágenes", type: "error" })
       e.target.value = ""
       return
     }
@@ -158,18 +154,51 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       .slice(0, remaining)
       .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
     if (!toAdd.length) {
-      setError("Solo se permiten imágenes (jpeg, png, gif, webp)")
+      showToast({ message: "Solo se permiten imágenes (jpeg, png, gif, webp)", type: "error" })
       e.target.value = ""
       return
     }
+
+    // Vista previa inmediata para que se vean las miniaturas al instante
+    const newUrls: string[] = []
+    const newIds: (number | null)[] = []
+    for (const file of toAdd) {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve((reader.result as string) ?? "")
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(file)
+      })
+      newUrls.push(dataUrl)
+      newIds.push(null)
+    }
+    setImageUrls((prev) => [...prev, ...newUrls])
+    setWoocommerceImageIds((prev) => [...prev, ...newIds])
+
     setUploadingImages(true)
-    setError(null)
     try {
       const uploads = await uploadImagesToWordPress(toAdd)
-      setImageUrls((prev) => [...prev, ...uploads.map((u) => u.source_url)])
-      setWoocommerceImageIds((prev) => [...prev, ...uploads.map((u) => u.id)])
+      setImageUrls((prev) => {
+        const start = prev.length - uploads.length
+        const next = [...prev]
+        uploads.forEach((u, i) => {
+          if (next[start + i] !== undefined) next[start + i] = u.source_url
+        })
+        return next
+      })
+      setWoocommerceImageIds((prev) => {
+        const start = prev.length - uploads.length
+        const next = [...prev]
+        uploads.forEach((u, i) => {
+          if (next[start + i] !== undefined) next[start + i] = u.id
+        })
+        return next
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error subiendo imágenes")
+      showToast({
+        message: err instanceof Error ? err.message : "Error subiendo imágenes",
+        type: "error",
+      })
     } finally {
       setUploadingImages(false)
       e.target.value = ""
@@ -184,56 +213,34 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         setFormData((prev) => ({ ...prev, is_active: "0" }))
       }
     }
-    setError(null)
   }
 
-  const validateForm = (): boolean => {
-    if (!formData.code.trim()) {
-      setError("El código del producto es obligatorio")
-      return false
-    }
-    if (formData.code.trim().length > 20) {
-      setError("El código no puede exceder 20 caracteres")
-      return false
-    }
-    if (!formData.name.trim()) {
-      setError("El nombre del producto es obligatorio")
-      return false
-    }
-    if (formData.name.trim().length > 100) {
-      setError("El nombre no puede exceder 100 caracteres")
-      return false
-    }
+  const validateForm = (): string | null => {
+    if (!formData.code.trim()) return "El código del producto es obligatorio"
+    if (formData.code.trim().length > 20) return "El código no puede exceder 20 caracteres"
+    if (!formData.name.trim()) return "El nombre del producto es obligatorio"
+    if (formData.name.trim().length > 100) return "El nombre no puede exceder 100 caracteres"
     const price = parseFloat(formData.price)
-    if (isNaN(price) || price < 0) {
-      setError("El precio debe ser un número mayor o igual a 0")
-      return false
-    }
+    if (isNaN(price) || price < 0) return "El precio debe ser un número mayor o igual a 0"
     const stock = parseInt(formData.stock) || 0
-    if (stock < 0) {
-      setError("El stock no puede ser negativo")
-      return false
-    }
+    if (stock < 0) return "El stock no puede ser negativo"
     const minStock = parseInt(formData.min_stock) || 0
-    if (minStock < 0) {
-      setError("El stock mínimo no puede ser negativo")
-      return false
-    }
+    if (minStock < 0) return "El stock mínimo no puede ser negativo"
     const maxStock = parseInt(formData.max_stock) || 1000
-    if (maxStock < 0) {
-      setError("El stock máximo no puede ser negativo")
-      return false
-    }
-    return true
+    if (maxStock < 0) return "El stock máximo no puede ser negativo"
+    return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!product) return
-    if (!validateForm()) return
+    const validationError = validateForm()
+    if (validationError) {
+      showToast({ message: validationError, type: "error" })
+      return
+    }
 
     setLoading(true)
-    setError(null)
 
     try {
       const stock = parseInt(formData.stock) || 0
@@ -262,17 +269,17 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       onClose()
     } catch (err) {
       console.error("Error al actualizar producto:", err)
-      setError(err instanceof Error ? err.message : "Error al actualizar el producto")
+      showToast({
+        message: err instanceof Error ? err.message : "Error al actualizar el producto",
+        type: "error",
+      })
     } finally {
       setLoading(false)
     }
   }
 
   const handleClose = () => {
-    if (!loading) {
-      setError(null)
-      onClose()
-    }
+    if (!loading) onClose()
   }
 
   if (!product) return null
@@ -291,13 +298,6 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="flex items-center gap-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
-
           <Card>
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b">

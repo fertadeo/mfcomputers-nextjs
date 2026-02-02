@@ -17,13 +17,15 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
  * Límite: 10 archivos por request, 10 MB por archivo. Formatos: jpeg, png, gif, webp.
  * Auth: header X-API-Key.
  */
+const ENV_ERROR_MESSAGE =
+  "No se puede subir a WooCommerce: faltan NEXT_PUBLIC_API_URL o NEXT_PUBLIC_API_KEY. " +
+  "En producción deben estar en el panel de tu hosting (ej. Vercel) y hay que volver a desplegar para que se incluyan en el build."
+
 export async function uploadImagesToWordPress(
   files: File[]
 ): Promise<WordPressMediaUpload[]> {
   if (!API_BASE || !API_KEY) {
-    throw new Error(
-      "Configuración de API incompleta (NEXT_PUBLIC_API_URL o NEXT_PUBLIC_API_KEY faltante)"
-    )
+    throw new Error(ENV_ERROR_MESSAGE)
   }
   if (!files.length) return []
   if (files.length > MAX_FILES) {

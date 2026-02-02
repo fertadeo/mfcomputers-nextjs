@@ -628,9 +628,7 @@ export async function getCategories(): Promise<Category[]> {
 
     const response = await fetch(fullUrl, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getCategoryHeaders(),
     })
 
     console.log('📥 [API] Respuesta de categorías recibida:', {
@@ -681,25 +679,23 @@ export interface Category {
   updated_at: string
 }
 
-// Función helper para obtener headers con API Key
+// Función helper para obtener headers con API Key (categorías y endpoints que requieren X-API-Key)
 function getCategoryHeaders(): HeadersInit {
   const token = getAuthToken();
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
-  
-  // Intentar obtener API Key del localStorage, si no existe usar token Bearer
-  if (typeof window !== 'undefined') {
-    const apiKey = localStorage.getItem('apiKey');
-    if (apiKey) {
-      headers['X-API-Key'] = apiKey;
-    } else if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+
+  const apiKey =
+    (typeof window !== 'undefined' && localStorage.getItem('apiKey')) ||
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_KEY);
+
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
   } else if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
+
   return headers;
 }
 

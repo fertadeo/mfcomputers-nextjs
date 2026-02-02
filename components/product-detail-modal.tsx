@@ -9,6 +9,7 @@ import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as 
 import Image from "next/image"
 import { Product, updateProduct, syncProductToWooCommerce, getProductById } from "@/lib/api"
 import { getAllProductImages } from "@/lib/product-image-utils"
+import { useToast } from "@/contexts/ToastContext"
 import QRCodeSVG from "react-qr-code"
 import JsBarcode from "jsbarcode"
 import { generateProductCodes } from "@/lib/product-codes"
@@ -23,6 +24,7 @@ interface ProductDetailModalProps {
 }
 
 export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit, onSyncSuccess }: ProductDetailModalProps) {
+  const { showToast } = useToast()
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isImageLoading, setIsImageLoading] = useState(true)
   const [isGeneratingCodes, setIsGeneratingCodes] = useState(false)
@@ -92,9 +94,13 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
       const updated = await getProductById(displayedProduct.id)
       setLocalProduct(updated)
       onSyncSuccess?.()
+      showToast({ message: "Producto sincronizado con WooCommerce correctamente.", type: "success" })
     } catch (err) {
       console.error("Error al sincronizar con WooCommerce:", err)
-      alert(err instanceof Error ? err.message : "Error al sincronizar con WooCommerce")
+      showToast({
+        message: err instanceof Error ? err.message : "Error al sincronizar con WooCommerce",
+        type: "error",
+      })
     } finally {
       setIsSyncingWooCommerce(false)
     }
