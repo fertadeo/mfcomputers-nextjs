@@ -359,9 +359,9 @@ export default function ProductosPage() {
                 <Package className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{productStats?.total_products || totalProducts || 0}</div>
+                <div className="text-2xl font-bold">{productStats != null ? productStats.total_products : 0}</div>
                 <p className="text-xs text-muted-foreground">
-                  {productStats?.active_products || products?.filter(p => p.is_active)?.length || 0} activos
+                  {productStats != null ? `${productStats.active_products} activos` : '0 activos'}
                 </p>
               </CardContent>
             </Card>
