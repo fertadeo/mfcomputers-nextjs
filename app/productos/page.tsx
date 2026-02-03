@@ -399,11 +399,15 @@ export default function ProductosPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  ${productStats?.total_stock_value 
-                    ? parseFloat(productStats.total_stock_value.replace(/[^\d.-]/g, '') || '0').toLocaleString('es-AR', { maximumFractionDigits: 0 })
-                    : products?.reduce((sum, p) => sum + (p.price * p.stock), 0)?.toLocaleString('es-AR', { maximumFractionDigits: 0 }) || '0'}
+                  ${productStats != null && productStats.total_stock_value != null
+                    ? parseFloat(String(productStats.total_stock_value).replace(/[^\d.-]/g, '') || '0').toLocaleString('es-AR', { maximumFractionDigits: 0 })
+                    : '0'}
                 </div>
-                <p className="text-xs text-muted-foreground">En inventario</p>
+                <p className="text-xs text-muted-foreground">
+                  {productStats != null && productStats.total_stock_quantity != null
+                    ? `${productStats.total_stock_quantity.toLocaleString('es-AR')} unidades en inventario`
+                    : 'En inventario'}
+                </p>
               </CardContent>
             </Card>
           </div>

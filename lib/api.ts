@@ -412,7 +412,8 @@ export async function updateCliente(id: number, clienteData: {
 export interface ProductStats {
   total_products: number;
   active_products: string;
-  total_stock_value: string;
+  total_stock_quantity: number;   // SUM(stock) — total de unidades en stock
+  total_stock_value: string;      // SUM(stock * price) — valor total del inventario
   average_price: string;
   low_stock_count: number;
   out_of_stock_count: number;
@@ -930,6 +931,7 @@ export async function getProductStats(): Promise<ProductStats | null> {
       console.log('📊 [PRODUCT_STATS] Estadísticas extraídas:', {
         totalProducts: responseData.data.total_products,
         activeProducts: responseData.data.active_products,
+        totalStockQuantity: responseData.data.total_stock_quantity,
         totalStockValue: responseData.data.total_stock_value,
         averagePrice: responseData.data.average_price,
         lowStockCount: responseData.data.low_stock_count,
