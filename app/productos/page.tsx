@@ -582,6 +582,18 @@ export default function ProductosPage() {
                 </div>
               </div>
 
+              {!loading && (
+                <p className="text-sm text-muted-foreground mb-3">
+                  {totalProducts > limit ? (
+                    <>
+                      Mostrando {(currentPage - 1) * limit + 1} a {Math.min(currentPage * limit, totalProducts)} de {totalProducts} resultados
+                    </>
+                  ) : (
+                    <>Mostrando {totalProducts} resultado{totalProducts !== 1 ? 's' : ''}</>
+                  )}
+                </p>
+              )}
+
               {loading ? (
                 viewMode === "grid" ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
