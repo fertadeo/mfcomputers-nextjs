@@ -76,7 +76,8 @@ export default function ProductosPage() {
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all")
   const [filterStock, setFilterStock] = useState<"all" | "low" | "out">("all")
-  const [sortBy, setSortBy] = useState<"name" | "code" | "price" | "stock" | "category">("name")
+  const [filterDateModification, setFilterDateModification] = useState<"all" | "last7" | "last30" | "last90">("all")
+  const [sortBy, setSortBy] = useState<"name" | "code" | "price" | "stock" | "category" | "updated_at">("name")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const limit = 50 // Productos por página
   const [linkSummary, setLinkSummary] = useState<LinkWooCommerceIdsSummary | null>(null)
@@ -94,7 +95,7 @@ export default function ProductosPage() {
     const savedView = localStorage.getItem(STORAGE_KEYS.viewMode)
     if (savedView === "grid") setViewMode("grid")
     const savedSortBy = localStorage.getItem(STORAGE_KEYS.sortBy)
-    if (savedSortBy && ["name", "code", "price", "stock", "category"].includes(savedSortBy)) {
+    if (savedSortBy && ["name", "code", "price", "stock", "category", "updated_at"].includes(savedSortBy)) {
       setSortBy(savedSortBy as typeof sortBy)
     }
     const savedSortOrder = localStorage.getItem(STORAGE_KEYS.sortOrder)
@@ -142,7 +143,7 @@ export default function ProductosPage() {
   // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros, orden o datos
   useEffect(() => {
     updateDisplayedProducts()
-  }, [currentPage, searchTerm, allProducts, filterCategory, filterStatus, filterStock, sortBy, sortOrder])
+  }, [currentPage, searchTerm, allProducts, filterCategory, filterStatus, filterStock, filterDateModification, sortBy, sortOrder])
 
   const loadProductStats = async () => {
     try {
@@ -257,6 +258,17 @@ export default function ProductosPage() {
       productsToShow = productsToShow.filter((p) => p.stock === 0)
     }
 
+    // Filtro por fecha de modificación
+    if (filterDateModification !== "all" && productsToShow.length > 0) {
+      const now = Date.now()
+      const daysMs = { last7: 7 * 24 * 60 * 60 * 1000, last30: 30 * 24 * 60 * 60 * 1000, last90: 90 * 24 * 60 * 60 * 1000 }
+      const since = now - daysMs[filterDateModification]
+      productsToShow = productsToShow.filter((p) => {
+        const updated = p.updated_at ? new Date(p.updated_at).getTime() : 0
+        return updated >= since
+      })
+    }
+
     // Aplicar ordenamiento
     productsToShow = [...productsToShow].sort((a, b) => {
       let cmp = 0
@@ -275,6 +287,9 @@ export default function ProductosPage() {
           break
         case "category":
           cmp = (a.category_name || "").localeCompare(b.category_name || "", "es")
+          break
+        case "updated_at":
+          cmp = (new Date(a.updated_at || 0).getTime()) - (new Date(b.updated_at || 0).getTime())
           break
         default:
           cmp = 0
@@ -337,12 +352,13 @@ export default function ProductosPage() {
   const canLinkWooCommerce = hasAnyOfRoles(['gerencia', 'admin'])
 
   const hasActiveFilters =
-    filterCategory !== "all" || filterStatus !== "all" || filterStock !== "all"
+    filterCategory !== "all" || filterStatus !== "all" || filterStock !== "all" || filterDateModification !== "all"
 
   const clearFilters = () => {
     setFilterCategory("all")
     setFilterStatus("all")
     setFilterStock("all")
+    setFilterDateModification("all")
     setCurrentPage(1)
   }
 
@@ -576,6 +592,23 @@ export default function ProductosPage() {
                       <SelectItem value="out">Sin stock</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select
+                    value={filterDateModification}
+                    onValueChange={(v: "all" | "last7" | "last30" | "last90") => {
+                      setFilterDateModification(v)
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Modificado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Cualquier fecha</SelectItem>
+                      <SelectItem value="last7">Últimos 7 días</SelectItem>
+                      <SelectItem value="last30">Últimos 30 días</SelectItem>
+                      <SelectItem value="last90">Últimos 90 días</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <div className="flex items-center gap-1 border-l pl-3 ml-1">
                     <Select
                       value={sortBy}
@@ -591,6 +624,7 @@ export default function ProductosPage() {
                         <SelectItem value="price">Precio</SelectItem>
                         <SelectItem value="stock">Stock</SelectItem>
                         <SelectItem value="category">Categoría</SelectItem>
+                        <SelectItem value="updated_at">Fecha de modificación</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button
