@@ -99,17 +99,20 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       })
       setSyncToWooCommerce(false)
       setImageUrlInput("")
-      // Imágenes: prioridad a product.images, sino image_url, sino getAllProductImages (incluye WC)
+      // Imágenes: usar product.images si existe (incluso si es []). Solo usar otras fuentes si images no existe (null/undefined).
       let urls: string[] = []
       let ids: (number | null)[] = []
-      if (product.images && product.images.length > 0) {
+      if (product.images !== null && product.images !== undefined) {
+        // product.images existe (puede ser [] o tener elementos) - usar ese valor directamente
         urls = [...product.images]
         const wcIds = product.woocommerce_image_ids ?? []
         ids = urls.map((_, i) => (wcIds[i] != null ? wcIds[i]! : null))
       } else if (product.image_url) {
+        // Solo si images no existe, usar image_url como fallback
         urls = [product.image_url]
         ids = [null]
       } else {
+        // Solo si images no existe y no hay image_url, intentar getAllProductImages
         const all = getAllProductImages(product)
         urls = all.length > 0 ? all : []
         ids = urls.map(() => null)
