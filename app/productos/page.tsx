@@ -9,13 +9,22 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Pagination } from "@/components/ui/pagination"
 import { useRole } from "@/app/hooks/useRole"
-import { getProducts, deleteProduct, getProductStats, getCategories, ProductStats, Category } from "@/lib/api"
+import {
+  getProducts,
+  deleteProduct,
+  getProductStats,
+  getCategories,
+  type ProductStats,
+  type Category,
+  type Product,
+  type LinkWooCommerceIdsSummary,
+} from "@/lib/api"
 import { useState, useEffect } from "react"
-import { Product } from "@/lib/api"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
 import { EditProductModal } from "@/components/edit-product-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
+import { LinkWooCommerceIdsButton, LinkWooCommerceSummary } from "@/components/products/link-woocommerce-ids-button"
 import Image from "next/image"
 import {
   Select,
@@ -47,7 +56,7 @@ import {
 } from "lucide-react"
 
 export default function ProductosPage() {
-  const { canViewSales, canViewLogistics, canViewFinance, isAdmin } = useRole()
+  const { hasAnyOfRoles, isAdmin } = useRole()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +79,8 @@ export default function ProductosPage() {
   const [sortBy, setSortBy] = useState<"name" | "code" | "price" | "stock" | "category">("name")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const limit = 50 // Productos por página
+  const [linkSummary, setLinkSummary] = useState<LinkWooCommerceIdsSummary | null>(null)
+  const [lastLinkAt, setLastLinkAt] = useState<string | null>(null)
 
   const STORAGE_KEYS = {
     viewMode: "productos-view-mode",
@@ -314,8 +325,16 @@ export default function ProductosPage() {
     setSelectedProduct(null)
   }
 
+  const handleLinkCompleted = async (summary: LinkWooCommerceIdsSummary) => {
+    setLinkSummary(summary)
+    setLastLinkAt(new Date().toISOString())
+    await loadProducts()
+    await loadProductStats()
+  }
+
   // Verificar si el usuario puede realizar acciones de administración
   const canManageProducts = isAdmin()
+  const canLinkWooCommerce = hasAnyOfRoles(['gerencia', 'admin'])
 
   const hasActiveFilters =
     filterCategory !== "all" || filterStatus !== "all" || filterStock !== "all"
@@ -339,15 +358,27 @@ export default function ProductosPage() {
                 Administra el catálogo de productos del sistema
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Exportar
-              </Button>
-              <Button onClick={() => setIsNewProductModalOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nuevo Producto
-              </Button>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2 md:justify-end">
+                {canLinkWooCommerce && (
+                  <LinkWooCommerceIdsButton
+                    onCompleted={handleLinkCompleted}
+                    disabled={loading}
+                    showSummary={false}
+                  />
+                )}
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar
+                </Button>
+                <Button onClick={() => setIsNewProductModalOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuevo Producto
+                </Button>
+              </div>
+              {canLinkWooCommerce && linkSummary && (
+                <LinkWooCommerceSummary summary={linkSummary} lastRunAt={lastLinkAt} />
+              )}
             </div>
           </div>
 

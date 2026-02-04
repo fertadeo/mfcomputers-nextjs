@@ -205,6 +205,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     }
   }
 
+  // Al enfocar un input numérico con valor "0", seleccionar todo para que al escribir se reemplace (no "01")
+  const handleNumericFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    const v = e.target.value
+    if (v === "0" || v === "0.00") e.target.select()
+  }
+
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (field === "stock") {
@@ -400,6 +406,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                       min="0"
                       value={formData.price}
                       onChange={(e) => handleInputChange("price", e.target.value)}
+                      onFocus={handleNumericFocus}
                       className="h-10 pl-9"
                     />
                   </div>
@@ -412,6 +419,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     min="0"
                     value={formData.stock}
                     onChange={(e) => handleInputChange("stock", e.target.value)}
+                    onFocus={handleNumericFocus}
                     className="h-10"
                   />
                 </div>
@@ -423,6 +431,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     min="0"
                     value={formData.min_stock}
                     onChange={(e) => handleInputChange("min_stock", e.target.value)}
+                    onFocus={handleNumericFocus}
                     className="h-10"
                   />
                 </div>
@@ -434,6 +443,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     min="0"
                     value={formData.max_stock}
                     onChange={(e) => handleInputChange("max_stock", e.target.value)}
+                    onFocus={handleNumericFocus}
                     className="h-10"
                   />
                 </div>

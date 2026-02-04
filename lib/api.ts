@@ -1844,6 +1844,75 @@ export async function syncProductToWooCommerce(id: number): Promise<SyncToWooCom
   }
 }
 
+export interface LinkWooCommerceIdsSummary {
+  linked: number
+  already_linked: number
+  not_found_in_erp: number
+  total_processed: number
+  errors: string[]
+}
+
+interface LinkWooCommerceIdsApiResponse {
+  success: boolean
+  message: string
+  data?: LinkWooCommerceIdsSummary
+  error?: string
+  timestamp?: string
+}
+
+export async function linkWooCommerceIds(): Promise<LinkWooCommerceIdsSummary> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/link-woocommerce-ids`
+    const token = getAccessToken()
+
+    if (!token) {
+      console.error('❌ [PRODUCTS] linkWooCommerceIds sin token disponible')
+      throw new Error('Sesión no válida. Iniciá sesión nuevamente para vincular productos.')
+    }
+
+    console.log('🔗 [PRODUCTS] Iniciando vinculación masiva con WooCommerce')
+
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    const responseData: LinkWooCommerceIdsApiResponse = await response.json()
+
+    if (!response.ok) {
+      console.error('❌ [PRODUCTS] Error HTTP al vincular con WooCommerce:', {
+        status: response.status,
+        responseData
+      })
+
+      if (response.status === 401) {
+        throw new Error(responseData.message || 'Token de autorización inválido')
+      }
+
+      if (response.status === 403) {
+        throw new Error(responseData.message || 'No tenés permisos para vincular productos con WooCommerce')
+      }
+
+      throw new Error(responseData.message || responseData.error || `Error al vincular productos: ${response.status}`)
+    }
+
+    if (!responseData.success || !responseData.data) {
+      console.error('❌ [PRODUCTS] Respuesta inesperada al vincular con WooCommerce:', responseData)
+      throw new Error(responseData.message || 'No se pudo completar la vinculación con WooCommerce')
+    }
+
+    console.log('✅ [PRODUCTS] Vinculación con WooCommerce completada:', responseData.data)
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [PRODUCTS] Error al vincular productos con WooCommerce:', error)
+    throw error instanceof Error ? error : new Error('Error desconocido al vincular productos con WooCommerce')
+  }
+}
+
 /**
  * Actualiza el stock de un producto
  * Roles permitidos: gerencia, logistica

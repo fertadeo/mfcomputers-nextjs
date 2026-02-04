@@ -262,6 +262,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     return true
   }
 
+  // Al enfocar un input numérico con valor "0", seleccionar todo para que al escribir se reemplace (no "01")
+  const handleNumericFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    const v = e.target.value
+    if (v === "0" || v === "0.00") e.target.select()
+  }
+
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value }
@@ -915,6 +921,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         min="0"
                         value={formData.price}
                         onChange={(e) => handleInputChange('price', e.target.value)}
+                        onFocus={handleNumericFocus}
                         placeholder="0.00"
                         className="h-11 pl-9 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
                         required
@@ -933,6 +940,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         min="0"
                         value={formData.stock}
                         onChange={(e) => handleInputChange('stock', e.target.value)}
+                        onFocus={handleNumericFocus}
                         placeholder="0"
                         className="flex-1 h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
                       />
@@ -959,6 +967,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         min="0"
                         value={formData.min_stock}
                         onChange={(e) => handleInputChange('min_stock', e.target.value)}
+                        onFocus={handleNumericFocus}
                         placeholder="0"
                         className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
                       />
@@ -973,6 +982,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         min="0"
                         value={formData.max_stock}
                         onChange={(e) => handleInputChange('max_stock', e.target.value)}
+                        onFocus={handleNumericFocus}
                         placeholder="0"
                         className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-turquoise-500 focus:ring-turquoise-500"
                       />
