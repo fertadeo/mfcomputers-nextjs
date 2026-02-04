@@ -461,7 +461,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                 )}
               </div>
 
-              {product.woocommerce_id != null && (
+              {product.woocommerce_id != null ? (
                 <div className="flex items-center space-x-2 pt-2">
                   <input
                     type="checkbox"
@@ -474,6 +474,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     Sincronizar cambios con WooCommerce
                   </Label>
                 </div>
+              ) : (
+                <p className="text-sm text-amber-600 dark:text-amber-500 pt-2">
+                  Este producto aún no está sincronizado con WooCommerce. Sincronizalo desde el detalle del producto para poder enviar cambios.
+                </p>
               )}
             </CardContent>
           </Card>
