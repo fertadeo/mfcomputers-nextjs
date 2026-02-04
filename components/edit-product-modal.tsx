@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X } from "lucide-react"
+import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X, ExternalLink } from "lucide-react"
 import Image from "next/image"
 import {
   Product,
@@ -299,6 +299,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
 
   if (!product) return null
 
+  const wcBaseUrl = (process.env.NEXT_PUBLIC_WOOCOMMERCE_URL || "https://mfcomputers.com.ar").replace(/\/+$/, "")
+  const wcSlug = product.woocommerce_slug?.replace(/^\/+|\/+$/g, "").trim()
+  const wcProductUrl = wcSlug ? `${wcBaseUrl}/${wcSlug}` : null
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -307,9 +311,25 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             <Edit className="h-5 w-5" />
             Editar producto
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            {product.name}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">
+              {product.name}
+            </p>
+            {wcProductUrl && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                asChild
+              >
+                <a href={wcProductUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Ver producto en WC
+                </a>
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
