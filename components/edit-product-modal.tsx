@@ -252,18 +252,13 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       const stock = parseInt(formData.stock) || 0
       const isActive = stock > 0 ? formData.is_active === "1" : false
 
-      // Solo enviar URLs públicas (http/https); nunca data: ni blob: para evitar "No URL Provided" en WooCommerce
-      const validEntries = imageUrls
-        .map((url, i) => ({ url, id: woocommerceImageIds[i] ?? null }))
-        .filter(
-          (e) =>
-            typeof e.url === "string" &&
-            (e.url.startsWith("http://") || e.url.startsWith("https://"))
-        )
-      const validImageUrls = validEntries.map((e) => e.url)
-      const validWcIds = validEntries
-        .map((e) => e.id)
-        .filter((id): id is number => id != null)
+      // Lista final de imágenes: solo URLs públicas (http/https). La API interpreta images como reemplazo.
+      // No enviar woocommerce_image_ids; la API lo gestiona internamente al actualizar images.
+      const validImageUrls = imageUrls.filter(
+        (url) =>
+          typeof url === "string" &&
+          (url.startsWith("http://") || url.startsWith("https://"))
+      )
 
       const payload: UpdateProductData = {
         code: formData.code.trim(),
@@ -275,8 +270,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
         is_active: isActive,
-        images: validImageUrls.length > 0 ? validImageUrls : null,
-        woocommerce_image_ids: validWcIds.length > 0 ? validWcIds : undefined,
+        images: validImageUrls,
         sync_to_woocommerce: syncToWooCommerce || undefined,
       }
 

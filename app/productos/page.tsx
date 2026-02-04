@@ -960,7 +960,10 @@ export default function ProductosPage() {
           product={productToEdit}
           isOpen={!!productToEdit}
           onClose={() => setProductToEdit(null)}
-          onSuccess={() => {
+          onSuccess={(updated) => {
+            if (updated && selectedProduct?.id === updated.id) {
+              setSelectedProduct(updated)
+            }
             setProductToEdit(null)
             loadProducts()
             loadProductStats()
