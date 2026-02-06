@@ -762,7 +762,7 @@ export default function ProductosPage() {
                         </p>
                         <div className="flex items-center justify-between mt-2">
                           <span className="font-semibold text-turquoise-600">
-                            ${product.price.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                            ${Math.round(Number(product.price)).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
                           <Badge
                             variant={(product.is_active && product.stock > 0) ? "default" : "secondary"}
@@ -860,7 +860,7 @@ export default function ProductosPage() {
                             <span className="font-medium truncate">{product.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell>${product.price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</TableCell>
+                        <TableCell>${Math.round(Number(product.price)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{product.stock}</span>

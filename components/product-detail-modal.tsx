@@ -491,7 +491,7 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">Precio:</span>
-                <span className="font-semibold text-lg">${Math.round(displayedProduct.price).toLocaleString('es-ES')}</span>
+                <span className="font-semibold text-lg">${Math.round(Number(displayedProduct.price)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
               </div>
 
               <div className="flex items-center gap-2">
