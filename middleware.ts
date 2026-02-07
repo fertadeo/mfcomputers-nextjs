@@ -16,7 +16,8 @@ const protectedRoutes = [
   '/bancos',
   '/facturacion',
   '/caja',
-  '/configuracion'
+  '/configuracion',
+  '/contabilidad'
 ]
 
 // Rutas que solo deben ser accesibles si NO estás autenticado

@@ -64,6 +64,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     is_active: "1",
   })
 
+  // Parsea precio en formato es-AR (ej. "543.020" o "1.250.000") a número
+  const parsePrecioFormato = (valor: string): number => {
+    const limpio = valor.replace(/\./g, "").replace(",", ".")
+    return Number(limpio) || 0
+  }
+
   const loadCategories = async () => {
     setLoadingCategories(true)
     try {
@@ -91,7 +97,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         name: product.name ?? "",
         description: product.description ?? "",
         category_id: product.category_id != null ? String(product.category_id) : "",
-        price: String(product.price ?? 0),
+        price: Math.round(Number(product.price ?? 0)).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
         stock: String(product.stock ?? 0),
         min_stock: String(product.min_stock ?? 0),
         max_stock: String(product.max_stock ?? 1000),
@@ -229,7 +235,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     if (formData.code.trim().length > 20) return "El código no puede exceder 20 caracteres"
     if (!formData.name.trim()) return "El nombre del producto es obligatorio"
     if (formData.name.trim().length > 100) return "El nombre no puede exceder 100 caracteres"
-    const price = parseFloat(formData.price)
+    const price = parsePrecioFormato(formData.price)
     if (isNaN(price) || price < 0) return "El precio debe ser un número mayor o igual a 0"
     const stock = parseInt(formData.stock) || 0
     if (stock < 0) return "El stock no puede ser negativo"
@@ -268,7 +274,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         category_id: formData.category_id ? parseInt(formData.category_id) : null,
-        price: parseFloat(formData.price),
+        price: parsePrecioFormato(formData.price),
         stock,
         min_stock: parseInt(formData.min_stock) || 0,
         max_stock: parseInt(formData.max_stock) || 1000,
@@ -418,9 +424,9 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="edit-price"
-                      type="number"
-                      step="0.01"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ej: 1.250.000"
                       value={formData.price}
                       onChange={(e) => handleInputChange("price", e.target.value)}
                       onFocus={handleNumericFocus}

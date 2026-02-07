@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { AlertTriangle, CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap, Plus, Edit, Trash2, Save } from "lucide-react"
+import { CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap, Plus, AlertTriangle } from "lucide-react"
 import Image from "next/image"
-import { createProductNew, getCategories, createCategory, updateCategory, deleteCategory, Category, CreateProductData, CreateCategoryData, UpdateCategoryData } from "@/lib/api"
+import { createProductNew, getCategories, Category, CreateProductData } from "@/lib/api"
 import { generateProductCodes } from "@/lib/product-codes"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
+import { CategoryManagerPanel } from "@/components/category-manager-panel"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -53,17 +54,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const [uploadingImages, setUploadingImages] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // Estados para gestión de categorías
   const [showCategoryManager, setShowCategoryManager] = useState(false)
-  const [categoryFormData, setCategoryFormData] = useState<{ name: string; description: string; parent_id: string }>({
-    name: "",
-    description: "",
-    parent_id: ""
-  })
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
-  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
-  const [categoryError, setCategoryError] = useState<string | null>(null)
-  const [categoryLoading, setCategoryLoading] = useState(false)
 
   const [formData, setFormData] = useState<FormData>({
     code: "",
@@ -100,116 +91,6 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       loadCategories()
     }
   }, [isOpen])
-
-  // Funciones para gestión de categorías
-  const handleCreateCategory = async () => {
-    if (!categoryFormData.name.trim()) {
-      setCategoryError("El nombre de la categoría es obligatorio")
-      return
-    }
-
-    setCategoryLoading(true)
-    setCategoryError(null)
-
-    try {
-      const categoryData: CreateCategoryData = {
-        name: categoryFormData.name.trim(),
-        description: categoryFormData.description.trim() || undefined,
-        ...(categoryFormData.parent_id ? { parent_id: parseInt(categoryFormData.parent_id) } : {}),
-      }
-
-      const newCategory = await createCategory(categoryData)
-      await loadCategories() // Recargar categorías
-      
-      // Seleccionar la nueva categoría automáticamente
-      setFormData(prev => ({ ...prev, category_id: newCategory.id.toString() }))
-      
-      // Limpiar formulario
-      setCategoryFormData({ name: "", description: "", parent_id: "" })
-      setShowCategoryManager(false)
-    } catch (err) {
-      setCategoryError(err instanceof Error ? err.message : "Error al crear la categoría")
-    } finally {
-      setCategoryLoading(false)
-    }
-  }
-
-  const handleUpdateCategory = async () => {
-    if (!editingCategory) return
-    if (!categoryFormData.name.trim()) {
-      setCategoryError("El nombre de la categoría es obligatorio")
-      return
-    }
-
-    setCategoryLoading(true)
-    setCategoryError(null)
-
-    try {
-      const updateData: UpdateCategoryData = {
-        name: categoryFormData.name.trim(),
-        description: categoryFormData.description.trim() || undefined,
-        ...(categoryFormData.parent_id ? { parent_id: parseInt(categoryFormData.parent_id) } : {}),
-      }
-
-      await updateCategory(editingCategory.id, updateData)
-      await loadCategories() // Recargar categorías
-      
-      // Limpiar formulario
-      setCategoryFormData({ name: "", description: "", parent_id: "" })
-      setEditingCategory(null)
-      setShowCategoryManager(false)
-    } catch (err) {
-      setCategoryError(err instanceof Error ? err.message : "Error al actualizar la categoría")
-    } finally {
-      setCategoryLoading(false)
-    }
-  }
-
-  const handleDeleteCategory = async () => {
-    if (!deletingCategory) return
-
-    setCategoryLoading(true)
-    setCategoryError(null)
-
-    try {
-      await deleteCategory(deletingCategory.id)
-      await loadCategories() // Recargar categorías
-      
-      // Si la categoría eliminada estaba seleccionada, limpiar la selección
-      if (formData.category_id === deletingCategory.id.toString()) {
-        setFormData(prev => ({ ...prev, category_id: "" }))
-      }
-      
-      setDeletingCategory(null)
-    } catch (err) {
-      setCategoryError(err instanceof Error ? err.message : "Error al eliminar la categoría")
-    } finally {
-      setCategoryLoading(false)
-    }
-  }
-
-  const startEditCategory = (category: Category) => {
-    setEditingCategory(category)
-    setCategoryFormData({
-      name: category.name,
-      description: category.description || "",
-      parent_id: category.parent_id?.toString() || ""
-    })
-    setShowCategoryManager(true)
-    setCategoryError(null)
-  }
-
-  const startDeleteCategory = (category: Category) => {
-    setDeletingCategory(category)
-    setCategoryError(null)
-  }
-
-  const cancelCategoryForm = () => {
-    setCategoryFormData({ name: "", description: "", parent_id: "" })
-    setEditingCategory(null)
-    setShowCategoryManager(false)
-    setCategoryError(null)
-  }
 
   const validateForm = () => {
     // Validar código (requerido, máximo 20 caracteres)
@@ -630,12 +511,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setShowCategoryManager(!showCategoryManager)
-                          setEditingCategory(null)
-                          setCategoryFormData({ name: "", description: "", parent_id: "" })
-                          setCategoryError(null)
-                        }}
+                        onClick={() => setShowCategoryManager(!showCategoryManager)}
                         className="h-8 px-3 text-xs"
                       >
                         <Plus className="h-3 w-3 mr-1" />
@@ -666,228 +542,16 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                       </SelectContent>
                     </Select>
 
-                    {/* Panel de gestión de categorías */}
                     {showCategoryManager && (
-                      <Card className="mt-4 border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
-                        <CardContent className="p-4 space-y-4">
-                          <div className="flex items-center justify-between pb-2 border-b border-blue-200 dark:border-blue-800">
-                            <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                              <Tag className="h-4 w-4" />
-                              {editingCategory ? "Editar Categoría" : "Nueva Categoría"}
-                            </h4>
-                            {editingCategory && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={cancelCategoryForm}
-                                className="h-6 px-2 text-xs"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-
-                          {categoryError && (
-                            <div className="p-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300">
-                              {categoryError}
-                            </div>
-                          )}
-
-                          <div className="space-y-3">
-                            <div className="space-y-1">
-                              <Label htmlFor="category-name" className="text-xs font-medium">
-                                Nombre *
-                              </Label>
-                              <Input
-                                id="category-name"
-                                value={categoryFormData.name}
-                                onChange={(e) => setCategoryFormData(prev => ({ ...prev, name: e.target.value }))}
-                                placeholder="Nombre de la categoría"
-                                className="h-9 text-sm"
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <Label htmlFor="category-description" className="text-xs font-medium">
-                                Descripción
-                              </Label>
-                              <Textarea
-                                id="category-description"
-                                value={categoryFormData.description}
-                                onChange={(e) => setCategoryFormData(prev => ({ ...prev, description: e.target.value }))}
-                                placeholder="Descripción de la categoría"
-                                rows={2}
-                                className="text-sm resize-none"
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <Label htmlFor="category-parent" className="text-xs font-medium">
-                                Categoría Padre (opcional)
-                              </Label>
-                              <Select
-                                value={categoryFormData.parent_id || "__none__"}
-                                onValueChange={(value) => setCategoryFormData(prev => ({ ...prev, parent_id: value === "__none__" ? "" : value }))}
-                              >
-                                <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder="Sin categoría padre" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="__none__">Sin categoría padre</SelectItem>
-                                  {categories
-                                    .filter(cat => cat.id !== editingCategory?.id && cat.is_active !== false)
-                                    .map((category) => (
-                                      <SelectItem key={category.id} value={category.id.toString()}>
-                                        {category.name}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            <div className="flex gap-2 pt-2">
-                              <Button
-                                type="button"
-                                onClick={editingCategory ? handleUpdateCategory : handleCreateCategory}
-                                disabled={categoryLoading || !categoryFormData.name.trim()}
-                                className="flex-1 h-9 text-xs"
-                                size="sm"
-                              >
-                                {categoryLoading ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-2" />
-                                    {editingCategory ? "Guardando..." : "Creando..."}
-                                  </>
-                                ) : (
-                                  <>
-                                    <Save className="h-3 w-3 mr-1" />
-                                    {editingCategory ? "Guardar Cambios" : "Crear Categoría"}
-                                  </>
-                                )}
-                              </Button>
-                              {editingCategory && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={cancelCategoryForm}
-                                  disabled={categoryLoading}
-                                  className="h-9 px-3 text-xs"
-                                  size="sm"
-                                >
-                                  Cancelar
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Lista de categorías existentes con opciones de editar/eliminar */}
-                          {categories.length > 0 && (
-                            <div className="pt-4 border-t border-blue-200 dark:border-blue-800">
-                              <Label className="text-xs font-medium mb-2 block">Categorías Existentes</Label>
-                              <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {categories
-                                  .filter(cat => cat.is_active !== false)
-                                  .map((category) => (
-                                    <div
-                                      key={category.id}
-                                      className="flex items-center justify-between p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700"
-                                    >
-                                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <Tag className="h-3 w-3 text-slate-400 flex-shrink-0" />
-                                        <span className="text-xs text-slate-700 dark:text-slate-300 truncate">
-                                          {category.name}
-                                        </span>
-                                        {category.description && (
-                                          <span className="text-xs text-slate-500 dark:text-slate-400 truncate hidden sm:inline">
-                                            - {category.description}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex gap-1 ml-2">
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => startEditCategory(category)}
-                                          disabled={categoryLoading}
-                                          className="h-6 w-6 p-0"
-                                        >
-                                          <Edit className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => startDeleteCategory(category)}
-                                          disabled={categoryLoading}
-                                          className="h-6 w-6 p-0"
-                                        >
-                                          <Trash2 className="h-3 w-3 text-red-600 dark:text-red-400" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Modal de confirmación para eliminar */}
-                    {deletingCategory && (
-                      <Dialog open={!!deletingCategory} onOpenChange={() => setDeletingCategory(null)}>
-                        <DialogContent className="max-w-md">
-                          <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                              <AlertTriangle className="h-5 w-5" />
-                              Confirmar Eliminación
-                            </DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                              ¿Estás seguro de que deseas eliminar la categoría <strong>"{deletingCategory.name}"</strong>?
-                            </p>
-                            <p className="text-xs text-orange-600 dark:text-orange-400">
-                              Esta acción eliminará la categoría de WooCommerce (si está sincronizada) y la marcará como inactiva en el sistema.
-                            </p>
-                            {categoryError && (
-                              <div className="p-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300">
-                                {categoryError}
-                              </div>
-                            )}
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setDeletingCategory(null)}
-                                disabled={categoryLoading}
-                              >
-                                Cancelar
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                onClick={handleDeleteCategory}
-                                disabled={categoryLoading}
-                              >
-                                {categoryLoading ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-                                    Eliminando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Eliminar
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
+                      <CategoryManagerPanel
+                        categories={categories}
+                        loadingCategories={loadingCategories}
+                        loadCategories={loadCategories}
+                        selectedCategoryId={formData.category_id}
+                        onSelectCategory={(id) => handleInputChange("category_id", id)}
+                        onCategoryCreated={(cat) => setFormData((prev) => ({ ...prev, category_id: cat.id.toString() }))}
+                        showWoocommerceFields={false}
+                      />
                     )}
                   </div>
                 </div>
