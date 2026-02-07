@@ -91,13 +91,13 @@ export const MENU_GROUPS: MenuGroup[] = [
         href: "/productos",
         requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas']
       },
-      { 
-        id: "categorias", 
-        label: "Categorías", 
-        icon: FolderTree, 
-        href: "/categorias",
-        requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas']
-      },
+      // { 
+      //   id: "categorias", 
+      //   label: "Categorías", 
+      //   icon: FolderTree, 
+      //   href: "/categorias",
+      //   requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas']
+      // },
       // { 
       //   id: "stock", 
       //   label: "Stock", 
@@ -150,70 +150,70 @@ export const MENU_GROUPS: MenuGroup[] = [
       },
     ]
   },
-  {
-    id: "contabilidad",
-    title: "Contabilidad",
-    icon: BookText,
-    requiredRoles: ['gerencia', 'finanzas', 'admin'],
-    items: [
-      {
-        id: "contabilidad-inicio",
-        label: "Inicio",
-        icon: BookText,
-        href: "/contabilidad",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "asientos-manuales",
-        label: "Asientos manuales",
-        icon: PenLine,
-        href: "/contabilidad/asientos",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "asientos-nuevo",
-        label: "Nuevo asiento",
-        icon: PenLine,
-        href: "/contabilidad/asientos/nuevo",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "libro-diario",
-        label: "Libro diario",
-        icon: BookOpen,
-        href: "/contabilidad/libro-diario",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "libro-mayor",
-        label: "Libro mayor",
-        icon: BookOpen,
-        href: "/contabilidad/libro-mayor",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "plan-cuentas",
-        label: "Plan de cuentas",
-        icon: ListOrdered,
-        href: "/contabilidad/plan-cuentas",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "ejercicios-contables",
-        label: "Ejercicios contables",
-        icon: CalendarDays,
-        href: "/contabilidad/ejercicios",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-      {
-        id: "reportes-contables",
-        label: "Reportes",
-        icon: BarChart3,
-        href: "/contabilidad/reportes",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
-    ]
-  },
+  // {
+  //   id: "contabilidad",
+  //   title: "Contabilidad",
+  //   icon: BookText,
+  //   requiredRoles: ['gerencia', 'finanzas', 'admin'],
+  //   items: [
+  //     {
+  //       id: "contabilidad-inicio",
+  //       label: "Inicio",
+  //       icon: BookText,
+  //       href: "/contabilidad",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "asientos-manuales",
+  //       label: "Asientos manuales",
+  //       icon: PenLine,
+  //       href: "/contabilidad/asientos",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "asientos-nuevo",
+  //       label: "Nuevo asiento",
+  //       icon: PenLine,
+  //       href: "/contabilidad/asientos/nuevo",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "libro-diario",
+  //       label: "Libro diario",
+  //       icon: BookOpen,
+  //       href: "/contabilidad/libro-diario",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "libro-mayor",
+  //       label: "Libro mayor",
+  //       icon: BookOpen,
+  //       href: "/contabilidad/libro-mayor",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "plan-cuentas",
+  //       label: "Plan de cuentas",
+  //       icon: ListOrdered,
+  //       href: "/contabilidad/plan-cuentas",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "ejercicios-contables",
+  //       label: "Ejercicios contables",
+  //       icon: CalendarDays,
+  //       href: "/contabilidad/ejercicios",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //     {
+  //       id: "reportes-contables",
+  //       label: "Reportes",
+  //       icon: BarChart3,
+  //       href: "/contabilidad/reportes",
+  //       requiredRoles: ['gerencia', 'finanzas', 'admin']
+  //     },
+  //   ]
+  // },
   {
     id: "administracion",
     title: "Administración",
