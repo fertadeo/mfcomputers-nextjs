@@ -449,6 +449,7 @@ export interface Product {
   woocommerce_image_ids?: number[]  // IDs de medios en WordPress para sincronizar con WooCommerce
   barcode?: string  // Código de barras del producto (para lectoras)
   qr_code?: string  // URL del código QR para consulta pública
+  deleted_at?: string | null  // Soft delete: si existe, el producto está en papelera
 }
 
 export interface CreateProductData {
@@ -1440,15 +1441,19 @@ export async function getMe(): Promise<LoginResponse['user'] | null> {
  * @param limit - Cantidad de productos por página (opcional, por defecto todos)
  * @returns Productos con información de paginación si se especifican parámetros
  */
-export async function getProducts(page?: number, limit?: number): Promise<Product[] | { products: Product[], pagination: { page: number, limit: number, total: number, totalPages: number } }> {
+/**
+ * @param activeOnly - Si false, la API devuelve activos e inactivos (GET ?active_only=false). Si true u omitido, solo activos.
+ */
+export async function getProducts(page?: number, limit?: number, activeOnly?: boolean): Promise<Product[] | { products: Product[], pagination: { page: number, limit: number, total: number, totalPages: number } }> {
   try {
     const apiUrl = getApiUrl()
     let fullUrl = `${apiUrl}products`
     
-    // Agregar parámetros de paginación si se proporcionan
     const params = new URLSearchParams()
     if (page !== undefined) params.append('page', page.toString())
     if (limit !== undefined) params.append('limit', limit.toString())
+    // active_only=false para listar todos (activos + inactivos/borrados) en admin
+    if (activeOnly === false) params.append('active_only', 'false')
     if (params.toString()) {
       fullUrl += `?${params.toString()}`
     }

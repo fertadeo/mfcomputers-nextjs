@@ -12,6 +12,7 @@ import { useRole } from "@/app/hooks/useRole"
 import {
   getProducts,
   deleteProduct,
+  deleteProductPermanent,
   getProductStats,
   getCategories,
   type ProductStats,
@@ -33,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Package,
@@ -53,6 +55,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  FileCheck,
+  FileEdit,
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -79,6 +83,7 @@ export default function ProductosPage() {
   const [filterDateModification, setFilterDateModification] = useState<"all" | "last7" | "last30" | "last90">("all")
   const [sortBy, setSortBy] = useState<"name" | "code" | "price" | "stock" | "category" | "updated_at">("name")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
+  const [productTab, setProductTab] = useState<"published" | "draft" | "deleted">("published")
   const limit = 50 // Productos por página
   const [linkSummary, setLinkSummary] = useState<LinkWooCommerceIdsSummary | null>(null)
   const [lastLinkAt, setLastLinkAt] = useState<string | null>(null)
@@ -140,10 +145,10 @@ export default function ProductosPage() {
     }
   }
 
-  // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros, orden o datos
+  // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros, tab, orden o datos
   useEffect(() => {
     updateDisplayedProducts()
-  }, [currentPage, searchTerm, allProducts, filterCategory, filterStatus, filterStock, filterDateModification, sortBy, sortOrder])
+  }, [currentPage, searchTerm, allProducts, productTab, filterCategory, filterStatus, filterStock, filterDateModification, sortBy, sortOrder])
 
   const loadProductStats = async () => {
     try {
@@ -154,13 +159,13 @@ export default function ProductosPage() {
     }
   }
 
-  // Cargar todos los productos una vez al inicio
+  // Cargar todos los productos (activos e inactivos) para las pestañas Publicados / Borrador / Eliminados
   const loadAllProducts = async () => {
     try {
       setLoading(true)
       setError(null)
-      // Cargar todos los productos para permitir búsqueda completa
-      const data = await getProducts(1, 10000)
+      // active_only=false para que la API devuelva activos e inactivos
+      const data = await getProducts(1, 10000, false)
       
       let allProductsData: Product[] = []
       
@@ -186,52 +191,45 @@ export default function ProductosPage() {
     }
   }
 
-  // Función para actualizar los productos mostrados según búsqueda, filtros y paginación
+  // Función para actualizar los productos mostrados según tab, búsqueda, filtros y paginación
   const updateDisplayedProducts = () => {
     if (!productsLoaded) return
 
     let productsToShow: Product[] = []
 
-    if (searchTerm.trim()) {
-      // Filtrar productos cuando hay búsqueda
-      const term = searchTerm.trim().toLowerCase()
+    // 1) Filtrar por pestaña según is_active y stock (la API no filtra por stock; devuelve stock >= 0)
+    // Publicados: activos y con stock; Borrador: activos sin stock; Eliminados: inactivos (soft delete)
+    const byTab = allProducts.filter((p) => {
+      if (productTab === "published") return !!p.is_active && p.stock > 0
+      if (productTab === "draft") return !!p.is_active && p.stock === 0
+      return !p.is_active // deleted = inactivos / borrados
+    })
 
-      // Filtrar productos: buscar en SKU, nombre y categoría
-      const filtered = allProducts.filter((product) => {
+    if (searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase()
+      const filtered = byTab.filter((product) => {
         const codeMatch = product.code?.toLowerCase().includes(term)
         const nameMatch = product.name?.toLowerCase().includes(term)
         const categoryMatch = product.category_name?.toLowerCase().includes(term)
-
         return codeMatch || nameMatch || categoryMatch
       })
-
-      // Ordenar: primero coincidencias exactas en SKU, luego parciales en SKU, luego nombre, luego categoría
       productsToShow = filtered.sort((a, b) => {
         const aCode = a.code?.toLowerCase() || ""
         const bCode = b.code?.toLowerCase() || ""
         const aName = a.name?.toLowerCase() || ""
         const bName = b.name?.toLowerCase() || ""
-
-        // Coincidencia exacta en SKU tiene máxima prioridad
         if (aCode === term && bCode !== term) return -1
         if (bCode === term && aCode !== term) return 1
-
-        // Coincidencia que empieza con el término en SKU
         if (aCode.startsWith(term) && !bCode.startsWith(term)) return -1
         if (bCode.startsWith(term) && !aCode.startsWith(term)) return 1
-
-        // Coincidencia en SKU
         if (aCode.includes(term) && !bCode.includes(term)) return -1
         if (bCode.includes(term) && !aCode.includes(term)) return 1
-
-        // Coincidencia en nombre
         if (aName.includes(term) && !bName.includes(term)) return -1
         if (bName.includes(term) && !aName.includes(term)) return 1
-
         return 0
       })
     } else {
-      productsToShow = [...allProducts]
+      productsToShow = [...byTab]
     }
 
     // Aplicar filtro de categoría
@@ -311,17 +309,30 @@ export default function ProductosPage() {
   }
 
   const handleDeleteProduct = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de que quieres eliminar este producto?')) {
+    if (!window.confirm('¿Estás seguro de que quieres eliminar este producto? Se moverá a la papelera.')) {
       return
     }
-
     try {
       await deleteProduct(id)
-      await loadProducts() // Recargar la lista
-      await loadProductStats() // Recargar estadísticas
+      await loadProducts()
+      await loadProductStats()
     } catch (err) {
       console.error('Error al eliminar producto:', err)
       alert(err instanceof Error ? err.message : 'Error al eliminar producto')
+    }
+  }
+
+  const handleDeletePermanent = async (id: number) => {
+    if (!window.confirm('¿Eliminar permanentemente? Esta acción no se puede deshacer.')) {
+      return
+    }
+    try {
+      await deleteProductPermanent(id)
+      await loadProducts()
+      await loadProductStats()
+    } catch (err) {
+      console.error('Error al eliminar producto permanentemente:', err)
+      alert(err instanceof Error ? err.message : 'Error al eliminar permanentemente')
     }
   }
 
@@ -472,6 +483,30 @@ export default function ProductosPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <Tabs value={productTab} onValueChange={(v) => { setProductTab(v as "published" | "draft" | "deleted"); setCurrentPage(1) }} className="mb-4">
+                <TabsList className="grid w-full max-w-md grid-cols-3 mb-5">
+                  <TabsTrigger value="published" className="flex items-center gap-2">
+                    <FileCheck className="h-4 w-4" />
+                    Publicados
+                    <Badge variant="secondary" className="ml-1 text-xs">
+                      {allProducts.filter((p) => p.is_active && p.stock > 0).length}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="draft" className="flex items-center gap-2">
+                    <FileEdit className="h-4 w-4" />
+                    Borrador
+                    <Badge variant="secondary" className="ml-1 text-xs">
+                      {allProducts.filter((p) => p.is_active && p.stock === 0).length}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="deleted" className="flex items-center gap-2">
+                    <Trash2 className="h-4 w-4" />
+                    Eliminados
+                    <Badge variant="secondary" className="ml-1 text-xs">
+                      {allProducts.filter((p) => !p.is_active).length}
+                    </Badge>
+                  </TabsTrigger>
+                </TabsList>
               {error && (
                 <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
                   <p className="text-red-800 dark:text-red-200 text-sm">
@@ -765,10 +800,10 @@ export default function ProductosPage() {
                             ${Math.round(Number(product.price)).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
                           <Badge
-                            variant={(product.is_active && product.stock > 0) ? "default" : "secondary"}
+                            variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
                             className="text-xs"
                           >
-                            {product.stock} u.
+                            {!product.is_active ? "Inactivo" : `${product.stock} u.`}
                           </Badge>
                         </div>
                         <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -802,8 +837,13 @@ export default function ProductosPage() {
                                 className="h-7 text-red-600 hover:text-red-700"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  handleDeleteProduct(product.id)
+                                  if (productTab === "deleted") {
+                                    handleDeletePermanent(product.id)
+                                  } else {
+                                    handleDeleteProduct(product.id)
+                                  }
                                 }}
+                                title={productTab === "deleted" ? "Eliminar permanentemente" : "Mover a papelera"}
                               >
                                 <Trash2 className="h-3 w-3" />
                               </Button>
@@ -874,9 +914,9 @@ export default function ProductosPage() {
                         </TableCell>
                         <TableCell>
                           <Badge 
-                            variant={(product.is_active && product.stock > 0) ? "default" : "secondary"}
+                            variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
                           >
-                            {(product.is_active && product.stock > 0) ? "Activo" : "Inactivo"}
+                            {!product.is_active ? "Inactivo" : product.stock > 0 ? "Activo" : "Sin stock"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -908,9 +948,14 @@ export default function ProductosPage() {
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    handleDeleteProduct(product.id)
+                                    if (productTab === "deleted") {
+                                      handleDeletePermanent(product.id)
+                                    } else {
+                                      handleDeleteProduct(product.id)
+                                    }
                                   }}
                                   className="text-red-600 hover:text-red-700"
+                                  title={productTab === "deleted" ? "Eliminar permanentemente" : "Mover a papelera"}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -935,6 +980,7 @@ export default function ProductosPage() {
                   />
                 </div>
               )}
+              </Tabs>
             </CardContent>
           </Card>
         </div>
