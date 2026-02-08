@@ -1,13 +1,69 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Shield, Users, Key } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Shield, Users, Key, Receipt } from "lucide-react"
 import { RolesManagement } from "@/components/roles-management"
 import { UsersManagement } from "@/components/users-management"
 import { ExceptionPermissions } from "@/components/exception-permissions"
+import { getPosApiKey } from "@/lib/api"
+
+const POS_API_KEY_STORAGE = "posApiKey"
+
+function PosApiKeyCard() {
+  const [value, setValue] = useState("")
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    setValue(getPosApiKey() || "")
+  }, [])
+
+  function handleSave() {
+    if (typeof window === "undefined") return
+    if (value.trim()) {
+      localStorage.setItem(POS_API_KEY_STORAGE, value.trim())
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } else {
+      localStorage.removeItem(POS_API_KEY_STORAGE)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>API Key para Punto de venta</CardTitle>
+        <CardDescription>
+          La API Key se usa para registrar ventas en local (POST /api/sales). Obtenela en el panel de administración del ERP y guardala aquí. Se guarda solo en este navegador.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="pos-api-key">API Key</Label>
+          <Input
+            id="pos-api-key"
+            type="password"
+            placeholder="fnec_xxxxxxxx..."
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="max-w-md font-mono"
+          />
+        </div>
+        <Button onClick={handleSave}>
+          {saved ? "Guardado" : "Guardar API Key"}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function ConfiguracionPage() {
   return (
@@ -29,7 +85,7 @@ export default function ConfiguracionPage() {
 
           {/* Tabs para las diferentes secciones */}
           <Tabs defaultValue="roles" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="roles" className="flex items-center gap-2">
                 <Key className="h-4 w-4" />
                 Roles y Permisos
@@ -41,6 +97,10 @@ export default function ConfiguracionPage() {
               <TabsTrigger value="exceptions" className="flex items-center gap-2">
                 <Shield className="h-4 w-4" />
                 Permisos Excepcionales
+              </TabsTrigger>
+              <TabsTrigger value="pos" className="flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Punto de venta
               </TabsTrigger>
             </TabsList>
 
@@ -85,6 +145,10 @@ export default function ConfiguracionPage() {
                   <ExceptionPermissions />
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="pos" className="space-y-4">
+              <PosApiKeyCard />
             </TabsContent>
           </Tabs>
         </div>

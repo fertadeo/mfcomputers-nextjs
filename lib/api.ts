@@ -531,6 +531,99 @@ export interface ProductResponse {
   timestamp: string
 }
 
+// --- Ventas en local (Punto de venta) - POST /api/sales con x-api-key ---
+export type SalePaymentMethod = 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto'
+
+export interface CreateSaleItem {
+  product_id: number
+  quantity: number
+  unit_price: number
+}
+
+export interface CreateSalePaymentDetails {
+  efectivo?: number
+  tarjeta?: number
+  transferencia?: number
+}
+
+export interface CreateSaleRequest {
+  items: CreateSaleItem[]
+  payment_method: SalePaymentMethod
+  client_id?: number
+  payment_details?: CreateSalePaymentDetails
+  notes?: string
+  sync_to_woocommerce?: boolean
+}
+
+export interface SaleItemResponse {
+  product_id: number
+  quantity: number
+  unit_price: number
+  subtotal?: number
+}
+
+export interface SaleResponseData {
+  id: number
+  sale_number: string
+  client_id: number | null
+  total_amount: number
+  payment_method: SalePaymentMethod
+  sale_date: string
+  sync_status?: string
+  items: SaleItemResponse[]
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateSaleResponse {
+  success: boolean
+  message: string
+  data: SaleResponseData
+  timestamp: string
+}
+
+/** API Key para punto de venta (localStorage 'posApiKey' o 'apiKey'). Requerida para POST /api/sales. */
+export function getPosApiKey(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+}
+
+/**
+ * Crea una venta en local físico. Usa x-api-key (no JWT).
+ * Roles/uso: punto de venta en el ERP.
+ */
+export async function createSale(body: CreateSaleRequest): Promise<SaleResponseData> {
+  const apiUrl = getApiUrl()
+  const fullUrl = `${apiUrl}sales`
+  const apiKey = getPosApiKey()
+
+  if (!apiKey) {
+    throw new Error('API Key requerida para punto de venta. Configúrala en Configuración.')
+  }
+
+  const response = await fetch(fullUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    throw new Error(msg)
+  }
+
+  if (!data?.success || !data?.data) {
+    throw new Error(data?.message || 'Error al crear la venta')
+  }
+
+  return data.data
+}
+
 // Función para crear un nuevo producto
 export async function createProduct(productData: CreateProductData): Promise<any> {
   try {

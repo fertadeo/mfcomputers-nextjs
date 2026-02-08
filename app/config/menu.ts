@@ -22,6 +22,7 @@ import {
   BookOpen,
   ListOrdered,
   CalendarDays,
+  Receipt,
 } from "lucide-react"
 
 // Definición de roles disponibles según el backend
@@ -120,6 +121,13 @@ export const MENU_GROUPS: MenuGroup[] = [
     icon: Users,
     requiredRoles: ['gerencia', 'ventas', 'admin'],
     items: [
+      { 
+        id: "punto-venta", 
+        label: "Punto de venta", 
+        icon: Receipt, 
+        href: "/punto-venta",
+        requiredRoles: ['gerencia', 'ventas', 'admin']
+      },
       { 
         id: "clientes", 
         label: "Clientes", 
