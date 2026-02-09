@@ -69,7 +69,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   })
   const [barcode, setBarcode] = useState<string>("")
   const [qrCode, setQrCode] = useState<string>("")
-  const [syncToWooCommerce, setSyncToWooCommerce] = useState(false)
+  const [syncToWooCommerce, setSyncToWooCommerce] = useState(true)
 
   // Cargar categorías desde la API
   const loadCategories = async () => {

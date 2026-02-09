@@ -45,7 +45,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [loading, setLoading] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
-  const [syncToWooCommerce, setSyncToWooCommerce] = useState(false)
+  const [syncToWooCommerce, setSyncToWooCommerce] = useState(true)
   const [imageUrls, setImageUrls] = useState<string[]>([])
   const [woocommerceImageIds, setWoocommerceImageIds] = useState<(number | null)[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
@@ -101,9 +101,9 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         stock: String(product.stock ?? 0),
         min_stock: String(product.min_stock ?? 0),
         max_stock: String(product.max_stock ?? 1000),
-        is_active: product.is_active ? "1" : "0",
+        is_active: (product.stock ?? 0) === 0 ? "0" : "1",
       })
-      setSyncToWooCommerce(false)
+      setSyncToWooCommerce(true)
       setImageUrlInput("")
       // Imágenes: usar product.images si existe (incluso si es []). Solo usar otras fuentes si images no existe (null/undefined).
       let urls: string[] = []
