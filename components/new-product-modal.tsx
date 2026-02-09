@@ -267,7 +267,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       // Preparar datos para la API según los requisitos
       // Campos requeridos: code, name, price
       
-      // Solo enviar URLs públicas (http/https); nunca data: ni blob: para evitar "No URL Provided" en WooCommerce
+      // Lista final para WooCommerce: solo URLs (http/https) en el orden que ve el usuario.
+      // Incluye URLs externas y source_url de archivos subidos (POST woocommerce/media); IDs y URLs pueden convivir en sync.
       const validImages = images.filter(
         (img) =>
           typeof img.url === "string" &&

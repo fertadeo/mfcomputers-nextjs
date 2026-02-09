@@ -1835,8 +1835,9 @@ export async function getProductByCode(code: string): Promise<Product | null> {
 }
 
 /**
- * Elimina un producto (borrado lógico)
- * Roles permitidos: solo gerencia
+ * Elimina un producto (soft delete en ERP).
+ * Backend: pone is_active = false y, si tiene woocommerce_id, envía el producto a la papelera
+ * de WooCommerce. No hace falta llamar a ningún endpoint de sync después de borrar.
  */
 export async function deleteProduct(id: number): Promise<void> {
   try {
@@ -2065,8 +2066,8 @@ export async function updateProductStock(id: number, stockData: UpdateStockData)
 }
 
 /**
- * Elimina permanentemente un producto
- * Roles permitidos: solo gerencia
+ * Elimina permanentemente un producto (borrado físico en ERP).
+ * Backend: si tiene woocommerce_id, lo borra en WooCommerce (force = true) y luego en la base del ERP.
  */
 export async function deleteProductPermanent(id: number): Promise<void> {
   try {

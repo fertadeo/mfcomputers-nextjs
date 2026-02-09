@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { useRole } from "@/app/hooks/useRole"
-import { getClienteStats, getProductStats, getPurchaseStats, type ProductStats } from "@/lib/api"
+import { getClienteStats, getProductStats, getPurchaseStats, type ProductStats, type PurchaseStats } from "@/lib/api"
 import { getCashDay } from "@/lib/cash"
 import {
   Package,
@@ -37,7 +37,7 @@ export default function Dashboard() {
   const [clienteStats, setClienteStats] = useState<{ total_clients: number; active_clients: string } | null>(null)
   const [productStats, setProductStats] = useState<ProductStats | null>(null)
   const [cashDay, setCashDay] = useState<{ incomes: number; expenses: number; balance: number } | null>(null)
-  const [purchaseStats, setPurchaseStats] = useState<{ pending_orders?: number; total_value?: number; suppliers_count?: number } | null>(null)
+  const [purchaseStats, setPurchaseStats] = useState<PurchaseStats | null>(null)
 
   // Cargar datos al montar el componente
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function Dashboard() {
         }
         
         if (comprasData.status === 'fulfilled' && comprasData.value) {
-          setPurchaseStats(comprasData.value.data || comprasData.value)
+          setPurchaseStats(comprasData.value.data ?? null)
         }
       } catch (error) {
         console.error('Error al cargar datos del dashboard:', error)
@@ -208,7 +208,7 @@ export default function Dashboard() {
               ) : (
                 <>
                   <div className="text-2xl font-bold">
-                    {purchaseStats?.pending_orders || 0}
+                    {purchaseStats?.pending_purchases ?? 0}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <ClipboardList className="h-3 w-3 text-turquoise-500" />
@@ -367,17 +367,17 @@ export default function Dashboard() {
                 <>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Órdenes Pendientes</span>
-                    <Badge variant="outline">{purchaseStats?.pending_orders || 0}</Badge>
+                    <Badge variant="outline">{purchaseStats?.pending_purchases ?? 0}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Valor Total</span>
                     <span className="font-semibold">
-                      ${purchaseStats?.total_value?.toLocaleString() || '0'}
+                      ${purchaseStats?.total_amount?.toLocaleString() ?? '0'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Proveedores</span>
-                    <Badge variant="secondary">{purchaseStats?.suppliers_count || 0}</Badge>
+                    <span className="text-sm text-muted-foreground">Total compras</span>
+                    <Badge variant="secondary">{purchaseStats?.total_purchases ?? 0}</Badge>
                   </div>
                 </>
               )}

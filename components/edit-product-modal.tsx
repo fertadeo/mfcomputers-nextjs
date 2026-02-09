@@ -261,8 +261,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       const stock = parseInt(formData.stock) || 0
       const isActive = stock > 0 ? formData.is_active === "1" : false
 
-      // Lista final de imágenes: solo URLs públicas (http/https). La API interpreta images como reemplazo.
-      // No enviar woocommerce_image_ids; la API lo gestiona internamente al actualizar images.
+      // Lista final para WooCommerce: solo URLs (http/https) en el orden que ve el usuario.
+      // Incluye URLs externas y source_url de archivos subidos (POST woocommerce/media).
+      // Si el usuario deja solo URL → enviamos ["https://..."]. Si archivo + URL → [source_url, "https://..."].
+      // Enviar siempre images (aunque sea []) para que la API actualice la galería; si no se envía, no toca la galería.
       const validImageUrls = imageUrls.filter(
         (url) =>
           typeof url === "string" &&
@@ -488,7 +490,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                   </SelectContent>
                 </Select>
                 {parseInt(formData.stock) === 0 && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-red-600 dark:text-red-400">
                     Con stock 0 el producto se guardará como inactivo.
                   </p>
                 )}
