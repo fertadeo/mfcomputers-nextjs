@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { useRole } from "@/app/hooks/useRole"
-import { getClienteStats, getProductStats, getPurchaseStats } from "@/lib/api"
+import { getClienteStats, getProductStats, getPurchaseStats, type ProductStats } from "@/lib/api"
 import { getCashDay } from "@/lib/cash"
 import {
   Package,
@@ -35,7 +35,7 @@ export default function Dashboard() {
   // Estados para los datos de la API
   const [loading, setLoading] = useState(true)
   const [clienteStats, setClienteStats] = useState<{ total_clients: number; active_clients: string } | null>(null)
-  const [productStats, setProductStats] = useState<{ low_stock_count: number; out_of_stock_count: number } | null>(null)
+  const [productStats, setProductStats] = useState<ProductStats | null>(null)
   const [cashDay, setCashDay] = useState<{ incomes: number; expenses: number; balance: number } | null>(null)
   const [purchaseStats, setPurchaseStats] = useState<{ pending_orders?: number; total_value?: number; suppliers_count?: number } | null>(null)
 
@@ -273,12 +273,16 @@ export default function Dashboard() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               ) : (
                 <>
-                  <div className="text-2xl font-bold">
-                    {productStats ? (productStats.low_stock_count + productStats.out_of_stock_count) : '0'} productos
+                  <div className="text-2xl font-bold text-turquoise-600">
+                    ${productStats?.total_stock_value != null
+                      ? parseFloat(String(productStats.total_stock_value).replace(/[^\d.-]/g, "") || "0").toLocaleString("es-AR", { maximumFractionDigits: 0 })
+                      : "0"}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <Package className="h-3 w-3 text-turquoise-500" />
-                    Productos en inventario
+                    {productStats?.total_stock_quantity != null
+                      ? `${productStats.total_stock_quantity.toLocaleString("es-AR")} unidades en inventario`
+                      : "Valor total de artículos"}
                   </div>
                 </>
               )}
