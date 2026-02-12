@@ -34,7 +34,7 @@ export default function Error({
             <CardTitle>Error de aplicación</CardTitle>
           </div>
           <CardDescription>
-            Se produjo una excepción del lado del cliente
+            Se produjo una excepción del lado del cliente al cargar la aplicación (consulte la consola del navegador para obtener más información)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

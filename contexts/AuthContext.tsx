@@ -156,7 +156,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
           }
           // Nota: La ruta '/' ahora se maneja en app/page.tsx
         } else {
-          throw new Error('No se pudo obtener datos del usuario')
+          // getMe retornó null (token inválido, parse error, etc.): tratar como no autenticado
+          setIsAuthenticated(false)
+          setUser(null)
+          setAuthStatus('no-auth')
+          setErrorMessage(null)
+          const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+          const isProtectedRoute = ['/dashboard', '/clientes', '/stock', '/compras', '/produccion', '/pedidos', '/presupuestos', '/tienda', '/personal', '/proveedores', '/bancos', '/facturacion', '/caja', '/productos', '/categorias'].some(route => currentPath.startsWith(route))
+          if (isProtectedRoute) {
+            router.replace('/login')
+          }
         }
       } catch (error) {
         console.error('❌ [AUTH_CONTEXT] Error durante la verificación:', error)

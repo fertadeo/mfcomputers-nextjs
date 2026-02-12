@@ -231,8 +231,9 @@ export async function getClienteStats(): Promise<ClienteStats> {
 // Función para crear un nuevo cliente
 export async function createCliente(clienteData: {
   client_type: "minorista" | "mayorista" | "personalizado";
-  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_principal" | "manual" | "otro";
+  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_mf" | "manual" | "otro";
   name: string;
+  primary_tax_id?: string;
   email: string;
   phone: string;
   address?: string;
@@ -347,7 +348,7 @@ export async function deleteCliente(id: number): Promise<any> {
 // Función para actualizar un cliente existente
 export async function updateCliente(id: number, clienteData: {
   client_type: "minorista" | "mayorista" | "personalizado";
-  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_principal" | "manual" | "otro";
+  sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_mf" | "manual" | "otro";
   name: string;
   email: string;
   phone: string;
@@ -1353,7 +1354,18 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
       headers: Object.fromEntries(response.headers.entries())
     });
 
-    const responseData = await response.json();
+    const text = await response.text();
+    let responseData: { success?: boolean; message?: string; data?: { accessToken?: string; refreshToken?: string; user?: LoginResponse['user'] } };
+    try {
+      responseData = text ? JSON.parse(text) : {};
+    } catch (parseError) {
+      console.error('❌ [AUTH] Respuesta no es JSON válido:', text?.slice(0, 300));
+      throw new Error(
+        response.ok
+          ? 'Error inesperado del servidor. Intente de nuevo.'
+          : `Error de conexión (${response.status}). Verifique que el servidor esté disponible e intente de nuevo.`
+      );
+    }
 
     if (!response.ok) {
       console.error('❌ [AUTH] Error en respuesta:', {
@@ -1362,36 +1374,45 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
         responseData
       });
       
-      // Manejar errores específicos según el backend
       if (response.status === 401) {
         throw new Error(responseData.message || 'Credenciales inválidas');
       }
-      
+      if (response.status === 404 || response.status >= 500) {
+        throw new Error(responseData.message || `Error del servidor (${response.status}). Intente de nuevo más tarde.`);
+      }
       throw new Error(responseData.message || `Error de autenticación: ${response.status} ${response.statusText}`);
     }
+
+    const data = responseData.data ?? responseData as unknown as LoginResponse;
+    const accessToken = data.accessToken ?? (responseData as { accessToken?: string }).accessToken;
+    const refreshToken = data.refreshToken ?? (responseData as { refreshToken?: string }).refreshToken;
+    const user = data.user ?? (responseData as { user?: LoginResponse['user'] }).user;
+
+    if (!accessToken || !user) {
+      throw new Error('La respuesta del servidor no contiene los datos esperados. Intente de nuevo.');
+    }
+
     console.log('✅ [AUTH] Login exitoso:', {
       success: responseData.success,
-      hasAccessToken: !!responseData.data.accessToken,
-      hasRefreshToken: !!responseData.data.refreshToken,
-      user: responseData.data.user
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      user
     });
     
     // Almacenar tokens en localStorage
-    if (responseData.data.accessToken) {
-      localStorage.setItem('accessToken', responseData.data.accessToken);
-      console.log('💾 [AUTH] Access token almacenado en localStorage');
-    }
+    localStorage.setItem('accessToken', accessToken);
+    console.log('💾 [AUTH] Access token almacenado en localStorage');
     
-    if (responseData.data.refreshToken) {
-      localStorage.setItem('refreshToken', responseData.data.refreshToken);
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
       console.log('💾 [AUTH] Refresh token almacenado en localStorage');
     }
 
     // Almacenar información del usuario
-    localStorage.setItem('user', JSON.stringify(responseData.data.user));
+    localStorage.setItem('user', JSON.stringify(user));
     console.log('💾 [AUTH] Información del usuario almacenada');
     
-    return responseData.data;
+    return { accessToken, refreshToken, user };
   } catch (error) {
     console.error('💥 [AUTH] Error en el login:', {
       error: error,
@@ -1492,7 +1513,15 @@ export async function getMe(): Promise<LoginResponse['user'] | null> {
       throw new Error(`Error al hidratar sesión: ${response.status} ${response.statusText}`);
     }
 
-    const responseData = await response.json();
+    const text = await response.text();
+    let responseData: { success?: boolean; message?: string; data?: { user?: LoginResponse['user'] } };
+    try {
+      responseData = text ? JSON.parse(text) : {};
+    } catch (parseError) {
+      console.error('❌ [AUTH] Respuesta de /auth/me no es JSON válido:', text?.slice(0, 300));
+      logout();
+      return null;
+    }
     console.log('✅ [AUTH] Respuesta completa del servidor:', responseData);
     
     // Verificar que la respuesta sea exitosa

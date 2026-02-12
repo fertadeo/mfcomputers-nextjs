@@ -20,6 +20,7 @@ interface NewClientData {
   client_type: "minorista" | "mayorista" | "personalizado"
   sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_mf" | "manual" | "otro"
   name: string
+  primary_tax_id: string
   email: string
   phone: string
   address: string
@@ -32,6 +33,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
     client_type: "minorista",
     sales_channel: "manual",
     name: "",
+    primary_tax_id: "",
     email: "",
     phone: "",
     address: "",
@@ -113,6 +115,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
           client_type: "minorista",
           sales_channel: "manual",
           name: "",
+          primary_tax_id: "",
           email: "",
           phone: "",
           address: "",
@@ -204,7 +207,17 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     id="name"
                     value={formData.name}
                     onChange={(e) => handleInputChange("name", e.target.value)}
-                    placeholder="Ej: Fenec Studio S.A."
+                    placeholder="Nombre o razón social"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="primary_tax_id">DNI / CUIL / CUIT</Label>
+                  <Input
+                    id="primary_tax_id"
+                    value={formData.primary_tax_id}
+                    onChange={(e) => handleInputChange("primary_tax_id", e.target.value)}
+                    placeholder="DNI, CUIL o CUIT"
                     disabled={loading}
                   />
                 </div>
@@ -220,7 +233,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       type="email"
                       value={formData.email}
                       onChange={(e) => handleInputChange("email", e.target.value)}
-                      placeholder="contacto@empresa.com"
+                      placeholder="Correo electrónico"
                       className="pl-8"
                       disabled={loading}
                     />
@@ -234,7 +247,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       id="phone"
                       value={formData.phone}
                       onChange={(e) => handleInputChange("phone", e.target.value)}
-                      placeholder="+54 11 4567-8900"
+                      placeholder="Teléfono de contacto"
                       className="pl-8"
                       disabled={loading}
                     />
@@ -257,7 +270,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   id="address"
                   value={formData.address}
                   onChange={(e) => handleInputChange("address", e.target.value)}
-                  placeholder="Av. Industrial 567, Zona Tecnológica"
+                  placeholder="Dirección"
                   disabled={loading}
                 />
               </div>
@@ -271,7 +284,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       id="city"
                       value={formData.city}
                       onChange={(e) => handleInputChange("city", e.target.value)}
-                      placeholder="Córdoba"
+                      placeholder="Ciudad"
                       className="pl-8"
                       disabled={loading}
                     />
@@ -285,7 +298,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       id="country"
                       value={formData.country}
                       onChange={(e) => handleInputChange("country", e.target.value)}
-                      placeholder="Argentina"
+                      placeholder="País"
                       className="pl-8"
                       disabled={loading}
                     />

@@ -10,112 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ClienteDetailModal } from "@/components/cliente-detail-modal"
 import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard } from "lucide-react"
 import { useState, useEffect } from "react"
-import { Cliente } from "@/lib/api"
-// Datos hardcodeados para clientes
-const clientesHardcoded = [
-  {
-    id: 1,
-    code: "CLI001",
-    name: "Empresa ABC S.A.",
-    email: "contacto@empresaabc.com",
-    phone: "+54 11 1234-5678",
-    city: "Buenos Aires",
-    address: "Av. Corrientes 1234",
-    client_type: "mayorista",
-    is_active: 1,
-    sales_channel: "sistema_mf",
-    created_at: "2024-01-15T10:30:00Z",
-    updated_at: "2024-01-20T14:45:00Z",
-    person_type: "persona_juridica",
-    tax_condition: "responsable_inscripto",
-    primary_tax_id: "30-12345678-9",
-    secondary_tax_id: "30-12345678-8",
-    cc_enabled: true,
-    cc_limit: 100000,
-    cc_balance: -15000
-  },
-  {
-    id: 2,
-    code: "CLI002", 
-    name: "Distribuidora XYZ",
-    email: "ventas@distribuidoraxyz.com",
-    phone: "+54 11 9876-5432",
-    city: "Córdoba",
-    address: "San Martín 567",
-    client_type: "mayorista",
-    is_active: 1,
-    sales_channel: "woocommerce_mayorista",
-    created_at: "2024-01-10T09:15:00Z",
-    updated_at: "2024-01-18T11:20:00Z",
-    person_type: "persona_juridica",
-    tax_condition: "responsable_inscripto",
-    primary_tax_id: "30-87654321-0",
-    cc_enabled: true,
-    cc_limit: 200000,
-    cc_balance: 25000
-  },
-  {
-    id: 3,
-    code: "CLI003",
-    name: "Comercial Tech Solutions",
-    email: "info@comercialnorte.com",
-    phone: "+54 11 5555-1234",
-    city: "Rosario",
-    address: "Belgrano 890",
-    client_type: "minorista",
-    is_active: 1,
-    sales_channel: "mercadolibre",
-    created_at: "2024-01-05T16:20:00Z",
-    updated_at: "2024-01-22T08:30:00Z",
-    person_type: "persona_fisica",
-    tax_condition: "consumidor_final",
-    primary_tax_id: "27-11223344-5",
-    cc_enabled: false,
-    cc_limit: 0,
-    cc_balance: 0
-  },
-  {
-    id: 4,
-    code: "CLI004",
-    name: "Ventas Directas SRL",
-    email: "admin@ventasdirectas.com",
-    phone: "+54 11 4444-5678",
-    city: "Mendoza",
-    address: "Las Heras 234",
-    client_type: "personalizado",
-    is_active: 0,
-    sales_channel: "manual",
-    created_at: "2023-12-20T12:00:00Z",
-    updated_at: "2024-01-15T10:15:00Z",
-    person_type: "persona_juridica",
-    tax_condition: "responsable_inscripto",
-    primary_tax_id: "30-55443322-1",
-    cc_enabled: false,
-    cc_limit: 0,
-    cc_balance: 0
-  },
-  {
-    id: 5,
-    code: "CLI005",
-    name: "Importadora del Sur",
-    email: "compras@importadorasur.com",
-    phone: "+54 11 3333-9999",
-    city: "La Plata",
-    address: "Diagonal 79 1234",
-    client_type: "mayorista",
-    is_active: 1,
-    sales_channel: "woocommerce_minorista",
-    created_at: "2024-01-12T14:30:00Z",
-    updated_at: "2024-01-25T16:45:00Z",
-    person_type: "persona_juridica",
-    tax_condition: "responsable_inscripto",
-    primary_tax_id: "30-99887766-4",
-    secondary_tax_id: "30-99887766-5",
-    cc_enabled: true,
-    cc_limit: 150000,
-    cc_balance: -60000
-  }
-]
+import { getClientes, getClienteStats } from "@/lib/api"
 
 const TAX_CONDITION_LABELS: Record<string, string> = {
   responsable_inscripto: "Responsable Inscripto",
@@ -131,13 +26,6 @@ const formatTaxConditionLabel = (value?: string, fallback: string = "N/A") => {
   return TAX_CONDITION_LABELS[normalized] ?? value
 }
 
-const statsHardcoded = {
-  total_clients: 5,
-  active_clients: 4,
-  inactive_clients: 1,
-  cities_count: 5,
-  countries_count: 1
-}
 import { NewClientModal } from "@/components/new-client-modal"
 import { Pagination } from "@/components/ui/pagination"
 import { getSalesChannelConfig, SalesChannel } from "@/lib/utils"
@@ -190,68 +78,32 @@ export default function ClientesPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
   const [channelFilter, setChannelFilter] = useState<"all" | "sistema_principal" | "woocommerce_mayorista" | "woocommerce_minorista" | "mercadolibre" | "manual">("all")
 
-  // Función para cargar datos hardcodeados con filtros
+  // Función para cargar clientes reales desde la API
   const loadData = async (page: number = 1, search: string = "", status: string = "all", channel: string = "all") => {
-    console.log('🚀 [COMPONENT] Cargando datos hardcodeados para página:', page);
+    console.log('🚀 [COMPONENT] Cargando clientes desde API para página:', page);
     
     try {
       setLoading(true)
       setError(null)
       
-      // Simular delay de API
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // Aplicar filtros a los datos hardcodeados
-      let filteredClientes = [...clientesHardcoded]
-      
-      // Filtro por búsqueda
-      if (search) {
-        filteredClientes = filteredClientes.filter(cliente => 
-          cliente.name.toLowerCase().includes(search.toLowerCase()) ||
-          cliente.email.toLowerCase().includes(search.toLowerCase()) ||
-          cliente.code.toLowerCase().includes(search.toLowerCase())
-        )
-      }
-      
-      // Filtro por estado
-      if (status !== "all") {
-        filteredClientes = filteredClientes.filter(cliente => 
-          status === "active" ? cliente.is_active === 1 : cliente.is_active === 0
-        )
-      }
-      
-      // Filtro por canal de venta
-      if (channel !== "all") {
-        filteredClientes = filteredClientes.filter(cliente => 
-          cliente.sales_channel === channel
-        )
-      }
-      
-      // Paginación
-      const itemsPerPage = 10
-      const startIndex = (page - 1) * itemsPerPage
-      const endIndex = startIndex + itemsPerPage
-      const paginatedClientes = filteredClientes.slice(startIndex, endIndex)
-      
-      // Calcular paginación
-      const totalPages = Math.ceil(filteredClientes.length / itemsPerPage)
-      
-      console.log('✅ [COMPONENT] Estableciendo clientes hardcodeados:', paginatedClientes)
-      setClientes(paginatedClientes)
-      
-      setPagination({
-        page,
-        limit: itemsPerPage,
-        total: filteredClientes.length,
-        totalPages
-      })
-      
-      console.log('✅ [COMPONENT] Estableciendo estadísticas hardcodeadas:', statsHardcoded)
-      setStats(statsHardcoded)
-      
-      console.log('🎉 [COMPONENT] Datos hardcodeados cargados exitosamente')
+      const statusParam = status === "all" ? undefined : (status as "active" | "inactive")
+      const clientsResponse = await getClientes(page, 10, search, statusParam)
+      const statsResponse = await getClienteStats()
+
+      const channelFilteredClients = channel === "all"
+        ? clientsResponse.clients
+        : clientsResponse.clients.filter((cliente: any) => cliente.sales_channel === channel)
+
+      console.log('✅ [COMPONENT] Clientes recibidos desde API:', channelFilteredClients)
+      setClientes(channelFilteredClients)
+      setPagination(clientsResponse.pagination)
+
+      console.log('✅ [COMPONENT] Estadísticas recibidas desde API:', statsResponse)
+      setStats(statsResponse)
+
+      console.log('🎉 [COMPONENT] Datos API cargados exitosamente')
     } catch (err) {
-      console.error('💥 [COMPONENT] Error al cargar datos hardcodeados:', err)
+      console.error('💥 [COMPONENT] Error al cargar datos de clientes:', err)
       setError('Error al cargar los datos')
       setClientes([])
       setPagination({ page: 1, limit: 10, total: 0, totalPages: 0 })
