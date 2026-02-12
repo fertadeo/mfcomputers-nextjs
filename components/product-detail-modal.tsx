@@ -18,7 +18,7 @@ interface ProductDetailModalProps {
   product: Product | null
   isOpen: boolean
   onClose: () => void
-  onDelete?: (id: number) => void
+  onDelete?: (id: number) => void | Promise<void>
   onEdit?: (product: Product) => void
   onSyncSuccess?: () => void
 }
@@ -106,11 +106,15 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
     }
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!displayedProduct || !onDelete) return
     if (window.confirm("¿Estás seguro de que quieres eliminar este producto? (borrado lógico)")) {
-      onDelete(displayedProduct.id)
-      onClose()
+      try {
+        await Promise.resolve(onDelete(displayedProduct.id))
+        onClose()
+      } catch (err) {
+        console.error("Error al eliminar producto:", err)
+      }
     }
   }
 
