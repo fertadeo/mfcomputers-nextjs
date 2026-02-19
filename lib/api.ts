@@ -2142,6 +2142,301 @@ export async function deleteProductPermanent(id: number): Promise<void> {
   }
 }
 
+// ===== FUNCIONES PARA BÚSQUEDA POR CÓDIGO DE BARRAS =====
+
+/**
+ * Tipos para búsqueda por código de barras
+ */
+export interface BarcodeLookupData {
+  title: string
+  description?: string
+  brand?: string
+  images?: string[]
+  source: string
+  suggested_price?: number
+  category_suggestion?: string
+  exists_as_product: boolean
+  product_id?: number
+  preview_message?: string
+  available_actions: {
+    accept: boolean
+    modify: boolean
+    ignore: boolean
+  }
+  provider_response_time?: number
+  cached_at?: string
+}
+
+export interface BarcodeLookupResponse {
+  success: boolean
+  message: string
+  data?: BarcodeLookupData
+  error?: string
+  timestamp: string
+}
+
+export interface AcceptBarcodeRequest {
+  category_id?: number
+  price?: number
+  stock?: number
+  code?: string
+}
+
+export interface CreateProductFromBarcodeRequest {
+  code: string
+  name: string
+  description?: string
+  price: number
+  stock?: number
+  category_id?: number
+  barcode?: string
+  images?: string[]
+}
+
+/**
+ * Busca datos de producto por código de barras
+ * Roles permitidos: gerencia, ventas, logistica, finanzas
+ */
+export async function searchProductByBarcode(barcode: string): Promise<BarcodeLookupData> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/barcode/${encodeURIComponent(barcode)}`
+    const token = getAccessToken()
+    
+    console.log('🔍 [BARCODE] Buscando producto por código de barras:', fullUrl)
+    
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    const responseData: BarcodeLookupResponse = await response.json()
+    
+    if (!response.ok) {
+      console.error('❌ [BARCODE] Error al buscar producto:', {
+        status: response.status,
+        responseData
+      })
+      
+      if (response.status === 400) {
+        throw new Error(responseData.message || 'Formato de código de barras inválido')
+      }
+      if (response.status === 401) {
+        throw new Error(responseData.message || 'Token de autorización inválido')
+      }
+      if (response.status === 403) {
+        throw new Error(responseData.message || 'No tienes permisos para buscar productos por código de barras')
+      }
+      if (response.status === 404) {
+        throw new Error(responseData.message || 'No se encontraron datos para este código de barras')
+      }
+      if (response.status === 429) {
+        throw new Error(responseData.message || 'Has realizado muchas consultas. Espera unos minutos.')
+      }
+      
+      throw new Error(responseData.message || `Error al buscar producto: ${response.status}`)
+    }
+
+    if (!responseData.data) {
+      throw new Error('La respuesta no contiene datos del producto')
+    }
+
+    console.log('✅ [BARCODE] Datos encontrados:', responseData.data)
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [BARCODE] Error al buscar producto por código de barras:', error)
+    throw error
+  }
+}
+
+/**
+ * Acepta los datos encontrados y crea el producto
+ * Roles permitidos: gerencia
+ */
+export async function acceptBarcodeProduct(
+  barcode: string,
+  additionalData?: AcceptBarcodeRequest
+): Promise<Product> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/barcode/${encodeURIComponent(barcode)}/accept`
+    const token = getAccessToken()
+    
+    console.log('✅ [BARCODE] Aceptando datos y creando producto:', fullUrl, additionalData)
+    
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(additionalData || {})
+    })
+
+    const responseData: ProductResponse = await response.json()
+    
+    if (!response.ok) {
+      console.error('❌ [BARCODE] Error al aceptar datos:', {
+        status: response.status,
+        responseData
+      })
+      
+      if (response.status === 400) {
+        throw new Error(responseData.message || 'Datos inválidos o código interno ya existe')
+      }
+      if (response.status === 401) {
+        throw new Error(responseData.message || 'Token de autorización inválido')
+      }
+      if (response.status === 403) {
+        throw new Error(responseData.message || 'No tienes permisos para crear productos')
+      }
+      if (response.status === 404) {
+        throw new Error(responseData.message || 'No se encontraron datos para este código de barras')
+      }
+      
+      throw new Error(responseData.message || `Error al crear producto: ${response.status}`)
+    }
+
+    console.log('✅ [BARCODE] Producto creado exitosamente:', responseData.data)
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [BARCODE] Error al aceptar datos y crear producto:', error)
+    throw error
+  }
+}
+
+/**
+ * Crea producto con datos modificados por el usuario
+ * Roles permitidos: gerencia
+ */
+export async function createProductFromBarcode(
+  barcode: string,
+  productData: CreateProductFromBarcodeRequest
+): Promise<Product> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/barcode/${encodeURIComponent(barcode)}/create`
+    const token = getAccessToken()
+    
+    console.log('✏️ [BARCODE] Creando producto con datos modificados:', fullUrl, productData)
+    
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        ...productData,
+        barcode: barcode // Asegurar que coincida con el parámetro de la URL
+      })
+    })
+
+    const responseData: ProductResponse = await response.json()
+    
+    if (!response.ok) {
+      console.error('❌ [BARCODE] Error al crear producto con modificaciones:', {
+        status: response.status,
+        responseData
+      })
+      
+      if (response.status === 400) {
+        throw new Error(responseData.message || 'Datos inválidos o código interno ya existe')
+      }
+      if (response.status === 401) {
+        throw new Error(responseData.message || 'Token de autorización inválido')
+      }
+      if (response.status === 403) {
+        throw new Error(responseData.message || 'No tienes permisos para crear productos')
+      }
+      if (response.status === 404) {
+        throw new Error(responseData.message || 'No se encontraron datos para este código de barras')
+      }
+      
+      throw new Error(responseData.message || `Error al crear producto: ${response.status}`)
+    }
+
+    console.log('✅ [BARCODE] Producto creado con modificaciones exitosamente:', responseData.data)
+    return responseData.data
+  } catch (error) {
+    console.error('💥 [BARCODE] Error al crear producto con modificaciones:', error)
+    throw error
+  }
+}
+
+/**
+ * Ignora los datos encontrados (marca como descartados)
+ * Roles permitidos: gerencia, ventas, logistica, finanzas
+ */
+export async function ignoreBarcodeProduct(barcode: string, reason?: string): Promise<void> {
+  try {
+    const apiUrl = getApiUrl()
+    const fullUrl = `${apiUrl}products/barcode/${encodeURIComponent(barcode)}/ignore`
+    const token = getAccessToken()
+    
+    console.log('🚫 [BARCODE] Ignorando datos encontrados:', fullUrl, reason)
+    
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(reason ? { reason } : {})
+    })
+
+    const responseData: ApiResponse<{ success: boolean }> = await response.json()
+    
+    if (!response.ok) {
+      console.error('❌ [BARCODE] Error al ignorar datos:', {
+        status: response.status,
+        responseData
+      })
+      
+      if (response.status === 401) {
+        throw new Error(responseData.message || 'Token de autorización inválido')
+      }
+      if (response.status === 403) {
+        throw new Error(responseData.message || 'No tienes permisos para realizar esta acción')
+      }
+      if (response.status === 404) {
+        throw new Error(responseData.message || 'No se encontraron datos para este código de barras')
+      }
+      
+      throw new Error(responseData.message || `Error al ignorar datos: ${response.status}`)
+    }
+
+    console.log('✅ [BARCODE] Datos ignorados exitosamente')
+  } catch (error) {
+    console.error('💥 [BARCODE] Error al ignorar datos:', error)
+    throw error
+  }
+}
+
+/**
+ * Valida el formato de un código de barras
+ */
+export function validateBarcode(barcode: string): boolean {
+  if (!barcode || typeof barcode !== 'string') {
+    return false
+  }
+  
+  // Remover espacios y guiones
+  const cleaned = barcode.replace(/[\s-]/g, '')
+  
+  // Validar que sea numérico
+  if (!/^\d+$/.test(cleaned)) {
+    return false
+  }
+  
+  // Validar longitud (EAN-8, UPC-A, EAN-13, GTIN-14)
+  const length = cleaned.length
+  return length === 8 || length === 12 || length === 13 || length === 14
+}
+
 // ===== FUNCIONES PARA MÓDULO DE CAJA =====
 
 /**

@@ -1,0 +1,662 @@
+"use client"
+
+import React, { useState, useEffect, useRef } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import {
+  Search,
+  CheckCircle,
+  X,
+  Edit,
+  AlertCircle,
+  Loader2,
+  Package,
+  DollarSign,
+  Tag,
+  Image as ImageIcon,
+  Info,
+  ScanLine,
+  Sparkles
+} from "lucide-react"
+import Image from "next/image"
+import {
+  searchProductByBarcode,
+  acceptBarcodeProduct,
+  createProductFromBarcode,
+  ignoreBarcodeProduct,
+  validateBarcode,
+  getCategories,
+  Category,
+  BarcodeLookupData,
+  AcceptBarcodeRequest,
+  CreateProductFromBarcodeRequest,
+  Product
+} from "@/lib/api"
+
+interface BarcodeSearchModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: () => void
+}
+
+enum BarcodeSearchState {
+  IDLE = 'idle',
+  SEARCHING = 'searching',
+  FOUND = 'found',
+  EXISTS = 'exists',
+  NOT_FOUND = 'not_found',
+  CREATING = 'creating',
+  SUCCESS = 'success',
+  ERROR = 'error',
+  MODIFYING = 'modifying'
+}
+
+export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearchModalProps) {
+  const [barcode, setBarcode] = useState("")
+  const [state, setState] = useState<BarcodeSearchState>(BarcodeSearchState.IDLE)
+  const [previewData, setPreviewData] = useState<BarcodeLookupData | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(false)
+  
+  // Datos para crear producto (modificar)
+  const [formData, setFormData] = useState<CreateProductFromBarcodeRequest>({
+    code: "",
+    name: "",
+    description: "",
+    price: 0,
+    stock: 0,
+    category_id: undefined,
+    images: []
+  })
+  
+  // Datos para aceptar producto (aceptar)
+  const [acceptData, setAcceptData] = useState<AcceptBarcodeRequest>({
+    category_id: undefined,
+    price: undefined,
+    stock: 0,
+    code: undefined
+  })
+  
+  const [createdProduct, setCreatedProduct] = useState<Product | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Cargar categorías cuando se abre el modal
+  useEffect(() => {
+    if (isOpen) {
+      loadCategories()
+      // Enfocar el input cuando se abre
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+    }
+  }, [isOpen])
+
+  // Resetear estado cuando se cierra el modal
+  useEffect(() => {
+    if (!isOpen) {
+      setState(BarcodeSearchState.IDLE)
+      setBarcode("")
+      setPreviewData(null)
+      setError(null)
+      setCreatedProduct(null)
+      setFormData({
+        code: "",
+        name: "",
+        description: "",
+        price: 0,
+        stock: 0,
+        category_id: undefined,
+        images: []
+      })
+      setAcceptData({
+        category_id: undefined,
+        price: undefined,
+        stock: 0,
+        code: undefined
+      })
+    }
+  }, [isOpen])
+
+  const loadCategories = async () => {
+    setLoadingCategories(true)
+    try {
+      const categoriesData = await getCategories()
+      setCategories(categoriesData)
+    } catch (err) {
+      console.error('Error al cargar categorías:', err)
+      setCategories([])
+    } finally {
+      setLoadingCategories(false)
+    }
+  }
+
+  const handleBarcodeSearch = async () => {
+    if (!barcode.trim()) {
+      setError("Por favor, ingresa un código de barras")
+      return
+    }
+
+    // Validar formato
+    if (!validateBarcode(barcode.trim())) {
+      setError("Formato de código de barras inválido. Debe tener 8, 12, 13 o 14 dígitos.")
+      return
+    }
+
+    setState(BarcodeSearchState.SEARCHING)
+    setError(null)
+    setPreviewData(null)
+
+    try {
+      const data = await searchProductByBarcode(barcode.trim())
+      
+      if (data.exists_as_product) {
+        setState(BarcodeSearchState.EXISTS)
+        setPreviewData(data)
+      } else {
+        setState(BarcodeSearchState.FOUND)
+        setPreviewData(data)
+        // Prellenar formulario con datos encontrados
+        const suggestedPrice = typeof data.suggested_price === 'number' 
+          ? data.suggested_price 
+          : (data.suggested_price ? parseFloat(String(data.suggested_price)) : 0)
+        
+        setFormData({
+          code: "",
+          name: data.title,
+          description: data.description || "",
+          price: suggestedPrice || 0,
+          stock: 0,
+          category_id: undefined,
+          images: data.images || []
+        })
+        setAcceptData({
+          category_id: undefined,
+          price: suggestedPrice || undefined,
+          stock: 0,
+          code: undefined
+        })
+      }
+    } catch (err) {
+      console.error('Error al buscar producto:', err)
+      if (err instanceof Error && err.message.includes('404')) {
+        setState(BarcodeSearchState.NOT_FOUND)
+      } else {
+        setState(BarcodeSearchState.ERROR)
+        setError(err instanceof Error ? err.message : 'Error desconocido al buscar el producto')
+      }
+    }
+  }
+
+  const handleAccept = async () => {
+    if (!previewData) return
+
+    setState(BarcodeSearchState.CREATING)
+    setError(null)
+
+    try {
+      const product = await acceptBarcodeProduct(barcode.trim(), acceptData)
+      setCreatedProduct(product)
+      setState(BarcodeSearchState.SUCCESS)
+      
+      setTimeout(() => {
+        onSuccess()
+        onClose()
+      }, 1500)
+    } catch (err) {
+      console.error('Error al aceptar producto:', err)
+      setState(BarcodeSearchState.FOUND)
+      setError(err instanceof Error ? err.message : 'Error al crear el producto')
+    }
+  }
+
+  const handleModify = () => {
+    setState(BarcodeSearchState.MODIFYING)
+    setError(null)
+  }
+
+  const handleCreateWithModifications = async () => {
+    // Validar formulario
+    if (!formData.code.trim()) {
+      setError("El código interno es obligatorio")
+      return
+    }
+    if (!formData.name.trim()) {
+      setError("El nombre es obligatorio")
+      return
+    }
+    if (!formData.price || formData.price <= 0) {
+      setError("El precio debe ser mayor a 0")
+      return
+    }
+
+    setState(BarcodeSearchState.CREATING)
+    setError(null)
+
+    try {
+      const product = await createProductFromBarcode(barcode.trim(), formData)
+      setCreatedProduct(product)
+      setState(BarcodeSearchState.SUCCESS)
+      
+      setTimeout(() => {
+        onSuccess()
+        onClose()
+      }, 1500)
+    } catch (err) {
+      console.error('Error al crear producto con modificaciones:', err)
+      setState(BarcodeSearchState.MODIFYING)
+      setError(err instanceof Error ? err.message : 'Error al crear el producto')
+    }
+  }
+
+  const handleIgnore = async () => {
+    try {
+      await ignoreBarcodeProduct(barcode.trim())
+      setState(BarcodeSearchState.IDLE)
+      setPreviewData(null)
+      setBarcode("")
+    } catch (err) {
+      console.error('Error al ignorar:', err)
+      // No mostrar error crítico, solo cerrar preview
+      setState(BarcodeSearchState.IDLE)
+      setPreviewData(null)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && state === BarcodeSearchState.IDLE) {
+      handleBarcodeSearch()
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ScanLine className="h-5 w-5" />
+            Búsqueda por Código de Barras
+          </DialogTitle>
+          <DialogDescription>
+            Escanea o ingresa un código de barras para buscar información del producto
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Estado: IDLE - Buscar código */}
+        {state === BarcodeSearchState.IDLE && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="barcode">Código de Barras</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="barcode"
+                  ref={inputRef}
+                  value={barcode}
+                  onChange={(e) => {
+                    setBarcode(e.target.value)
+                    setError(null)
+                  }}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Ingresa o escanea el código de barras"
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleBarcodeSearch}
+                  disabled={!barcode.trim()}
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Buscar
+                </Button>
+              </div>
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm">
+                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  <span className="text-red-700">{error}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Estado: SEARCHING - Buscando */}
+        {state === BarcodeSearchState.SEARCHING && (
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-medium">Buscando información...</p>
+            <p className="text-sm text-muted-foreground">Consultando bases de datos externas</p>
+          </div>
+        )}
+
+        {/* Estado: FOUND - Datos encontrados (Preview) */}
+        {state === BarcodeSearchState.FOUND && previewData && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  {previewData.preview_message || "Hemos encontrado:"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {previewData.images && previewData.images.length > 0 && (
+                    <div className="md:col-span-1">
+                      <Image
+                        src={previewData.images[0]}
+                        alt={previewData.title}
+                        width={200}
+                        height={200}
+                        className="rounded-lg object-cover w-full"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className={previewData.images && previewData.images.length > 0 ? "md:col-span-2" : "md:col-span-3"}>
+                    <h3 className="text-xl font-semibold mb-2">{previewData.title}</h3>
+                    {previewData.description && (
+                      <p className="text-muted-foreground mb-3">{previewData.description}</p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {previewData.brand && (
+                        <Badge variant="outline">
+                          <Tag className="h-3 w-3 mr-1" />
+                          {previewData.brand}
+                        </Badge>
+                      )}
+                      {previewData.suggested_price && (
+                        <Badge variant="outline">
+                          <DollarSign className="h-3 w-3 mr-1" />
+                          ${typeof previewData.suggested_price === 'number' 
+                            ? previewData.suggested_price.toFixed(2) 
+                            : parseFloat(String(previewData.suggested_price)).toFixed(2)}
+                        </Badge>
+                      )}
+                      {previewData.category_suggestion && (
+                        <Badge variant="outline">
+                          <Package className="h-3 w-3 mr-1" />
+                          {previewData.category_suggestion}
+                        </Badge>
+                      )}
+                      <Badge variant="secondary">
+                        Fuente: {previewData.source}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-red-700">{error}</span>
+                  </div>
+                )}
+
+                <Separator />
+
+                <div className="flex gap-2 justify-end">
+                  {previewData.available_actions.ignore && (
+                    <Button
+                      variant="outline"
+                      onClick={handleIgnore}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Ignorar
+                    </Button>
+                  )}
+                  {previewData.available_actions.modify && (
+                    <Button
+                      variant="outline"
+                      onClick={handleModify}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Modificar
+                    </Button>
+                  )}
+                  {previewData.available_actions.accept && (
+                    <Button
+                      onClick={handleAccept}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Aceptar
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Estado: EXISTS - Producto ya existe */}
+        {state === BarcodeSearchState.EXISTS && previewData && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Info className="h-5 w-5 text-blue-500" />
+                  Este producto ya existe
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h3 className="font-semibold mb-2">{previewData.title}</h3>
+                  {previewData.description && (
+                    <p className="text-sm text-muted-foreground">{previewData.description}</p>
+                  )}
+                  {previewData.product_id && (
+                    <p className="text-sm mt-2">
+                      <strong>ID del producto:</strong> {previewData.product_id}
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={onClose}>
+                    Cerrar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Estado: NOT_FOUND - No se encontraron datos */}
+        {state === BarcodeSearchState.NOT_FOUND && (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="py-12 text-center space-y-4">
+                <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+                <h3 className="text-lg font-semibold">No se encontraron datos</h3>
+                <p className="text-muted-foreground">
+                  El código de barras "{barcode}" no está registrado en nuestras bases de datos.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Puedes crear el producto manualmente desde el formulario de nuevo producto.
+                </p>
+                <div className="flex justify-center gap-2 pt-4">
+                  <Button variant="outline" onClick={() => {
+                    setState(BarcodeSearchState.IDLE)
+                    setBarcode("")
+                  }}>
+                    Buscar Otro
+                  </Button>
+                  <Button variant="outline" onClick={onClose}>
+                    Cerrar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Estado: MODIFYING - Modificar datos */}
+        {state === BarcodeSearchState.MODIFYING && previewData && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Editar Datos del Producto</CardTitle>
+                <CardDescription>
+                  Modifica los datos antes de crear el producto
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="code">Código Interno *</Label>
+                    <Input
+                      id="code"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      placeholder="Ej: PROD-001"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nombre *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descripción</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="price">Precio *</Label>
+                    <Input
+                      id="price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="stock">Stock Inicial</Label>
+                    <Input
+                      id="stock"
+                      type="number"
+                      min="0"
+                      value={formData.stock}
+                      onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Categoría</Label>
+                    <Select
+                      value={formData.category_id?.toString() || ""}
+                      onValueChange={(value) => setFormData({ ...formData, category_id: value ? parseInt(value) : undefined })}
+                      disabled={loadingCategories}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar categoría" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id.toString()}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-red-700">{error}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setState(BarcodeSearchState.FOUND)
+                      setError(null)
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleCreateWithModifications}>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Crear Producto
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Estado: CREATING - Creando producto */}
+        {state === BarcodeSearchState.CREATING && (
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-medium">Creando producto...</p>
+          </div>
+        )}
+
+        {/* Estado: SUCCESS - Producto creado */}
+        {state === BarcodeSearchState.SUCCESS && createdProduct && (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="py-12 text-center space-y-4">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
+                <h3 className="text-lg font-semibold">Producto creado exitosamente</h3>
+                <p className="text-muted-foreground">
+                  El producto "{createdProduct.name}" ha sido creado correctamente.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Estado: ERROR - Error general */}
+        {state === BarcodeSearchState.ERROR && (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="py-12 text-center space-y-4">
+                <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
+                <h3 className="text-lg font-semibold">Error</h3>
+                <p className="text-muted-foreground">{error || "Ocurrió un error inesperado"}</p>
+                <div className="flex justify-center gap-2 pt-4">
+                  <Button variant="outline" onClick={() => {
+                    setState(BarcodeSearchState.IDLE)
+                    setError(null)
+                  }}>
+                    Intentar de Nuevo
+                  </Button>
+                  <Button variant="outline" onClick={onClose}>
+                    Cerrar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}

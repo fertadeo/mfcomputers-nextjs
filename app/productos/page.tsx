@@ -24,6 +24,7 @@ import { useState, useEffect } from "react"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
 import { EditProductModal } from "@/components/edit-product-modal"
+import { BarcodeSearchModal } from "@/components/barcode-search-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { LinkWooCommerceIdsButton, LinkWooCommerceSummary } from "@/components/products/link-woocommerce-ids-button"
 import Image from "next/image"
@@ -57,6 +58,7 @@ import {
   ArrowDown,
   FileCheck,
   FileEdit,
+  ScanLine,
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -67,6 +69,7 @@ export default function ProductosPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false)
+  const [isBarcodeSearchModalOpen, setIsBarcodeSearchModalOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<Product | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -397,6 +400,13 @@ export default function ProductosPage() {
                 <Button variant="outline">
                   <Download className="h-4 w-4 mr-2" />
                   Exportar
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setIsBarcodeSearchModalOpen(true)}
+                >
+                  <ScanLine className="h-4 w-4 mr-2" />
+                  Buscar por Código de Barras
                 </Button>
                 <Button onClick={() => setIsNewProductModalOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -1020,6 +1030,16 @@ export default function ProductosPage() {
         <NewProductModal
           isOpen={isNewProductModalOpen}
           onClose={() => setIsNewProductModalOpen(false)}
+          onSuccess={() => {
+            loadProducts()
+            loadProductStats()
+          }}
+        />
+
+        {/* Modal de búsqueda por código de barras */}
+        <BarcodeSearchModal
+          isOpen={isBarcodeSearchModalOpen}
+          onClose={() => setIsBarcodeSearchModalOpen(false)}
           onSuccess={() => {
             loadProducts()
             loadProductStats()
