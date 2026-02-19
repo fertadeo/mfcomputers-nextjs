@@ -660,3 +660,4 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
     </Dialog>
   )
 }
+ 
