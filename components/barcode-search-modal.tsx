@@ -23,7 +23,9 @@ import {
   Image as ImageIcon,
   Info,
   ScanLine,
-  Sparkles
+  Sparkles,
+  Upload,
+  Trash2
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -39,6 +41,7 @@ import {
   CreateProductFromBarcodeRequest,
   Product
 } from "@/lib/api"
+import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 
 interface BarcodeSearchModalProps {
   isOpen: boolean
@@ -86,7 +89,10 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
   })
   
   const [createdProduct, setCreatedProduct] = useState<Product | null>(null)
+  const [imageUrlInput, setImageUrlInput] = useState("")
+  const [uploadingImages, setUploadingImages] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // Cargar categorías cuando se abre el modal
   useEffect(() => {
@@ -122,6 +128,8 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
         stock: 0,
         code: undefined
       })
+      setImageUrlInput("")
+      setUploadingImages(false)
     }
   }, [isOpen])
 
@@ -222,6 +230,67 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
     setError(null)
   }
 
+  const handleAddImageUrl = () => {
+    const url = imageUrlInput.trim()
+    if (!url) return
+    try {
+      new URL(url)
+      if ((formData.images ?? []).length >= 5) {
+        setError("Máximo 5 imágenes permitidas")
+        return
+      }
+      setFormData((prev) => ({ ...prev, images: [...prev.images, url] }))
+      setImageUrlInput("")
+      setError(null)
+    } catch {
+      setError("Por favor, ingresa una URL válida")
+    }
+  }
+
+  const handleRemoveImage = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files?.length) return
+
+    const remaining = 5 - (formData.images ?? []).length
+    if (remaining <= 0) {
+      setError("Máximo 5 imágenes permitidas")
+      event.target.value = ""
+      return
+    }
+
+    const toAdd = Array.from(files)
+      .slice(0, remaining)
+      .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
+
+    if (!toAdd.length) {
+      setError("Solo se permiten imágenes (jpeg, png, gif, webp)")
+      event.target.value = ""
+      return
+    }
+
+    setUploadingImages(true)
+    setError(null)
+    try {
+      const uploads = await uploadImagesToWordPress(toAdd)
+      setFormData((prev) => ({
+        ...prev,
+        images: [...prev.images, ...uploads.map((upload) => upload.source_url)].slice(0, 5),
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error subiendo imágenes")
+    } finally {
+      setUploadingImages(false)
+      event.target.value = ""
+    }
+  }
+
   const handleCreateWithModifications = async () => {
     // Validar formulario
     if (!formData.code.trim()) {
@@ -275,6 +344,8 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       handleBarcodeSearch()
     }
   }
+
+  const currentImages = formData.images ?? []
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -581,6 +652,91 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                    <h4 className="font-medium">Imágenes ({currentImages.length}/5)</h4>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Podés mantener las imágenes detectadas, agregar por URL o subir desde el equipo.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={currentImages.length >= 5 || uploadingImages}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {uploadingImages ? "Subiendo…" : "Subir imagen"}
+                    </Button>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
+
+                    <div className="flex gap-2 flex-1 min-w-[220px]">
+                      <Input
+                        type="url"
+                        value={imageUrlInput}
+                        onChange={(e) => setImageUrlInput(e.target.value)}
+                        placeholder="https://ejemplo.com/imagen.jpg"
+                        disabled={currentImages.length >= 5}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleAddImageUrl()
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleAddImageUrl}
+                        disabled={!imageUrlInput.trim() || currentImages.length >= 5}
+                      >
+                        Agregar URL
+                      </Button>
+                    </div>
+                  </div>
+
+                  {currentImages.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                      {currentImages.map((image, index) => (
+                        <div key={`${image}-${index}`} className="relative group aspect-square rounded-lg overflow-hidden border bg-muted">
+                          <Image
+                            src={image}
+                            alt={`Imagen ${index + 1}`}
+                            fill
+                            className="object-cover"
+                            sizes="120px"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.src = "https://via.placeholder.com/120?text=Error"
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleRemoveImage(index)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {error && (
