@@ -42,6 +42,7 @@ import {
   Product
 } from "@/lib/api"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
+import { improveBarcodeImages } from "@/lib/barcode-image-utils"
 
 interface BarcodeSearchModalProps {
   isOpen: boolean
@@ -169,9 +170,10 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
         setState(BarcodeSearchState.EXISTS)
         setPreviewData(data)
       } else {
+        // Mejorar imágenes (priorizar calidad, intentar OFF si es EAN)
+        const images = await improveBarcodeImages(barcode.trim(), data.images || [])
         setState(BarcodeSearchState.FOUND)
-        setPreviewData(data)
-        // Prellenar formulario con datos encontrados
+        setPreviewData({ ...data, images })
         const suggestedPrice = typeof data.suggested_price === 'number' 
           ? data.suggested_price 
           : (data.suggested_price ? parseFloat(String(data.suggested_price)) : 0)
@@ -183,7 +185,7 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
           price: suggestedPrice || 0,
           stock: 0,
           category_id: undefined,
-          images: data.images || []
+          images
         })
         setAcceptData({
           category_id: undefined,
