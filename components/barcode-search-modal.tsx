@@ -177,7 +177,7 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
           : (data.suggested_price ? parseFloat(String(data.suggested_price)) : 0)
         
         setFormData({
-          code: "",
+          code: barcode.trim(),
           name: data.title,
           description: data.description || "",
           price: suggestedPrice || 0,

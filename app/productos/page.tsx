@@ -58,7 +58,7 @@ import {
   ArrowDown,
   FileCheck,
   FileEdit,
-  ScanLine,
+  PackagePlus,
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -405,8 +405,8 @@ export default function ProductosPage() {
                   variant="outline"
                   onClick={() => setIsBarcodeSearchModalOpen(true)}
                 >
-                  <ScanLine className="h-4 w-4 mr-2" />
-                  Buscar por Código de Barras
+                  <PackagePlus className="h-4 w-4 mr-2" />
+                  Cargar producto con cod. barra
                 </Button>
                 <Button onClick={() => setIsNewProductModalOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
