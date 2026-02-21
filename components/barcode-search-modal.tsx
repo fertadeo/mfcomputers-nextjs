@@ -62,32 +62,45 @@ enum BarcodeSearchState {
   MODIFYING = 'modifying'
 }
 
-const RETAIL_LINKS = [
-  { name: "Mercado Libre", url: "https://listado.mercadolibre.com.ar/?q=" },
-  { name: "Fravega", url: "https://www.fravega.com/l/?q=" },
-  { name: "Garbarino", url: "https://www.garbarino.com/buscar?q=" },
+/** Sitios para re-enviar la búsqueda con prefer_site (mismo barcode, priorizar ese sitio). */
+const RETAIL_SITES = [
+  { name: "Mercado Libre", prefer_site: "mercadolibre" },
+  { name: "Fravega", prefer_site: "fravega" },
+  { name: "Garbarino", prefer_site: "garbarino" },
 ] as const
 
-function BarcodeRetailLinks({ barcode, title }: { barcode: string; title?: string }) {
-  const query = title?.trim() ? title.trim() : barcode
-  const encoded = encodeURIComponent(query)
+function BarcodeRetailLinks({
+  barcode,
+  onSearchInSite,
+  searchingSite,
+}: {
+  barcode: string
+  onSearchInSite: (preferSite: string, siteName: string) => void
+  searchingSite: string | null
+}) {
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">
-        ¿No encontraste el producto que querías? Buscá en:
+        ¿No encontraste el producto que querías? Buscá de nuevo priorizando:
       </p>
       <div className="flex flex-wrap gap-2">
-        {RETAIL_LINKS.map(({ name, url }) => (
+        {RETAIL_SITES.map(({ name, prefer_site }) => (
           <Button
-            key={name}
+            key={prefer_site}
             variant="outline"
             size="sm"
             className="h-8"
-            asChild
+            disabled={!!searchingSite}
+            onClick={() => onSearchInSite(prefer_site, name)}
           >
-            <a href={`${url}${encoded}`} target="_blank" rel="noopener noreferrer">
-              {name}
-            </a>
+            {searchingSite === name ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                Buscando…
+              </>
+            ) : (
+              name
+            )}
           </Button>
         ))}
       </div>
@@ -125,6 +138,8 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
   const [createdProduct, setCreatedProduct] = useState<Product | null>(null)
   const [imageUrlInput, setImageUrlInput] = useState("")
   const [uploadingImages, setUploadingImages] = useState(false)
+  /** Nombre del sitio mientras se reenvía la búsqueda con prefer_site (ej. "Mercado Libre"). */
+  const [searchingPreferSite, setSearchingPreferSite] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
@@ -164,6 +179,7 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       })
       setImageUrlInput("")
       setUploadingImages(false)
+      setSearchingPreferSite(null)
     }
   }, [isOpen])
 
@@ -238,6 +254,59 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
     }
   }
 
+  /** Reenvía la búsqueda con el mismo barcode pero priorizando un sitio (Mercado Libre, Fravega, etc.). */
+  const handleSearchInSite = async (preferSite: string, siteName: string) => {
+    if (!barcode.trim()) return
+    setSearchingPreferSite(siteName)
+    setState(BarcodeSearchState.SEARCHING)
+    setError(null)
+    setPreviewData(null)
+
+    try {
+      const data = await searchProductByBarcode(barcode.trim(), { prefer_site: preferSite })
+
+      if (data.exists_as_product) {
+        setState(BarcodeSearchState.EXISTS)
+        setPreviewData(data)
+      } else {
+        const images = await improveBarcodeImages(barcode.trim(), data.images ?? [])
+        setState(BarcodeSearchState.FOUND)
+        setPreviewData({ ...data, images })
+        const suggestedPrice =
+          typeof data.suggested_price === "number"
+            ? data.suggested_price
+            : data.suggested_price != null
+              ? parseFloat(String(data.suggested_price))
+              : 0
+        setFormData({
+          code: barcode.trim(),
+          name: data.title,
+          description: data.description ?? "",
+          price: suggestedPrice,
+          stock: 0,
+          category_id: undefined,
+          images,
+        })
+        setAcceptData({
+          category_id: undefined,
+          price: suggestedPrice || undefined,
+          stock: 0,
+          code: undefined,
+        })
+      }
+    } catch (err) {
+      console.error("Error al buscar por sitio:", err)
+      if (err instanceof Error && err.message.includes("404")) {
+        setState(BarcodeSearchState.NOT_FOUND)
+      } else {
+        setState(BarcodeSearchState.ERROR)
+        setError(err instanceof Error ? err.message : "Error al buscar en el sitio")
+      }
+    } finally {
+      setSearchingPreferSite(null)
+    }
+  }
+
   const handleAccept = async () => {
     if (!previewData) return
 
@@ -274,7 +343,7 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
         setError("Máximo 5 imágenes permitidas")
         return
       }
-      setFormData((prev) => ({ ...prev, images: [...prev.images, url] }))
+      setFormData((prev) => ({ ...prev, images: [...(prev.images ?? []), url] }))
       setImageUrlInput("")
       setError(null)
     } catch {
@@ -285,7 +354,7 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
   const handleRemoveImage = (index: number) => {
     setFormData((prev) => ({
       ...prev,
-      images: prev.images.filter((_, i) => i !== index),
+      images: (prev.images ?? []).filter((_, i) => i !== index),
     }))
   }
 
@@ -316,7 +385,7 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       const uploads = await uploadImagesToWordPress(toAdd)
       setFormData((prev) => ({
         ...prev,
-        images: [...prev.images, ...uploads.map((upload) => upload.source_url)].slice(0, 5),
+        images: [...(prev.images ?? []), ...uploads.map((upload) => upload.source_url)].slice(0, 5),
       }))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error subiendo imágenes")
@@ -435,8 +504,14 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
         {state === BarcodeSearchState.SEARCHING && (
           <div className="flex flex-col items-center justify-center py-12 space-y-4">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-lg font-medium">Buscando información...</p>
-            <p className="text-sm text-muted-foreground">Consultando bases de datos externas</p>
+            <p className="text-lg font-medium">
+              {searchingPreferSite ? `Buscando en ${searchingPreferSite}…` : "Buscando información…"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {searchingPreferSite
+                ? "Priorizando resultados de ese sitio"
+                : "Consultando bases de datos externas"}
+            </p>
           </div>
         )}
 
@@ -513,7 +588,11 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
 
                 <Separator />
 
-                <BarcodeRetailLinks barcode={barcode} title={previewData.title} />
+                <BarcodeRetailLinks
+                  barcode={barcode}
+                  onSearchInSite={handleSearchInSite}
+                  searchingSite={searchingPreferSite}
+                />
 
                 <div className="flex gap-2 justify-end">
                   {previewData.available_actions.ignore && (
@@ -554,24 +633,24 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Info className="h-5 w-5 text-blue-500" />
+                  <Info className="h-5 w-5 text-blue-500 dark:text-blue-400" />
                   Este producto ya existe
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <h3 className="font-semibold mb-2">{previewData.title}</h3>
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/40 dark:border-blue-800/60">
+                  <h3 className="font-semibold mb-2 text-foreground">{previewData.title}</h3>
                   {previewData.description && (
                     <p className="text-sm text-muted-foreground">{previewData.description}</p>
                   )}
                   {previewData.product_id && (
-                    <p className="text-sm mt-2">
-                      <strong>ID del producto:</strong> {previewData.product_id}
+                    <p className="text-sm mt-2 text-foreground">
+                      <strong className="text-foreground">ID del producto:</strong> {previewData.product_id}
                     </p>
                   )}
                 </div>
                 <div className="flex justify-end">
-                  <Button variant="outline" onClick={onClose}>
+                  <Button variant="outline" onClick={onClose} className="dark:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-50">
                     Cerrar
                   </Button>
                 </div>
@@ -594,7 +673,11 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
                   Puedes crear el producto manualmente desde el formulario de nuevo producto.
                 </p>
                 <div className="pt-4">
-                  <BarcodeRetailLinks barcode={barcode} />
+                  <BarcodeRetailLinks
+                    barcode={barcode}
+                    onSearchInSite={handleSearchInSite}
+                    searchingSite={searchingPreferSite}
+                  />
                 </div>
                 <div className="flex justify-center gap-2 pt-4">
                   <Button variant="outline" onClick={() => {

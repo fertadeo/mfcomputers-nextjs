@@ -2194,17 +2194,29 @@ export interface CreateProductFromBarcodeRequest {
   images?: string[]
 }
 
+export interface SearchProductByBarcodeOptions {
+  /** Priorizar/restringir resultados a un sitio (ej. "mercadolibre", "fravega", "garbarino"). */
+  prefer_site?: string
+}
+
 /**
  * Busca datos de producto por código de barras
  * Roles permitidos: gerencia, ventas, logistica, finanzas
+ * @param options.prefer_site - Si se indica, la API restringe la búsqueda a ese sitio (ej. prefer_site=mercadolibre).
  */
-export async function searchProductByBarcode(barcode: string): Promise<BarcodeLookupData> {
+export async function searchProductByBarcode(
+  barcode: string,
+  options?: SearchProductByBarcodeOptions
+): Promise<BarcodeLookupData> {
   try {
     const apiUrl = getApiUrl()
-    const fullUrl = `${apiUrl}products/barcode/${encodeURIComponent(barcode)}`
+    const params = new URLSearchParams()
+    if (options?.prefer_site) params.set("prefer_site", options.prefer_site)
+    const query = params.toString()
+    const fullUrl = `${apiUrl}products/barcode/${encodeURIComponent(barcode)}${query ? `?${query}` : ""}`
     const token = getAccessToken()
-    
-    console.log('🔍 [BARCODE] Buscando producto por código de barras:', fullUrl)
+
+    console.log("🔍 [BARCODE] Buscando producto por código de barras:", fullUrl)
     
     const response = await fetch(fullUrl, {
       method: 'GET',
