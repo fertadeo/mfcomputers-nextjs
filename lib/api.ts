@@ -2153,6 +2153,7 @@ export interface BarcodeLookupData {
   brand?: string
   images?: string[]
   source: string
+  source_site?: string
   suggested_price?: number
   category_suggestion?: string
   exists_as_product: boolean

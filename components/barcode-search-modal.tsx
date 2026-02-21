@@ -62,6 +62,39 @@ enum BarcodeSearchState {
   MODIFYING = 'modifying'
 }
 
+const RETAIL_LINKS = [
+  { name: "Mercado Libre", url: "https://listado.mercadolibre.com.ar/?q=" },
+  { name: "Fravega", url: "https://www.fravega.com/l/?q=" },
+  { name: "Garbarino", url: "https://www.garbarino.com/buscar?q=" },
+] as const
+
+function BarcodeRetailLinks({ barcode, title }: { barcode: string; title?: string }) {
+  const query = title?.trim() ? title.trim() : barcode
+  const encoded = encodeURIComponent(query)
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">
+        ¿No encontraste el producto que querías? Buscá en:
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {RETAIL_LINKS.map(({ name, url }) => (
+          <Button
+            key={name}
+            variant="outline"
+            size="sm"
+            className="h-8"
+            asChild
+          >
+            <a href={`${url}${encoded}`} target="_blank" rel="noopener noreferrer">
+              {name}
+            </a>
+          </Button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearchModalProps) {
   const [barcode, setBarcode] = useState("")
   const [state, setState] = useState<BarcodeSearchState>(BarcodeSearchState.IDLE)
@@ -463,6 +496,11 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
                         Fuente: {previewData.source}
                       </Badge>
                     </div>
+                    {previewData.source_site && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Encontrado en: <strong>{previewData.source_site}</strong>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -474,6 +512,8 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
                 )}
 
                 <Separator />
+
+                <BarcodeRetailLinks barcode={barcode} title={previewData.title} />
 
                 <div className="flex gap-2 justify-end">
                   {previewData.available_actions.ignore && (
@@ -553,6 +593,9 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
                 <p className="text-sm text-muted-foreground">
                   Puedes crear el producto manualmente desde el formulario de nuevo producto.
                 </p>
+                <div className="pt-4">
+                  <BarcodeRetailLinks barcode={barcode} />
+                </div>
                 <div className="flex justify-center gap-2 pt-4">
                   <Button variant="outline" onClick={() => {
                     setState(BarcodeSearchState.IDLE)

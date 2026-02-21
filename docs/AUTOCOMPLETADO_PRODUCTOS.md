@@ -1690,6 +1690,25 @@ const ProductForm: React.FC<ProductFormProps> = ({
    - Cache local de resultados recientes
    - Lazy loading de imágenes
 
+6. **Sitio de origen (source_site):**
+   - La API puede devolver `data.source_site` en la respuesta de barcode (ej. cuando el resultado viene de SerpAPI/Google).
+   - Campo: `data.source_site` (string, opcional).
+   - Uso en UI: mostrar en el preview "Encontrado en: { source_site }" solo si existe.
+   - Tipo: incluir `source_site?: string` en la interfaz TypeScript de la respuesta de barcode.
+
+7. **Sugerencia de búsqueda en tiendas:**
+   - Si el usuario no encuentra el producto deseado, mostrar el bloque "¿No encontraste el producto que querías? Buscá en:" con enlaces que abren en nueva pestaña la búsqueda en Mercado Libre, Fravega, Garbarino (usando código de barras o título como término).
+   - Lista sugerida:
+
+     | Sitio          | URL de búsqueda                                    |
+     |----------------|-----------------------------------------------------|
+     | Mercado Libre  | https://listado.mercadolibre.com.ar/?q={q}          |
+     | Fravega        | https://www.fravega.com/l/?q={q}                   |
+     | Garbarino      | https://www.garbarino.com/buscar?q={q}             |
+
+   - Reemplazar el placeholder de búsqueda por `encodeURIComponent(barcode)` o del título.
+   - Mostrar este bloque en el preview (FOUND) y también en el estado "no encontrado" (NOT_FOUND) usando solo el barcode.
+
 ---
 
 ### 🔐 Seguridad
