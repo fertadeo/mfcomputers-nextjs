@@ -248,7 +248,7 @@ export default function ClientesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
@@ -307,18 +307,6 @@ export default function ClientesPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Países</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? "..." : (uiStats?.paisesCount || 0).toLocaleString()}
-              </div>
-              <p className="text-xs text-muted-foreground">Países registrados</p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Clients Table */}
