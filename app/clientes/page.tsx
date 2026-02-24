@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClienteDetailModal } from "@/components/cliente-detail-modal"
-import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard } from "lucide-react"
+import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar } from "lucide-react"
 import { useState, useEffect } from "react"
 import { getClientes, getClienteStats } from "@/lib/api"
 
@@ -166,8 +166,8 @@ export default function ClientesPage() {
       // Valores calculados para la UI
       porcentajeActivos: apiStats.total_clients > 0 ? 
         Math.round((parseInt(apiStats.active_clients) / apiStats.total_clients) * 100) : 0,
-      // Valores por defecto para campos que no vienen de la API
-      nuevosEsteMes: 0, // La API no proporciona este dato
+      // Creados último mes (desde API si existe)
+      nuevosEsteMes: apiStats.created_last_month ?? 0,
       valorPromedio: 0, // La API no proporciona este dato
       crecimientoPorcentaje: 0, // La API no proporciona este dato
       crecimientoNuevos: 0 // La API no proporciona este dato
@@ -248,7 +248,7 @@ export default function ClientesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
@@ -291,6 +291,19 @@ export default function ClientesPage() {
               <p className="text-xs text-muted-foreground">
                 {loading ? "Cargando..." : `Clientes inactivos`}
               </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Creados último mes</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? "..." : (uiStats?.nuevosEsteMes ?? 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">Clientes creados en el último mes</p>
             </CardContent>
           </Card>
 

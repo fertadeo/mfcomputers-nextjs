@@ -83,6 +83,8 @@ export interface ClienteStats {
   inactive_clients: string;
   cities_count: number;
   countries_count: number;
+  /** Clientes creados en el último mes (opcional, si el backend lo expone) */
+  created_last_month?: number;
 }
 
 export interface ApiResponse<T> {
