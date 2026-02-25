@@ -63,6 +63,10 @@ export interface Cliente {
   updated_at: string;
   primary_tax_id?: string;
   secondary_tax_id?: string;
+  /** personeria: persona_fisica | persona_juridica | consumidor_final (API nueva) */
+  personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
+  /** CUIL o CUIT 11 dígitos (API nueva) */
+  cuil_cuit?: string | null;
   person_type?: "persona_fisica" | "persona_juridica";
   tax_condition?: "inscripto" | "consumidor_final" | "monotributo" | "responsable_inscripto" | "exento";
 }
@@ -230,17 +234,35 @@ export async function getClienteStats(): Promise<ClienteStats> {
   }
 }
 
+// Extrae mensaje de error de respuesta API (400, 422, etc.)
+async function getApiErrorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  try {
+    const json = JSON.parse(text) as { message?: string; error?: string; errors?: Record<string, string> };
+    if (typeof json.message === 'string') return json.message;
+    if (typeof json.error === 'string') return json.error;
+    if (json.errors && typeof json.errors === 'object') {
+      const first = Object.values(json.errors)[0];
+      if (typeof first === 'string') return first;
+    }
+  } catch {
+    // no JSON
+  }
+  return text || `Error ${response.status} ${response.statusText}`;
+}
+
 // Función para crear un nuevo cliente
 export async function createCliente(clienteData: {
   client_type: "minorista" | "mayorista" | "personalizado";
   sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_mf" | "manual" | "otro";
   name: string;
-  primary_tax_id?: string;
   email: string;
   phone: string;
   address?: string;
   city: string;
   country: string;
+  personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
+  cuil_cuit?: string | null;
 }): Promise<any> {
   const apiUrl = getApiUrl();
   const fullUrl = `${apiUrl}clients`;
@@ -266,13 +288,9 @@ export async function createCliente(clienteData: {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [API] Error en respuesta de creación:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText
-      });
-      throw new Error(`Error al crear cliente: ${response.status} ${response.statusText}`);
+      const msg = await getApiErrorMessage(response);
+      console.error('❌ [API] Error en respuesta de creación:', { status: response.status, msg });
+      throw new Error(msg);
     }
 
     const data = await response.json();
@@ -357,6 +375,8 @@ export async function updateCliente(id: number, clienteData: {
   address?: string;
   city: string;
   country: string;
+  personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
+  cuil_cuit?: string | null;
 }): Promise<any> {
   try {
     const apiUrl = getApiUrl();
@@ -383,13 +403,9 @@ export async function updateCliente(id: number, clienteData: {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [API] Error en respuesta:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText: errorText
-      });
-      throw new Error(`Error al actualizar cliente: ${response.status} ${response.statusText}`);
+      const msg = await getApiErrorMessage(response);
+      console.error('❌ [API] Error en respuesta:', { status: response.status, msg });
+      throw new Error(msg);
     }
 
     const data = await response.json();

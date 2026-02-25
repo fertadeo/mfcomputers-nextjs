@@ -48,7 +48,7 @@ interface Cliente {
   direccion?: string
   cuit?: string
   cuitSecundario?: string
-  personType?: "Persona Física" | "Persona Jurídica"
+  personType?: "Persona Física" | "Persona Jurídica" | "Consumidor final"
   taxCondition?: "Inscripto" | "Consumidor Final" | "Monotributo" | "Responsable Inscripto" | "Exento"
   fechaRegistro?: string
   descuento?: number
@@ -174,7 +174,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
   const totalFacturado = facturasData.reduce((sum, factura) => sum + factura.monto, 0)
   const facturasPendientes = facturasData.filter(f => f.estado === 'Pendiente').length
 
-  const personType = cliente.personType ?? (cliente.cuit ? "Persona Jurídica" : "Persona Física")
+  const personType = cliente.personType ?? (cliente.cuit ? "Persona Jurídica" : "Consumidor final")
   const taxCondition = formatTaxCondition(
     cliente.taxCondition,
     personType === "Persona Jurídica" ? "Responsable Inscripto" : "Consumidor Final"

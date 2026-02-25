@@ -17,15 +17,18 @@ import {
   Save,
   X,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  IdCard
 } from "lucide-react"
 import { updateCliente } from "@/lib/api"
 import { SALES_CHANNEL_CONFIG, SalesChannel } from "@/lib/utils"
 
+type Personeria = "persona_fisica" | "persona_juridica" | "consumidor_final"
+
 interface ClienteUI {
-  id: string // Código del cliente
-  dbId: number // ID numérico de la base de datos
-  salesChannel: SalesChannel // Canal de venta
+  id: string
+  dbId: number
+  salesChannel: SalesChannel
   nombre: string
   email: string
   telefono: string
@@ -37,6 +40,7 @@ interface ClienteUI {
   direccion?: string
   cuit?: string
   cuitSecundario?: string
+  personeria?: Personeria
   personType?: "Persona Física" | "Persona Jurídica"
   taxCondition?: string
   fechaRegistro?: string
@@ -54,6 +58,23 @@ interface EditClientData {
   address: string
   city: string
   country: string
+  personeria: Personeria
+  cuil_cuit: string
+}
+
+function onlyDigitsCuil(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 11)
+}
+
+function cuilCuitDigitCount(value: string): number {
+  return onlyDigitsCuil(value).length
+}
+
+function formatCuilCuitDisplay(value: string): string {
+  const d = onlyDigitsCuil(value)
+  if (d.length <= 2) return d
+  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
+  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
 }
 
 interface EditClientModalProps {
@@ -72,7 +93,9 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     phone: "",
     address: "",
     city: "",
-    country: "Argentina"
+    country: "Argentina",
+    personeria: "consumidor_final",
+    cuil_cuit: ""
   })
 
   const [isLoading, setIsLoading] = useState(false)
@@ -82,6 +105,17 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   // Cargar datos del cliente cuando se abre el modal
   useEffect(() => {
     if (cliente && isOpen) {
+      const personeria: Personeria =
+        cliente.personeria === "persona_fisica" || cliente.personeria === "persona_juridica" || cliente.personeria === "consumidor_final"
+          ? cliente.personeria
+          : cliente.personType === "Persona Jurídica"
+          ? "persona_juridica"
+          : cliente.personType === "Persona Física"
+          ? "persona_fisica"
+          : "consumidor_final"
+      const cuilRaw = cliente.cuit ?? ""
+      const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+
       setFormData({
         client_type: cliente.tipo.toLowerCase() as "minorista" | "mayorista" | "personalizado",
         sales_channel: cliente.salesChannel,
@@ -90,7 +124,9 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
         phone: cliente.telefono,
         address: cliente.direccion || "",
         city: cliente.ciudad,
-        country: "Argentina" // Valor por defecto
+        country: "Argentina",
+        personeria,
+        cuil_cuit: cuilDisplay
       })
       setErrors({})
       setSuccessMessage("")
@@ -130,6 +166,18 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
       newErrors.country = "El país es requerido"
     }
 
+    const isFisicaOrJuridica = formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica"
+    if (isFisicaOrJuridica) {
+      const digits = cuilCuitDigitCount(formData.cuil_cuit)
+      if (digits === 0) {
+        newErrors.cuil_cuit = "El CUIL/CUIT es requerido para persona física o jurídica"
+      } else if (digits !== 11) {
+        newErrors.cuil_cuit = "El CUIL/CUIT debe tener exactamente 11 dígitos"
+      }
+    } else if (formData.cuil_cuit.trim() && cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
+      newErrors.cuil_cuit = "El CUIL/CUIT debe tener exactamente 11 dígitos"
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -147,12 +195,21 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     setErrors({})
 
     try {
-      console.log('📝 [EDIT] Enviando datos de actualización:', {
-        clienteId: cliente.dbId,
-        formData: formData
-      })
+      const payload = {
+        client_type: formData.client_type,
+        sales_channel: formData.sales_channel,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim() || undefined,
+        city: formData.city.trim(),
+        country: formData.country.trim(),
+        personeria: formData.personeria,
+        cuil_cuit: formData.cuil_cuit.trim() ? onlyDigitsCuil(formData.cuil_cuit) : null
+      }
+      console.log('📝 [EDIT] Enviando datos de actualización:', { clienteId: cliente.dbId, payload })
 
-      await updateCliente(cliente.dbId, formData)
+      await updateCliente(cliente.dbId, payload)
       
       setSuccessMessage("Cliente actualizado exitosamente")
       
@@ -164,8 +221,12 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
 
     } catch (error) {
       console.error('💥 [EDIT] Error al actualizar cliente:', error)
-      setErrors({
-        submit: error instanceof Error ? error.message : "Error al actualizar el cliente"
+      const msg = error instanceof Error ? error.message : "Error al actualizar el cliente"
+      setErrors(prev => {
+        const next = { ...prev, submit: msg }
+        if (msg.toLowerCase().includes("cuil") || msg.toLowerCase().includes("cuit")) next.cuil_cuit = msg
+        if (msg.toLowerCase().includes("personeria") || msg.toLowerCase().includes("personería")) next.personeria = msg
+        return next
       })
     } finally {
       setIsLoading(false)
@@ -304,6 +365,62 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     <p className="text-sm text-red-500 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.phone}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="personeria" className="flex items-center gap-2">
+                    <IdCard className="h-4 w-4 text-gray-500" />
+                    Personería
+                  </Label>
+                  <Select
+                    value={formData.personeria}
+                    onValueChange={(value: Personeria) => handleInputChange("personeria", value)}
+                  >
+                    <SelectTrigger className={errors.personeria ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Seleccionar personería" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="consumidor_final">Consumidor final</SelectItem>
+                      <SelectItem value="persona_fisica">Persona física</SelectItem>
+                      <SelectItem value="persona_juridica">Persona jurídica</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.personeria && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.personeria}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cuil_cuit" className="flex items-center gap-2">
+                    <IdCard className="h-4 w-4 text-gray-500" />
+                    CUIL / CUIT
+                    {(formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica") && " *"}
+                  </Label>
+                  <Input
+                    id="cuil_cuit"
+                    type="text"
+                    value={formData.cuil_cuit}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      const digits = onlyDigitsCuil(v)
+                      const formatted = digits.length <= 2 ? digits : formatCuilCuitDisplay(v)
+                      handleInputChange("cuil_cuit", formatted)
+                    }}
+                    placeholder="11 dígitos (ej. 20-12345678-9)"
+                    className={errors.cuil_cuit ? "border-red-500" : ""}
+                    maxLength={13}
+                  />
+                  {errors.cuil_cuit && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.cuil_cuit}
                     </p>
                   )}
                 </div>

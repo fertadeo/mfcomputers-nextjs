@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClienteDetailModal } from "@/components/cliente-detail-modal"
-import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar } from "lucide-react"
+import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar, Edit, User, Activity } from "lucide-react"
 import { useState, useEffect } from "react"
 import { getClientes, getClienteStats } from "@/lib/api"
 
@@ -32,12 +32,13 @@ import { getSalesChannelConfig, SalesChannel } from "@/lib/utils"
 import { CuentasCorrientesSummary } from "@/components/cuentas-corrientes-summary"
 import { ClienteActivityModal } from "@/components/cliente-activity-modal"  
 import { CuentaCorrienteStatusBadge } from "@/components/cuenta-corriente-status-badge"
+import { EditClientModal } from "@/components/edit-client-modal"
 
 // Tipo para la UI (formato mapeado)
 interface ClienteUI {
-  id: string; // Código del cliente (MAY001, etc)
-  dbId: number; // ID numérico de la base de datos
-  salesChannel: SalesChannel; // Canal de venta
+  id: string;
+  dbId: number;
+  salesChannel: SalesChannel;
   nombre: string;
   email: string;
   telefono: string;
@@ -49,7 +50,9 @@ interface ClienteUI {
   direccion?: string;
   cuit?: string;
   cuitSecundario?: string;
-  personType?: "Persona Física" | "Persona Jurídica";
+  /** persona_fisica | persona_juridica | consumidor_final (API: personeria) */
+  personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
+  personType?: "Persona Física" | "Persona Jurídica" | "Consumidor final";
   taxCondition?: string;
   ccEnabled?: boolean;
   ccLimit?: number;
@@ -63,6 +66,8 @@ export default function ClientesPage() {
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false)
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false)
   const [selectedClienteForActivity, setSelectedClienteForActivity] = useState<ClienteUI | null>(null)
+  const [clienteToEdit, setClienteToEdit] = useState<ClienteUI | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [clientes, setClientes] = useState<any[]>([])
   const [pagination, setPagination] = useState({
     page: 1,
@@ -184,7 +189,10 @@ export default function ClientesPage() {
       4: 0,      // Ventas Directas (inactivo)
       5: 680000  // Importadora del Sur
     }
-    const personType = apiCliente.person_type === 'persona_fisica' ? 'Persona Física' : 'Persona Jurídica'
+    const personeria = apiCliente.personeria === 'persona_fisica' || apiCliente.personeria === 'persona_juridica' || apiCliente.personeria === 'consumidor_final'
+      ? apiCliente.personeria
+      : (apiCliente.person_type === 'persona_fisica' ? 'persona_fisica' : apiCliente.person_type === 'persona_juridica' ? 'persona_juridica' : 'consumidor_final')
+    const personType = personeria === 'persona_fisica' ? 'Persona Física' : personeria === 'persona_juridica' ? 'Persona Jurídica' : 'Consumidor final'
     const taxCondition = formatTaxConditionLabel(
       apiCliente.tax_condition,
       personType === 'Persona Jurídica' ? 'Responsable Inscripto' : 'Consumidor Final'
@@ -208,8 +216,9 @@ export default function ClientesPage() {
       estado: apiCliente.is_active === 1 ? 'Activo' : 'Inactivo',
       ultimaCompra: new Date(apiCliente.updated_at).toLocaleDateString('es-AR'),
       totalCompras: comprasPorCliente[apiCliente.id] || 0,
-      cuit: apiCliente.primary_tax_id,
+      cuit: apiCliente.cuil_cuit ?? apiCliente.primary_tax_id,
       cuitSecundario: apiCliente.secondary_tax_id,
+      personeria,
       personType,
       taxCondition,
       ccEnabled,
@@ -388,7 +397,9 @@ export default function ClientesPage() {
                   <TableHead>Última Compra</TableHead>
                   <TableHead>Cuenta Corriente</TableHead>
                   <TableHead>Saldo / Límite</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead className="sticky right-0 z-10 w-[120px] min-w-[120px] text-right bg-muted/50 dark:bg-muted/30 border-l border-border shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
+                  Acciones
+                </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -414,7 +425,7 @@ export default function ClientesPage() {
                   clientesUI.map((cliente) => (
                   <TableRow 
                     key={cliente.id} 
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="group cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => handleVerActividad(cliente)}
                   >
                     <TableCell>
@@ -477,27 +488,47 @@ export default function ClientesPage() {
                         <span className="text-sm text-muted-foreground">Sin CC</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
+                    <TableCell
+                      onClick={(e) => e.stopPropagation()}
+                      className="sticky right-0 z-10 w-[120px] min-w-[120px] text-right bg-card group-hover:bg-muted/50 border-l border-border shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Editar cliente"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setClienteToEdit(cliente)
+                            setIsEditModalOpen(true)
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Ver perfil"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleVerPerfil(cliente)
                           }}
                         >
-                          Ver Perfil
+                          <User className="h-4 w-4" />
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Ver actividad"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleVerActividad(cliente)
                           }}
                         >
-                          Actividad
+                          <Activity className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -547,6 +578,21 @@ export default function ClientesPage() {
             onClose={handleCloseActivityModal}
           />
         )}
+
+        {/* Modal de edición de cliente (desde tabla) */}
+        <EditClientModal
+          cliente={clienteToEdit}
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false)
+            setClienteToEdit(null)
+          }}
+          onSuccess={() => {
+            loadData(currentPage, searchTerm, statusFilter, channelFilter)
+            setIsEditModalOpen(false)
+            setClienteToEdit(null)
+          }}
+        />
         </div>
       </ERPLayout>
     </Protected>

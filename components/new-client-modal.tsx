@@ -16,11 +16,14 @@ interface NewClientModalProps {
   onSuccess: () => void
 }
 
+type Personeria = "persona_fisica" | "persona_juridica" | "consumidor_final"
+
 interface NewClientData {
   client_type: "minorista" | "mayorista" | "personalizado"
   sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_mf" | "manual" | "otro"
   name: string
-  primary_tax_id: string
+  personeria: Personeria
+  cuil_cuit: string
   email: string
   phone: string
   address: string
@@ -28,12 +31,29 @@ interface NewClientData {
   country: string
 }
 
+// Solo dígitos del CUIL/CUIT (máx 11)
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 11)
+}
+
+function cuilCuitDigitCount(value: string): number {
+  return onlyDigits(value).length
+}
+
+function formatCuilCuit(value: string): string {
+  const d = onlyDigits(value)
+  if (d.length <= 2) return d
+  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
+  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
+}
+
 export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalProps) {
   const [formData, setFormData] = useState<NewClientData>({
     client_type: "minorista",
     sales_channel: "manual",
     name: "",
-    primary_tax_id: "",
+    personeria: "consumidor_final",
+    cuil_cuit: "",
     email: "",
     phone: "",
     address: "",
@@ -44,6 +64,8 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  const isManualChannel = formData.sales_channel === "manual"
 
   const handleInputChange = (field: keyof NewClientData, value: string) => {
     setFormData(prev => ({
@@ -63,9 +85,30 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
       setError("El canal de venta es obligatorio")
       return false
     }
+    if (!isManualChannel) {
+      setError("Solo se pueden crear clientes con canal de venta «Manual». Seleccione Manual para completar el formulario.")
+      return false
+    }
     if (!formData.name.trim()) {
       setError("El nombre es obligatorio")
       return false
+    }
+    const isFisicaOrJuridica = formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica"
+    if (isFisicaOrJuridica) {
+      const digits = cuilCuitDigitCount(formData.cuil_cuit)
+      if (digits === 0) {
+        setError("El CUIL/CUIT es requerido para persona física o jurídica")
+        return false
+      }
+      if (digits !== 11) {
+        setError("El CUIL/CUIT debe tener exactamente 11 dígitos")
+        return false
+      }
+    } else if (formData.cuil_cuit.trim()) {
+      if (cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
+        setError("El CUIL/CUIT debe tener exactamente 11 dígitos")
+        return false
+      }
     }
     if (!formData.email.trim()) {
       setError("El email es obligatorio")
@@ -99,9 +142,21 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
     setError(null)
 
     try {
-      console.log('📡 [NEW CLIENT] Enviando datos:', formData)
+      const payload = {
+        client_type: formData.client_type,
+        sales_channel: formData.sales_channel,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim() || undefined,
+        city: formData.city.trim(),
+        country: formData.country.trim(),
+        personeria: formData.personeria,
+        cuil_cuit: formData.cuil_cuit.trim() ? onlyDigits(formData.cuil_cuit) : null
+      }
+      console.log('📡 [NEW CLIENT] Enviando datos:', payload)
       
-      await createCliente(formData)
+      await createCliente(payload)
       
       console.log('✅ [NEW CLIENT] Cliente creado exitosamente')
 
@@ -110,12 +165,12 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
         setSuccess(false)
         onSuccess()
         onClose()
-        // Resetear formulario
         setFormData({
           client_type: "minorista",
           sales_channel: "manual",
           name: "",
-          primary_tax_id: "",
+          personeria: "consumidor_final",
+          cuil_cuit: "",
           email: "",
           phone: "",
           address: "",
@@ -167,7 +222,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   <Select
                     value={formData.client_type}
                     onValueChange={(value) => handleInputChange("client_type", value)}
-                    disabled={loading}
+                    disabled={loading || !isManualChannel}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona el tipo" />
@@ -212,13 +267,39 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="primary_tax_id">DNI / CUIL / CUIT</Label>
+                  <Label htmlFor="personeria">Personería</Label>
+                  <Select
+                    value={formData.personeria}
+                    onValueChange={(value: Personeria) => handleInputChange("personeria", value)}
+                    disabled={loading || !isManualChannel}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="consumidor_final">Consumidor final</SelectItem>
+                      <SelectItem value="persona_fisica">Persona física</SelectItem>
+                      <SelectItem value="persona_juridica">Persona jurídica</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cuil_cuit">
+                    CUIL / CUIT
+                    {(formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica") && " *"}
+                  </Label>
                   <Input
-                    id="primary_tax_id"
-                    value={formData.primary_tax_id}
-                    onChange={(e) => handleInputChange("primary_tax_id", e.target.value)}
-                    placeholder="DNI, CUIL o CUIT"
+                    id="cuil_cuit"
+                    value={formData.cuil_cuit}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      const digits = onlyDigits(v)
+                      const formatted = digits.length <= 2 ? digits : formatCuilCuit(v)
+                      handleInputChange("cuil_cuit", formatted)
+                    }}
+                    placeholder="11 dígitos (ej. 20-12345678-9)"
                     disabled={loading}
+                    maxLength={13}
                   />
                 </div>
               </div>

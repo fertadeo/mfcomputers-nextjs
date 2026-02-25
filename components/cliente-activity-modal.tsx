@@ -71,7 +71,7 @@ interface ClienteActivityModalProps {
     salesChannel: string
     cuit?: string
     cuitSecundario?: string
-    personType?: "Persona Física" | "Persona Jurídica"
+    personType?: "Persona Física" | "Persona Jurídica" | "Consumidor final"
     taxCondition?: string
     ccLimit?: number
     ccBalance?: number
@@ -427,7 +427,7 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
   const comprasEntregadas = filteredCompras.filter(c => c.estado === 'Entregado').length
   const comprasEnProceso = filteredCompras.filter(c => c.estado === 'En Proceso').length
 
-  const personType = cliente.personType ?? (cliente.cuit ? "Persona Jurídica" : "Persona Física")
+  const personType = cliente.personType ?? (cliente.cuit ? "Persona Jurídica" : "Consumidor final")
   const taxCondition = formatTaxCondition(
     cliente.taxCondition,
     personType === "Persona Jurídica" ? "Responsable Inscripto" : "Consumidor Final"
