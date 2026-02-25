@@ -245,14 +245,12 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       <SelectValue placeholder="Selecciona el canal" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(SALES_CHANNEL_CONFIG).map(([key, config]) => (
-                        <SelectItem key={key} value={key}>
-                          <div className="flex items-center gap-2">
-                            <span>{config.icon}</span>
-                            <span>{config.label}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="manual">
+                        <div className="flex items-center gap-2">
+                          <span>{SALES_CHANNEL_CONFIG.manual?.icon}</span>
+                          <span>{SALES_CHANNEL_CONFIG.manual?.label ?? "Manual"}</span>
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -263,7 +261,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     value={formData.name}
                     onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="Nombre o razón social"
-                    disabled={loading}
+                    disabled={loading || !isManualChannel}
                   />
                 </div>
                 <div className="space-y-2">
@@ -298,7 +296,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       handleInputChange("cuil_cuit", formatted)
                     }}
                     placeholder="11 dígitos (ej. 20-12345678-9)"
-                    disabled={loading}
+                    disabled={loading || !isManualChannel}
                     maxLength={13}
                   />
                 </div>
@@ -316,7 +314,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       onChange={(e) => handleInputChange("email", e.target.value)}
                       placeholder="Correo electrónico"
                       className="pl-8"
-                      disabled={loading}
+                      disabled={loading || !isManualChannel}
                     />
                   </div>
                 </div>
@@ -330,7 +328,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       onChange={(e) => handleInputChange("phone", e.target.value)}
                       placeholder="Teléfono de contacto"
                       className="pl-8"
-                      disabled={loading}
+                      disabled={loading || !isManualChannel}
                     />
                   </div>
                 </div>
@@ -352,7 +350,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   value={formData.address}
                   onChange={(e) => handleInputChange("address", e.target.value)}
                   placeholder="Dirección"
-                  disabled={loading}
+                  disabled={loading || !isManualChannel}
                 />
               </div>
 
@@ -367,7 +365,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       onChange={(e) => handleInputChange("city", e.target.value)}
                       placeholder="Ciudad"
                       className="pl-8"
-                      disabled={loading}
+                      disabled={loading || !isManualChannel}
                     />
                   </div>
                 </div>
@@ -381,7 +379,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       onChange={(e) => handleInputChange("country", e.target.value)}
                       placeholder="País"
                       className="pl-8"
-                      disabled={loading}
+                      disabled={loading || !isManualChannel}
                     />
                   </div>
                 </div>
@@ -417,7 +415,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
             </Button>
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || !isManualChannel}
               className="min-w-[120px]"
             >
               {loading ? (
