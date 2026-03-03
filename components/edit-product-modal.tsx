@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X, ExternalLink } from "lucide-react"
+import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X, ExternalLink, Loader2 } from "lucide-react"
 import Image from "next/image"
 import {
   Product,
@@ -43,6 +43,7 @@ interface FormData {
 export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditProductModalProps) {
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [submitStep, setSubmitStep] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [syncToWooCommerce, setSyncToWooCommerce] = useState(true)
@@ -51,6 +52,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageUrlInput, setImageUrlInput] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const submitBottomRef = useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<FormData>({
     code: "",
@@ -127,6 +129,14 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       setWoocommerceImageIds(ids)
     }
   }, [isOpen, product])
+
+  useEffect(() => {
+    if (!isOpen || !loading || !submitStep) return
+    const t = setTimeout(() => {
+      submitBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    }, 50)
+    return () => clearTimeout(t)
+  }, [isOpen, loading, submitStep])
 
   const handleAddImageUrl = () => {
     const url = imageUrlInput.trim()
@@ -256,6 +266,8 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     }
 
     setLoading(true)
+    setSubmitStep("Editando información del producto…")
+    await new Promise((r) => setTimeout(r, 1500))
 
     try {
       const stock = parseInt(formData.stock) || 0
@@ -285,6 +297,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         sync_to_woocommerce: syncToWooCommerce || undefined,
       }
 
+      setSubmitStep(
+        syncToWooCommerce
+          ? "Subiendo producto a WooCommerce…"
+          : "Guardando cambios en el servidor…"
+      )
+      await new Promise((r) => setTimeout(r, 1500))
       const updated = await updateProduct(product.id, payload)
 
       showToast({ message: "Producto actualizado correctamente.", type: "success" })
@@ -297,6 +315,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         type: "error",
       })
     } finally {
+      setSubmitStep(null)
       setLoading(false)
     }
   }
@@ -605,14 +624,39 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             </CardContent>
           </Card>
 
+          {loading && submitStep && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-md border bg-muted/40 px-3 py-2 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Procesando</p>
+                  <p className="text-sm font-medium leading-snug break-words">{submitStep}</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
               Cancelar
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Guardando…" : "Guardar cambios"}
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando…
+                </>
+              ) : (
+                "Guardar cambios"
+              )}
             </Button>
           </div>
+          <div ref={submitBottomRef} />
         </form>
       </DialogContent>
     </Dialog>
