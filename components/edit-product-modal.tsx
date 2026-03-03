@@ -266,12 +266,24 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     }
 
     setLoading(true)
-    setSubmitStep("Editando información del producto…")
-    await new Promise((r) => setTimeout(r, 1500))
 
     try {
+      const STEP_VIEW_MS = 650
+      const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+      const setStep = async (msg: string, ms: number = STEP_VIEW_MS) => {
+        setSubmitStep(msg)
+        await wait(ms)
+      }
+
       const stock = parseInt(formData.stock) || 0
       const isActive = stock > 0 ? formData.is_active === "1" : false
+      const nextPrice = parsePrecioFormato(formData.price)
+      const nextMinStock = parseInt(formData.min_stock) || 0
+      const nextMaxStock = parseInt(formData.max_stock) || 1000
+      const nextCategoryId = formData.category_id ? parseInt(formData.category_id) : null
+      const nextCode = formData.code.trim()
+      const nextName = formData.name.trim()
+      const nextDescription = formData.description.trim()
 
       // Lista final para WooCommerce: solo URLs (http/https) en el orden que ve el usuario.
       // Incluye URLs externas y source_url de archivos subidos (POST woocommerce/media).
@@ -283,26 +295,86 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
           (url.startsWith("http://") || url.startsWith("https://"))
       )
 
+      const prevImageUrls =
+        product.images !== null && product.images !== undefined
+          ? product.images
+          : product.image_url
+            ? [product.image_url]
+            : getAllProductImages(product)
+
+      const arraysEqual = (a: string[], b: string[]) =>
+        a.length === b.length && a.every((v, i) => v === b[i])
+
+      const prevStock = product.stock ?? 0
+      const prevIsActive = product.is_active ?? true
+      const prevPrice = Number(product.price ?? 0)
+      const prevMinStock = product.min_stock ?? 0
+      const prevMaxStock = product.max_stock ?? 1000
+      const prevCategoryId = product.category_id ?? null
+      const prevCode = (product.code ?? "").trim()
+      const prevName = (product.name ?? "").trim()
+      const prevDescription = (product.description ?? "").trim()
+
+      const stockChanged = stock !== prevStock
+      const activeChanged = isActive !== prevIsActive
+      const priceChanged = nextPrice !== prevPrice
+      const limitsChanged = nextMinStock !== prevMinStock || nextMaxStock !== prevMaxStock
+      const categoryChanged = nextCategoryId !== prevCategoryId
+      const codeChanged = nextCode !== prevCode
+      const nameChanged = nextName !== prevName
+      const descriptionChanged = nextDescription !== prevDescription
+      const infoChanged = codeChanged || nameChanged || descriptionChanged || categoryChanged
+      const imagesChanged = !arraysEqual(validImageUrls, prevImageUrls ?? [])
+
+      const preSteps: string[] = []
+      if (activeChanged && !isActive) {
+        preSteps.push(stock === 0 ? "Dejando el producto sin stock e inactivándolo…" : "Inactivando el producto…")
+      } else if (activeChanged && isActive) {
+        preSteps.push("Activando el producto…")
+      }
+      if (stockChanged && !(activeChanged && !isActive)) {
+        preSteps.push("Actualizando stock…")
+      }
+      if (priceChanged) preSteps.push("Actualizando precio…")
+      if (infoChanged) preSteps.push("Actualizando información del producto…")
+      if (limitsChanged) preSteps.push("Actualizando límites de stock…")
+      if (imagesChanged) preSteps.push("Actualizando imágenes…")
+
+      // Mostrar algunos pasos relevantes (sin hacer eterno el submit)
+      const stepsToShow = preSteps.length > 0 ? preSteps.slice(0, 3) : ["Preparando cambios…"]
+      for (const s of stepsToShow) {
+        // eslint-disable-next-line no-await-in-loop
+        await setStep(s)
+      }
+
       const payload: UpdateProductData = {
-        code: formData.code.trim(),
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        category_id: formData.category_id ? parseInt(formData.category_id) : null,
-        price: parsePrecioFormato(formData.price),
+        code: nextCode,
+        name: nextName,
+        description: nextDescription || null,
+        category_id: nextCategoryId,
+        price: nextPrice,
         stock,
-        min_stock: parseInt(formData.min_stock) || 0,
-        max_stock: parseInt(formData.max_stock) || 1000,
+        min_stock: nextMinStock,
+        max_stock: nextMaxStock,
         is_active: isActive,
         images: validImageUrls,
         sync_to_woocommerce: syncToWooCommerce || undefined,
       }
 
-      setSubmitStep(
-        syncToWooCommerce
-          ? "Subiendo producto a WooCommerce…"
-          : "Guardando cambios en el servidor…"
-      )
-      await new Promise((r) => setTimeout(r, 1500))
+      if (syncToWooCommerce) {
+        const wcMsg =
+          !isActive || stock === 0
+            ? "Sincronizando baja de stock con WooCommerce…"
+            : imagesChanged
+              ? "Sincronizando imágenes con WooCommerce…"
+              : priceChanged
+                ? "Sincronizando precio con WooCommerce…"
+                : "Sincronizando cambios con WooCommerce…"
+        await setStep(wcMsg, 550)
+      } else {
+        await setStep("Guardando cambios en el servidor…", 450)
+      }
+
       const updated = await updateProduct(product.id, payload)
 
       showToast({ message: "Producto actualizado correctamente.", type: "success" })
