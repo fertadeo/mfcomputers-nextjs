@@ -21,6 +21,7 @@ import {
   type CreateSaleRequest,
 } from "@/lib/api"
 import { Search, Plus, Minus, Trash2, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle } from "lucide-react"
+import Link from "next/link"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
 
@@ -62,8 +63,18 @@ export default function PuntoVentaPage() {
     loadProducts()
   }, [])
 
+  function checkApiKey() {
+    setApiKeyMissing(!getPosApiKey())
+  }
+
   useEffect(() => {
-    if (!getPosApiKey()) setApiKeyMissing(true)
+    checkApiKey()
+  }, [])
+
+  useEffect(() => {
+    const onFocus = () => checkApiKey()
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
   }, [])
 
   useEffect(() => {
@@ -214,12 +225,15 @@ export default function PuntoVentaPage() {
 
           {apiKeyMissing && (
             <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
-              <CardContent className="flex items-center gap-3 pt-4">
-                <AlertCircle className="h-5 w-5 text-amber-600" />
-                <p className="text-sm">
+              <CardContent className="flex flex-col sm:flex-row sm:items-center gap-3 pt-4">
+                <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+                <p className="text-sm flex-1">
                   Configurá la API Key para punto de venta para poder registrar ventas. Sin ella no se
                   puede enviar la venta al servidor.
                 </p>
+                <Button asChild variant="outline" size="sm" className="shrink-0 border-amber-600 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/50">
+                  <Link href="/configuracion?tab=pos">Configurar API Key</Link>
+                </Button>
               </CardContent>
             </Card>
           )}

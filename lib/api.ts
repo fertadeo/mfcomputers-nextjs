@@ -381,18 +381,37 @@ export async function updateCliente(id: number, clienteData: {
   try {
     const apiUrl = getApiUrl();
     const url = `${apiUrl}clients/${id}`;
+    // Enviar nombres nuevos (personeria, cuil_cuit) y legacy (person_type, primary_tax_id) por si el backend solo acepta uno u otro
+    const body: Record<string, unknown> = {
+      client_type: clienteData.client_type,
+      sales_channel: clienteData.sales_channel,
+      name: clienteData.name,
+      email: clienteData.email,
+      phone: clienteData.phone,
+      address: clienteData.address,
+      city: clienteData.city,
+      country: clienteData.country,
+      personeria: clienteData.personeria,
+      cuil_cuit: clienteData.cuil_cuit ?? null
+    }
+    if (clienteData.personeria != null && clienteData.personeria !== "consumidor_final") {
+      body.person_type = clienteData.personeria
+    }
+    if (clienteData.cuil_cuit != null && clienteData.cuil_cuit !== "") {
+      body.primary_tax_id = clienteData.cuil_cuit
+    }
     
     console.log('🔄 [API] Actualizando cliente:', {
       url: url,
       id: id,
-      clienteData: clienteData,
+      body: body,
       method: 'PUT'
     });
 
     const response = await fetch(url, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify(clienteData)
+      body: JSON.stringify(body)
     });
 
     console.log('📡 [API] Respuesta de actualización:', {
@@ -601,10 +620,13 @@ export interface CreateSaleResponse {
   timestamp: string
 }
 
-/** API Key para punto de venta (localStorage 'posApiKey' o 'apiKey'). Requerida para POST /api/sales. */
+/** API Key para punto de venta (localStorage 'posApiKey' o 'apiKey', o NEXT_PUBLIC_POS_API_KEY). Requerida para POST /api/sales. */
 export function getPosApiKey(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+  const fromStorage = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+  if (fromStorage) return fromStorage
+  const fromEnv = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_POS_API_KEY
+  return fromEnv ? (process.env.NEXT_PUBLIC_POS_API_KEY ?? null) : null
 }
 
 /**

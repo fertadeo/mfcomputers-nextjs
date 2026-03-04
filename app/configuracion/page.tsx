@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,7 +43,7 @@ function PosApiKeyCard() {
       <CardHeader>
         <CardTitle>API Key para Punto de venta</CardTitle>
         <CardDescription>
-          La API Key se usa para registrar ventas en local (POST /api/sales). Obtenela en el panel de administración del ERP y guardala aquí. Se guarda solo en este navegador.
+          La API Key se usa para registrar ventas en local (POST /api/sales). Obtenela en el panel de administración del ERP y guardala aquí. Se guarda solo en este navegador. También podés definir <code className="text-xs bg-muted px-1 rounded">NEXT_PUBLIC_POS_API_KEY</code> en tu entorno para no depender del navegador.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -66,6 +67,16 @@ function PosApiKeyCard() {
 }
 
 export default function ConfiguracionPage() {
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get("tab")
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    tabParam === "pos" ? "pos" : "roles"
+  )
+
+  useEffect(() => {
+    if (tabParam === "pos") setActiveTab("pos")
+  }, [tabParam])
+
   return (
     <Protected requiredRoles={['admin', 'gerencia']}>
       <ERPLayout activeItem="configuracion">
@@ -84,7 +95,7 @@ export default function ConfiguracionPage() {
           </div>
 
           {/* Tabs para las diferentes secciones */}
-          <Tabs defaultValue="roles" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="roles" className="flex items-center gap-2">
                 <Key className="h-4 w-4" />
