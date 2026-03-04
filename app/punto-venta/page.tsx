@@ -14,6 +14,7 @@ import {
   getClientes,
   createSale,
   getPosApiKey,
+  getAccessToken,
   type Product,
   type Cliente,
   type SalePaymentMethod,
@@ -63,16 +64,17 @@ export default function PuntoVentaPage() {
     loadProducts()
   }, [])
 
-  function checkApiKey() {
-    setApiKeyMissing(!getPosApiKey())
+  function checkAuthForSale() {
+    const hasAuth = !!getAccessToken() || !!getPosApiKey()
+    setApiKeyMissing(!hasAuth)
   }
 
   useEffect(() => {
-    checkApiKey()
+    checkAuthForSale()
   }, [])
 
   useEffect(() => {
-    const onFocus = () => checkApiKey()
+    const onFocus = () => checkAuthForSale()
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
   }, [])
@@ -228,8 +230,8 @@ export default function PuntoVentaPage() {
               <CardContent className="flex flex-col sm:flex-row sm:items-center gap-3 pt-4">
                 <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
                 <p className="text-sm flex-1">
-                  Configurá la API Key para punto de venta para poder registrar ventas. Sin ella no se
-                  puede enviar la venta al servidor.
+                  Para registrar ventas tenés que estar logueado o configurar la API Key en Configuración.
+                  Sin autenticación no se puede enviar la venta al servidor.
                 </p>
                 <Button asChild variant="outline" size="sm" className="shrink-0 border-amber-600 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/50">
                   <Link href="/configuracion?tab=pos">Configurar API Key</Link>
@@ -515,7 +517,8 @@ export default function PuntoVentaPage() {
                   <Textarea
                     placeholder="Máx. 1000 caracteres"
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value.slice(0, 1000))}
+                    maxLength={1000}
+                    onChange={(e) => setNotes(e.target.value)}
                     rows={2}
                     className="resize-none"
                   />

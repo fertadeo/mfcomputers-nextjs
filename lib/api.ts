@@ -630,30 +630,51 @@ export function getPosApiKey(): string | null {
 }
 
 /**
- * Crea una venta en local físico. Usa x-api-key (no JWT).
- * Roles/uso: punto de venta en el ERP.
+ * Crea una venta en local físico (POST /api/sales).
+ * Autenticación: JWT (Authorization: Bearer) o API Key (x-api-key). Al menos uno requerido.
+ * El backend descuenta stock en el ERP y, si aplica, sincroniza con WooCommerce.
  */
 export async function createSale(body: CreateSaleRequest): Promise<SaleResponseData> {
   const apiUrl = getApiUrl()
   const fullUrl = `${apiUrl}sales`
+  const token = getAccessToken()
   const apiKey = getPosApiKey()
 
-  if (!apiKey) {
-    throw new Error('API Key requerida para punto de venta. Configúrala en Configuración.')
+  if (!token && !apiKey) {
+    throw new Error(
+      'Autenticación requerida: iniciá sesión o configurá la API Key para punto de venta en Configuración.'
+    )
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  if (apiKey) {
+    headers['x-api-key'] = apiKey
   }
 
   const response = await fetch(fullUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-    },
+    headers,
     body: JSON.stringify(body),
   })
 
-  const data = await response.json()
+  const data = await response.json().catch(() => ({}))
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(
+        'No autorizado. Verificá que estés logueado (JWT) o que el header x-api-key sea correcto.'
+      )
+    }
+    if (response.status === 404) {
+      throw new Error(
+        'No se encontró POST /api/sales. Revisá que la URL base del frontend apunte al mismo host/puerto de la API.'
+      )
+    }
     const msg = data?.message || data?.error || `Error ${response.status}`
     throw new Error(msg)
   }
