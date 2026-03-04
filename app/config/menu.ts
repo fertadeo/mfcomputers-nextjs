@@ -23,6 +23,7 @@ import {
   ListOrdered,
   CalendarDays,
   Receipt,
+  TrendingUp,
 } from "lucide-react"
 
 // Definición de roles disponibles según el backend
@@ -121,6 +122,13 @@ export const MENU_GROUPS: MenuGroup[] = [
     icon: Users,
     requiredRoles: ['gerencia', 'ventas', 'admin'],
     items: [
+      { 
+        id: "ventas", 
+        label: "Ventas", 
+        icon: TrendingUp, 
+        href: "/ventas",
+        requiredRoles: ['gerencia', 'ventas', 'admin']
+      },
       { 
         id: "punto-venta", 
         label: "Punto de venta", 

@@ -686,6 +686,146 @@ export async function createSale(body: CreateSaleRequest): Promise<SaleResponseD
   return data.data
 }
 
+// --- Listado y estadísticas de ventas POS (GET /api/sales, GET /api/sales/stats) ---
+/** Venta POS en listado (campos que devuelve GET /api/sales) */
+export interface Sale {
+  id: number
+  sale_number: string
+  client_id: number | null
+  client_name?: string | null
+  total_amount: number
+  payment_method: SalePaymentMethod
+  sale_date: string
+  sync_status?: 'pending' | 'synced' | 'error'
+  items?: SaleItemResponse[]
+  created_at: string
+  updated_at: string
+}
+
+export interface SalesListResponse {
+  success: boolean
+  message: string
+  data: {
+    sales: Sale[]
+    pagination?: {
+      page: number
+      limit: number
+      total: number
+      totalPages: number
+    }
+    total?: number
+  }
+  timestamp: string
+}
+
+export interface SalesStats {
+  total_sales?: number
+  total_amount?: number
+  average_amount?: number
+  sales_today?: number
+  sales_month?: number
+  by_payment_method?: Record<string, number>
+  pending_sync?: number
+}
+
+/** Estadísticas unificadas del dashboard (GET /api/dashboard/stats). Requiere rol gerencia o finanzas. */
+export interface DashboardStats {
+  dailySales: number
+  dailySalesFromOrders?: number
+  dailySalesFromPos?: number
+  activeOrders?: number
+  activeClients?: number
+  criticalProducts?: number
+  stockMinority?: number
+  stockMajority?: number
+  customOrders?: number
+}
+
+export async function getSales(params?: {
+  page?: number
+  limit?: number
+  client_id?: number
+  payment_method?: SalePaymentMethod
+  sync_status?: 'pending' | 'synced' | 'error'
+  date_from?: string
+  date_to?: string
+}): Promise<SalesListResponse> {
+  const apiUrl = getApiUrl()
+  const queryParams = new URLSearchParams()
+  if (params?.page != null && params.page > 0) queryParams.append('page', params.page.toString())
+  if (params?.limit != null && params.limit > 0) queryParams.append('limit', params.limit.toString())
+  if (params?.client_id != null && params.client_id > 0) queryParams.append('client_id', params.client_id.toString())
+  if (params?.payment_method) queryParams.append('payment_method', params.payment_method)
+  if (params?.sync_status) queryParams.append('sync_status', params.sync_status)
+  if (params?.date_from) queryParams.append('date_from', params.date_from)
+  if (params?.date_to) queryParams.append('date_to', params.date_to)
+
+  const url = `${apiUrl}sales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  const token = getAuthToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+    if (apiKey) headers['x-api-key'] = apiKey
+  }
+
+  const response = await fetch(url, { method: 'GET', headers })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+  }
+  return data
+}
+
+export async function getSale(id: number): Promise<{ success: boolean; message: string; data: SaleResponseData; timestamp: string }> {
+  const apiUrl = getApiUrl()
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  const token = getAuthToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+    if (apiKey) headers['x-api-key'] = apiKey
+  }
+
+  const response = await fetch(`${apiUrl}sales/${id}`, { method: 'GET', headers })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+  }
+  return data
+}
+
+export async function getSalesStats(): Promise<{ success: boolean; message: string; data: SalesStats; timestamp: string }> {
+  const apiUrl = getApiUrl()
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  const token = getAuthToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+    if (apiKey) headers['x-api-key'] = apiKey
+  }
+
+  const response = await fetch(`${apiUrl}sales/stats`, { method: 'GET', headers })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+  }
+  return data
+}
+
+export async function getDashboardStats(): Promise<{ success: boolean; message: string; data: DashboardStats; timestamp: string }> {
+  const apiUrl = getApiUrl()
+  const response = await fetch(`${apiUrl}dashboard/stats`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+  }
+  return data
+}
+
 // Función para crear un nuevo producto
 export async function createProduct(productData: CreateProductData): Promise<any> {
   try {

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { useRole } from "@/app/hooks/useRole"
-import { getClienteStats, getProductStats, getPurchaseStats, type ProductStats, type PurchaseStats } from "@/lib/api"
+import { getClienteStats, getProductStats, getPurchaseStats, getDashboardStats, type ProductStats, type PurchaseStats, type DashboardStats } from "@/lib/api"
 import { getCashDay } from "@/lib/cash"
 import {
   Package,
@@ -38,19 +38,20 @@ export default function Dashboard() {
   const [productStats, setProductStats] = useState<ProductStats | null>(null)
   const [cashDay, setCashDay] = useState<{ incomes: number; expenses: number; balance: number } | null>(null)
   const [purchaseStats, setPurchaseStats] = useState<PurchaseStats | null>(null)
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
 
-  // Cargar datos al montar el componente
+  // Cargar datos al montar el componente (incl. GET /api/dashboard/stats para gerencia/finanzas)
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
         setLoading(true)
         
-        // Cargar estadísticas en paralelo
-        const [clientesData, productosData, cajaData, comprasData] = await Promise.allSettled([
+        const [clientesData, productosData, cajaData, comprasData, dashboardData] = await Promise.allSettled([
           getClienteStats().catch(() => null),
           getProductStats().catch(() => null),
           getCashDay().catch(() => null),
-          getPurchaseStats().catch(() => null)
+          getPurchaseStats().catch(() => null),
+          getDashboardStats().catch(() => null),
         ])
 
         if (clientesData.status === 'fulfilled' && clientesData.value) {
@@ -67,6 +68,10 @@ export default function Dashboard() {
         
         if (comprasData.status === 'fulfilled' && comprasData.value) {
           setPurchaseStats(comprasData.value.data ?? null)
+        }
+
+        if (dashboardData.status === 'fulfilled' && dashboardData.value?.data) {
+          setDashboardStats(dashboardData.value.data)
         }
       } catch (error) {
         console.error('Error al cargar datos del dashboard:', error)
@@ -185,11 +190,17 @@ export default function Dashboard() {
                 ) : (
                   <>
                     <div className="text-2xl font-bold text-turquoise-600">
-                      ${cashDay?.incomes?.toLocaleString() || '0'}
+                      ${(dashboardStats?.dailySales ?? cashDay?.incomes ?? 0).toLocaleString('es-AR')}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <TrendingUp className="h-3 w-3 text-turquoise-500" />
-                      Ingresos de hoy
+                      {dashboardStats?.dailySalesFromOrders != null || dashboardStats?.dailySalesFromPos != null ? (
+                        <span>
+                          Pedidos: ${(dashboardStats?.dailySalesFromOrders ?? 0).toLocaleString('es-AR')} · POS: ${(dashboardStats?.dailySalesFromPos ?? 0).toLocaleString('es-AR')}
+                        </span>
+                      ) : (
+                        'Pedidos del día + ventas POS del día'
+                      )}
                     </div>
                   </>
                 )}
@@ -199,7 +210,7 @@ export default function Dashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pedidos del Día</CardTitle>
+              <CardTitle className="text-sm font-medium">Pedidos activos</CardTitle>
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -208,11 +219,11 @@ export default function Dashboard() {
               ) : (
                 <>
                   <div className="text-2xl font-bold">
-                    {purchaseStats?.pending_purchases ?? 0}
+                    {dashboardStats?.activeOrders ?? purchaseStats?.pending_purchases ?? 0}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <ClipboardList className="h-3 w-3 text-turquoise-500" />
-                    Pedidos recibidos hoy
+                    Pendientes / en proceso
                   </div>
                 </>
               )}
@@ -402,26 +413,20 @@ export default function Dashboard() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center">
-                  <div className="text-2xl font-bold">1,847</div>
-                  <div className="text-xs text-muted-foreground">Total del Mes</div>
+                  <div className="text-2xl font-bold">{dashboardStats?.activeOrders ?? '—'}</div>
+                  <div className="text-xs text-muted-foreground">Pedidos activos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-turquoise-600">34</div>
-                  <div className="text-xs text-muted-foreground">Hoy</div>
+                  <div className="text-2xl font-bold text-turquoise-600">
+                    ${(dashboardStats?.dailySalesFromOrders ?? 0).toLocaleString('es-AR')}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Ventas hoy (pedidos)</div>
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Pendientes</span>
-                  <Badge variant="outline">127</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">En Preparación</span>
-                  <Badge variant="secondary">45</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Entregados</span>
-                  <Badge variant="default">1,675</Badge>
+                  <span className="text-sm text-muted-foreground">Activos (pendientes / en proceso)</span>
+                  <Badge variant="outline">{dashboardStats?.activeOrders ?? '—'}</Badge>
                 </div>
               </div>
             </CardContent>
