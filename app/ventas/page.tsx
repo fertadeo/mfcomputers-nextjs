@@ -126,17 +126,20 @@ export default function VentasPage() {
       if (salesSyncStatus !== "all") params.sync_status = salesSyncStatus as "pending" | "synced" | "error"
 
       const res = await getSales(params)
-      const list = res.data?.sales ?? (Array.isArray(res.data) ? res.data : [])
-      const pagination = res.data?.pagination
+      // Backend: GET /api/sales devuelve { data: { sales: [...], total?: number } } (sin body, solo query)
+      const rawData = res.data as Record<string, unknown> | undefined
+      const rawList =
+        Array.isArray(rawData?.sales) ? rawData.sales
+        : Array.isArray((rawData as Record<string, unknown>)?.ventas) ? (rawData as Record<string, unknown>).ventas
+        : Array.isArray(rawData) ? rawData
+        : []
+      const list = rawList as Sale[]
+      const total = typeof rawData?.total === 'number' ? rawData.total : list.length
+      const limit = params?.limit ?? 20
 
-      setSales(Array.isArray(list) ? list : [])
-      if (pagination) {
-        setSalesTotalPages(pagination.totalPages)
-        setSalesTotal(pagination.total)
-      } else {
-        setSalesTotalPages(1)
-        setSalesTotal((Array.isArray(list) ? list : []).length)
-      }
+      setSales(list)
+      setSalesTotal(total)
+      setSalesTotalPages(Math.max(1, Math.ceil(total / limit)))
     } catch (e) {
       console.error(e)
       toast.error("Error al cargar ventas POS")

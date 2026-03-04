@@ -598,6 +598,8 @@ export interface SaleItemResponse {
   quantity: number
   unit_price: number
   subtotal?: number
+  /** Backend puede devolver total_price en lugar de subtotal */
+  total_price?: number
 }
 
 export interface SaleResponseData {

@@ -92,7 +92,7 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                       ${typeof item.unit_price === "number" ? item.unit_price.toLocaleString("es-AR") : item.unit_price}
                     </TableCell>
                     <TableCell>
-                      ${(item.subtotal ?? item.quantity * (typeof item.unit_price === "number" ? item.unit_price : 0)).toLocaleString("es-AR")}
+                      ${(item.subtotal ?? item.total_price ?? item.quantity * (typeof item.unit_price === "number" ? item.unit_price : 0)).toLocaleString("es-AR")}
                     </TableCell>
                   </TableRow>
                 ))}
