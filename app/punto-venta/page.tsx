@@ -21,7 +21,7 @@ import {
   type SaleResponseData,
   type CreateSaleRequest,
 } from "@/lib/api"
-import { Search, Plus, Minus, Trash2, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle } from "lucide-react"
+import { Search, Plus, Minus, Trash2, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle, LayoutGrid, LayoutList } from "lucide-react"
 import Link from "next/link"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
@@ -54,6 +54,8 @@ export default function PuntoVentaPage() {
   const [error, setError] = useState<string | null>(null)
   const [lastSale, setLastSale] = useState<SaleResponseData | null>(null)
   const [apiKeyMissing, setApiKeyMissing] = useState(false)
+  const [cartViewMode, setCartViewMode] = useState<"list" | "grid">("list")
+  const [productsViewMode, setProductsViewMode] = useState<"list" | "grid">("grid")
 
   const total = useMemo(
     () => cart.reduce((sum, i) => sum + i.quantity * i.unit_price, 0),
@@ -244,11 +246,31 @@ export default function PuntoVentaPage() {
             {/* Columna izquierda: búsqueda + productos + carrito */}
             <div className="lg:col-span-2 space-y-4">
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Search className="h-4 w-4" />
                     Productos
                   </CardTitle>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={productsViewMode === "list" ? "secondary" : "ghost"}
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setProductsViewMode("list")}
+                      title="Vista lista"
+                    >
+                      <LayoutList className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={productsViewMode === "grid" ? "secondary" : "ghost"}
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setProductsViewMode("grid")}
+                      title="Vista cuadrícula"
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Input
@@ -262,6 +284,45 @@ export default function PuntoVentaPage() {
                       <p className="text-sm text-muted-foreground">Cargando productos...</p>
                     ) : filteredProducts.length === 0 ? (
                       <p className="text-sm text-muted-foreground">Sin resultados</p>
+                    ) : productsViewMode === "list" ? (
+                      <div className="space-y-1">
+                        {filteredProducts.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => addToCart(p)}
+                            disabled={p.stock < 1}
+                            className="flex items-center gap-3 w-full p-2 rounded-lg border bg-card hover:bg-muted/50 text-left disabled:opacity-50 disabled:pointer-events-none"
+                          >
+                            <div className="relative h-10 w-10 shrink-0 rounded overflow-hidden bg-muted">
+                              <Image
+                                src={getProductImageUrl(p, { size: 80 })}
+                                alt={p.name}
+                                fill
+                                className="object-cover"
+                                sizes="40px"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium truncate">{p.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                ${Number(p.price).toLocaleString("es-AR")} · Stock {p.stock}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="shrink-0"
+                              onClick={(e) => { e.stopPropagation(); addToCart(p) }}
+                              disabled={p.stock < 1}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Agregar
+                            </Button>
+                          </button>
+                        ))}
+                      </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {filteredProducts.map((p) => (
@@ -296,21 +357,43 @@ export default function PuntoVentaPage() {
               </Card>
 
               <Card>
-                <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Receipt className="h-4 w-4" />
                     Carrito
                   </CardTitle>
-                  {cart.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={clearCart}>
-                      Vaciar
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {cart.length > 0 && (
+                      <>
+                        <Button
+                          variant={cartViewMode === "list" ? "secondary" : "ghost"}
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setCartViewMode("list")}
+                          title="Vista lista"
+                        >
+                          <LayoutList className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant={cartViewMode === "grid" ? "secondary" : "ghost"}
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setCartViewMode("grid")}
+                          title="Vista cuadrícula"
+                        >
+                          <LayoutGrid className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={clearCart}>
+                          Vaciar
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {cart.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4">El carrito está vacío</p>
-                  ) : (
+                  ) : cartViewMode === "list" ? (
                     <div className="space-y-2 max-h-[220px] overflow-y-auto">
                       {cart.map((item) => (
                         <div
@@ -361,6 +444,77 @@ export default function PuntoVentaPage() {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 max-h-[280px] overflow-y-auto">
+                      {cart.map((item) => (
+                        <div
+                          key={item.product.id}
+                          className="rounded-lg border bg-card p-2 flex flex-col gap-1.5"
+                        >
+                          <div className="relative aspect-square rounded overflow-hidden bg-muted min-h-[60px]">
+                            {item.product.images?.[0] ? (
+                              <Image
+                                src={getProductImageUrl(item.product, { size: 80 })}
+                                alt={item.product.name}
+                                fill
+                                className="object-contain"
+                                sizes="80px"
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
+                                Sin imagen
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs font-medium truncate leading-tight" title={item.product.name}>
+                            {item.product.name}
+                          </p>
+                          <div className="flex items-center justify-between gap-1">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => updateCartQuantity(item.product.id, -1)}
+                            >
+                              <Minus className="h-2.5 w-2.5" />
+                            </Button>
+                            <span className="text-xs font-medium tabular-nums">{item.quantity}</span>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => updateCartQuantity(item.product.id, 1)}
+                              disabled={item.quantity >= item.product.stock}
+                            >
+                              <Plus className="h-2.5 w-2.5" />
+                            </Button>
+                          </div>
+                          <Input
+                            type="number"
+                            className="h-6 text-xs"
+                            value={item.unit_price}
+                            onChange={(e) =>
+                              setCartUnitPrice(item.product.id, Number(e.target.value) || 0)
+                            }
+                            min={0}
+                            step={0.01}
+                          />
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold">
+                              ${(item.quantity * item.unit_price).toLocaleString("es-AR")}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-red-600"
+                              onClick={() => removeFromCart(item.product.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

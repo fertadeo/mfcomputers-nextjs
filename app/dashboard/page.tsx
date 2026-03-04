@@ -123,59 +123,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Información específica por rol */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              Vista Personalizada para {getCurrentRoleLabel()}
-            </CardTitle>
-            <CardDescription>
-              Información relevante según tu rol en el sistema
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {canViewSales() && (
-                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                  <Users className="h-8 w-8 text-blue-500" />
-                  <div>
-                    <div className="font-medium">Ventas</div>
-                    <div className="text-sm text-muted-foreground">Acceso completo</div>
-                  </div>
-                </div>
-              )}
-              {canViewLogistics() && (
-                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                  <Package className="h-8 w-8 text-green-500" />
-                  <div>
-                    <div className="font-medium">Logística</div>
-                    <div className="text-sm text-muted-foreground">Gestión de inventario</div>
-                  </div>
-                </div>
-              )}
-              {canViewFinance() && (
-                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                  <DollarSign className="h-8 w-8 text-yellow-500" />
-                  <div>
-                    <div className="font-medium">Finanzas</div>
-                    <div className="text-sm text-muted-foreground">Control financiero</div>
-                  </div>
-                </div>
-              )}
-              {canViewAdministration() && (
-                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                  <Shield className="h-8 w-8 text-purple-500" />
-                  <div>
-                    <div className="font-medium">Administración</div>
-                    <div className="text-sm text-muted-foreground">Gestión del sistema</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* KPIs Principales */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {(canViewSales() || canViewFinance()) && (
