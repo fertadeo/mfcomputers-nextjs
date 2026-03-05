@@ -852,7 +852,7 @@ export default function ProductosPage() {
                           <div className="flex items-center gap-1 flex-wrap justify-end">
                             {product.allow_backorders && (
                               <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                Valor productos por encargo
+                                Por encargo
                               </Badge>
                             )}
                             <Badge
