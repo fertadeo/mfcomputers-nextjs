@@ -789,6 +789,10 @@ export async function getSales(params?: {
   if (!response.ok) {
     throw new Error(data?.message || data?.error || `Error ${response.status}`)
   }
+  // Algunos entornos (proxy, gateway) en producción devuelven { sales, total } en la raíz; normalizar a data.sales
+  if (data && typeof data === 'object' && (data.data == null || data.data === undefined) && Array.isArray(data.sales)) {
+    return { ...data, data: { sales: data.sales, total: data.total, page: data.page, limit: data.limit } }
+  }
   return data
 }
 

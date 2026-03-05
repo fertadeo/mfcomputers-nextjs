@@ -1,4 +1,5 @@
 // Configuración de la API
+// En producción: definir NEXT_PUBLIC_API_URL en el entorno de build (Vercel, etc.) para que el cliente llame a la API correcta.
 export const API_CONFIG = {
   BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8086/api/',
 } as const;

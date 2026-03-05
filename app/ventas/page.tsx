@@ -126,17 +126,28 @@ export default function VentasPage() {
       if (salesSyncStatus !== "all") params.sync_status = salesSyncStatus as "pending" | "synced" | "error"
 
       const res = await getSales(params)
-      // Backend: GET /api/sales devuelve data.sales (array), data.total, data.page, data.limit
-      const list = Array.isArray(res.data?.sales) ? res.data.sales : []
-      const total = typeof res.data?.total === "number" ? res.data.total : list.length
-      const limit = typeof res.data?.limit === "number" ? res.data.limit : params?.limit ?? 20
-
+      // Backend: GET /api/sales devuelve data.sales (array), data.total. En producción a veces hay un nivel extra (data.data.sales)
+      const raw = res.data as { sales?: Sale[]; total?: number; limit?: number; data?: { sales?: Sale[]; total?: number } } | Sale[] | undefined
+      const data = raw && typeof raw === "object" && !Array.isArray(raw) && raw.data && typeof raw.data === "object"
+        ? raw.data
+        : raw
+      let list: Sale[] = []
+      let total = 0
+      const limit = params?.limit ?? 20
+      if (data && typeof data === "object" && !Array.isArray(data) && Array.isArray(data.sales)) {
+        list = data.sales
+        total = typeof data.total === "number" ? data.total : list.length
+      } else if (Array.isArray(data)) {
+        list = data
+        total = list.length
+      }
       setSales(list)
       setSalesTotal(total)
       setSalesTotalPages(Math.max(1, Math.ceil(total / limit)))
     } catch (e) {
-      console.error(e)
-      toast.error("Error al cargar ventas POS")
+      const message = e instanceof Error ? e.message : "Error al cargar ventas POS"
+      console.error("[Ventas POS] loadSales:", e)
+      toast.error(message)
       setSales([])
     } finally {
       setSalesLoading(false)
@@ -298,18 +309,28 @@ export default function VentasPage() {
                   <div className="flex flex-wrap gap-2 mb-4">
                     <Input
                       type="date"
-                      placeholder="Desde"
+                      placeholder="Desde (todo)"
                       className="w-40"
                       value={salesDateFrom}
                       onChange={(e) => setSalesDateFrom(e.target.value)}
                     />
                     <Input
                       type="date"
-                      placeholder="Hasta"
+                      placeholder="Hasta (todo)"
                       className="w-40"
                       value={salesDateTo}
                       onChange={(e) => setSalesDateTo(e.target.value)}
                     />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSalesDateFrom("")
+                        setSalesDateTo("")
+                      }}
+                    >
+                      Limpiar fechas
+                    </Button>
                     <Select value={salesPaymentMethod} onValueChange={setSalesPaymentMethod}>
                       <SelectTrigger className="w-40">
                         <SelectValue placeholder="Método de pago" />
