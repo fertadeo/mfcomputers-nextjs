@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +24,7 @@ import {
   type OrderStats,
   type SaleResponseData,
   type SalePaymentMethod,
+  type ApiErrorWithStatus,
 } from "@/lib/api"
 import { SaleDetailModal } from "@/components/sale-detail-modal"
 import { OrderDetailModal } from "@/components/order-detail-modal"
@@ -85,6 +87,7 @@ function getPaymentLabel(m: SalePaymentMethod) {
 }
 
 export default function VentasPage() {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<"pos" | "pedidos">("pos")
 
   // Ventas POS
@@ -145,6 +148,18 @@ export default function VentasPage() {
       setSalesTotal(total)
       setSalesTotalPages(Math.max(1, Math.ceil(total / limit)))
     } catch (e) {
+      const err = e as ApiErrorWithStatus
+      const status = err?.status
+      if (status === 401) {
+        toast.error("Sesión expirada o no válida. Volvé a iniciar sesión.")
+        router.replace("/login")
+        return
+      }
+      if (status === 403) {
+        toast.error("No tenés permiso para ver el listado de ventas.")
+        router.replace("/403")
+        return
+      }
       const message = e instanceof Error ? e.message : "Error al cargar ventas POS"
       console.error("[Ventas POS] loadSales:", e)
       toast.error(message)
@@ -158,7 +173,18 @@ export default function VentasPage() {
     try {
       const res = await getSalesStats()
       setSalesStats(res.data ?? null)
-    } catch {
+    } catch (e) {
+      const err = e as ApiErrorWithStatus
+      if (err?.status === 401) {
+        toast.error("Sesión expirada o no válida. Volvé a iniciar sesión.")
+        router.replace("/login")
+        return
+      }
+      if (err?.status === 403) {
+        toast.error("No tenés permiso para ver estadísticas de ventas.")
+        router.replace("/403")
+        return
+      }
       setSalesStats(null)
     }
   }
@@ -226,7 +252,18 @@ export default function VentasPage() {
       setSelectedSale(res.data)
       setSaleDetailOpen(true)
     } catch (e) {
-      toast.error("Error al cargar detalle de la venta")
+      const err = e as ApiErrorWithStatus
+      if (err?.status === 401) {
+        toast.error("Sesión expirada. Volvé a iniciar sesión.")
+        router.replace("/login")
+        return
+      }
+      if (err?.status === 403) {
+        toast.error("No tenés permiso para ver el detalle de la venta.")
+        router.replace("/403")
+        return
+      }
+      toast.error(e instanceof Error ? e.message : "Error al cargar detalle de la venta")
     }
   }
 

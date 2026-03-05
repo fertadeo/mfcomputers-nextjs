@@ -705,6 +705,9 @@ export async function createSale(body: CreateSaleRequest): Promise<SaleResponseD
 }
 
 // --- Listado y estadísticas de ventas POS (GET /api/sales, GET /api/sales/stats) ---
+/** Error con código HTTP (401/403) para redirigir a login o /403 */
+export type ApiErrorWithStatus = Error & { status?: number }
+
 /** Venta POS en listado (campos que devuelve GET /api/sales) */
 export interface Sale {
   id: number
@@ -776,18 +779,22 @@ export async function getSales(params?: {
   if (params?.date_to) queryParams.append('date_to', params.date_to)
 
   const url = `${apiUrl}sales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
-  const headers: HeadersInit = { 'Content-Type': 'application/json' }
-  const token = getAuthToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  const headers: HeadersInit = { ...getAuthHeaders() }
   if (typeof window !== 'undefined') {
     const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
-    if (apiKey) headers['x-api-key'] = apiKey
+    if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
   }
 
   const response = await fetch(url, { method: 'GET', headers })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & { status?: number }
+    err.status = response.status
+    if (response.status === 401) {
+      logout()
+    }
+    throw err
   }
   // Algunos entornos (proxy, gateway) en producción devuelven { sales, total } en la raíz; normalizar a data.sales
   if (data && typeof data === 'object' && (data.data == null || data.data === undefined) && Array.isArray(data.sales)) {
@@ -798,36 +805,40 @@ export async function getSales(params?: {
 
 export async function getSale(id: number): Promise<{ success: boolean; message: string; data: SaleResponseData; timestamp: string }> {
   const apiUrl = getApiUrl()
-  const headers: HeadersInit = { 'Content-Type': 'application/json' }
-  const token = getAuthToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  const headers: HeadersInit = { ...getAuthHeaders() }
   if (typeof window !== 'undefined') {
     const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
-    if (apiKey) headers['x-api-key'] = apiKey
+    if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
   }
 
   const response = await fetch(`${apiUrl}sales/${id}`, { method: 'GET', headers })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & { status?: number }
+    err.status = response.status
+    if (response.status === 401) logout()
+    throw err
   }
   return data
 }
 
 export async function getSalesStats(): Promise<{ success: boolean; message: string; data: SalesStats; timestamp: string }> {
   const apiUrl = getApiUrl()
-  const headers: HeadersInit = { 'Content-Type': 'application/json' }
-  const token = getAuthToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  const headers: HeadersInit = { ...getAuthHeaders() }
   if (typeof window !== 'undefined') {
     const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
-    if (apiKey) headers['x-api-key'] = apiKey
+    if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
   }
 
   const response = await fetch(`${apiUrl}sales/stats`, { method: 'GET', headers })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(data?.message || data?.error || `Error ${response.status}`)
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & { status?: number }
+    err.status = response.status
+    if (response.status === 401) logout()
+    throw err
   }
   return data
 }
