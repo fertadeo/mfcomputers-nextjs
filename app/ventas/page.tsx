@@ -129,6 +129,7 @@ export default function VentasPage() {
       if (salesSyncStatus !== "all") params.sync_status = salesSyncStatus as "pending" | "synced" | "error"
 
       const res = await getSales(params)
+      console.log("[Ventas POS] Respuesta getSales:", { params, res, dataKeys: res.data ? Object.keys(res.data as object) : [] })
       // Backend: GET /api/sales devuelve data.sales (array), data.total. En producción a veces hay un nivel extra (data.data.sales)
       const raw = res.data as { sales?: Sale[]; total?: number; limit?: number; data?: { sales?: Sale[]; total?: number } } | Sale[] | undefined
       const data = raw && typeof raw === "object" && !Array.isArray(raw) && raw.data && typeof raw.data === "object"
@@ -144,6 +145,7 @@ export default function VentasPage() {
         list = data
         total = list.length
       }
+      console.log("[Ventas POS] Datos parseados:", { listLength: list.length, total, limit, primeraVenta: list[0] ?? null })
       setSales(list)
       setSalesTotal(total)
       setSalesTotalPages(Math.max(1, Math.ceil(total / limit)))
@@ -172,6 +174,7 @@ export default function VentasPage() {
   const loadSalesStats = async () => {
     try {
       const res = await getSalesStats()
+      console.log("[Ventas POS] Estadísticas getSalesStats:", res.data)
       setSalesStats(res.data ?? null)
     } catch (e) {
       const err = e as ApiErrorWithStatus
@@ -249,6 +252,7 @@ export default function VentasPage() {
   const openSaleDetail = async (sale: Sale) => {
     try {
       const res = await getSale(sale.id)
+      console.log("[Ventas POS] Detalle venta getSale:", { saleId: sale.id, data: res.data, itemsCount: res.data?.items?.length ?? 0 })
       setSelectedSale(res.data)
       setSaleDetailOpen(true)
     } catch (e) {
