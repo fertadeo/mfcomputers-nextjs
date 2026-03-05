@@ -378,7 +378,8 @@ export default function ProductosPage() {
     const withReservation = active.filter((p) => !!p.allow_backorders)
     const stockValue = active.reduce((sum, p) => sum + Number(p.price || 0) * (p.stock || 0), 0)
     const stockQuantity = active.reduce((sum, p) => sum + (p.stock || 0), 0)
-    const reservationStockValue = withReservation.reduce((sum, p) => sum + Number(p.price || 0) * (p.stock || 0), 0)
+    // Valor de productos por encargo: suma de precios (catálogo). Con stock 0, precio×stock sería 0; aquí mostramos el valor de esos productos.
+    const reservationStockValue = withReservation.reduce((sum, p) => sum + Number(p.price || 0), 0)
     const lowStock = withPhysical.filter((p) => p.stock <= (p.min_stock ?? 0)).length
     const outOfStock = active.filter((p) => p.stock === 0).length
     return {
