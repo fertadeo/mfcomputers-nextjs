@@ -196,6 +196,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       if (field === 'allow_backorders') {
         const stockValue = parseInt(prev.stock) || 0
         if (stockValue === 0 && value === "0") updated.is_active = "0"
+        if (stockValue === 0 && value === "1") updated.is_active = "1" // Con reserva y stock 0 se envía activo (WooCommerce)
       }
       
       return updated
@@ -317,8 +318,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
 
       const stock = parseInt(formData.stock) || 0
       const allowBackorders = formData.allow_backorders === "1"
-      // Activo si tiene stock o si es venta por encargo (stock 0 permitido)
-      const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : (allowBackorders && parseInt(formData.is_active) === 1)
+      // Con stock > 0: respetar estado elegido. Con stock 0 y reserva: siempre activo para que no pase a borrador en WooCommerce
+      const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : (allowBackorders ? true : parseInt(formData.is_active) === 1)
 
       // Si no hay barcode o qr_code pero hay código, generarlos automáticamente
       let finalBarcode = barcode

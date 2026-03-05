@@ -255,9 +255,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         const backorders = prev.allow_backorders === "1"
         if (stockValue === 0 && !backorders) updated.is_active = "0"
       }
-      if (field === "allow_backorders" && value === "0") {
+      if (field === "allow_backorders") {
         const stockValue = parseInt(prev.stock) || 0
-        if (stockValue === 0) updated.is_active = "0"
+        if (stockValue === 0 && value === "0") updated.is_active = "0"
+        if (stockValue === 0 && value === "1") updated.is_active = "1" // Con reserva y stock 0 se envía activo (WooCommerce)
       }
       return updated
     })
@@ -308,7 +309,8 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
 
       const stock = parseInt(formData.stock) || 0
       const allowBackorders = formData.allow_backorders === "1"
-      const isActive = stock > 0 ? formData.is_active === "1" : (allowBackorders && formData.is_active === "1")
+      // Con stock > 0: respetar estado elegido. Con stock 0 y reserva: siempre activo para que no pase a borrador en WooCommerce
+      const isActive = stock > 0 ? formData.is_active === "1" : (allowBackorders ? true : formData.is_active === "1")
       const nextPrice = parsePrecioFormato(formData.price)
       const nextMinStock = parseInt(formData.min_stock) || 0
       const nextMaxStock = parseInt(formData.max_stock) || 1000
