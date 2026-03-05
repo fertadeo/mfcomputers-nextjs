@@ -20,7 +20,7 @@ import {
   type Product,
   type LinkWooCommerceIdsSummary,
 } from "@/lib/api"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
 import { EditProductModal } from "@/components/edit-product-modal"
@@ -59,6 +59,7 @@ import {
   FileCheck,
   FileEdit,
   PackagePlus,
+  Truck,
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -369,6 +370,29 @@ export default function ProductosPage() {
   const hasActiveFilters =
     filterCategory !== "all" || filterStatus !== "all" || filterStock !== "all" || filterDateModification !== "all"
 
+  // KPIs solo sobre productos activos (publicados: con stock físico o por encargo). Excluye borrador y eliminados.
+  const activeStats = useMemo(() => {
+    if (!productsLoaded || !allProducts.length) return null
+    const active = allProducts.filter((p) => p.is_active && (p.stock > 0 || !!p.allow_backorders))
+    const withPhysical = active.filter((p) => p.stock > 0)
+    const withReservation = active.filter((p) => !!p.allow_backorders)
+    const stockValue = active.reduce((sum, p) => sum + Number(p.price || 0) * (p.stock || 0), 0)
+    const stockQuantity = active.reduce((sum, p) => sum + (p.stock || 0), 0)
+    const reservationStockValue = withReservation.reduce((sum, p) => sum + Number(p.price || 0) * (p.stock || 0), 0)
+    const lowStock = withPhysical.filter((p) => p.stock <= (p.min_stock ?? 0)).length
+    const outOfStock = active.filter((p) => p.stock === 0).length
+    return {
+      totalActive: active.length,
+      withPhysicalCount: withPhysical.length,
+      withReservationCount: withReservation.length,
+      reservationStockValue,
+      totalStockValue: stockValue,
+      totalStockQuantity: stockQuantity,
+      lowStockCount: lowStock,
+      outOfStockCount: outOfStock,
+    }
+  }, [allProducts, productsLoaded])
+
   const clearFilters = () => {
     setFilterCategory("all")
     setFilterStatus("all")
@@ -420,62 +444,77 @@ export default function ProductosPage() {
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
+          {/* Stats Cards: solo productos activos (publicados). Diferenciamos stock físico y por encargo. */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Productos</CardTitle>
+                <CardTitle className="text-sm font-medium">Total activos</CardTitle>
                 <Package className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{productStats != null ? productStats.total_products : 0}</div>
+                <div className="text-2xl font-bold">{activeStats?.totalActive ?? 0}</div>
                 <p className="text-xs text-muted-foreground">
-                  {productStats != null ? `${productStats.active_products} activos` : '0 activos'}
+                  {activeStats != null
+                    ? `${activeStats.withPhysicalCount} con stock físico, ${activeStats.withReservationCount} por encargo`
+                    : "Solo publicados"}
                 </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Stock Bajo</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                <CardTitle className="text-sm font-medium">Stock físico</CardTitle>
+                <TrendingUp className="h-4 w-4 text-turquoise-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">
-                  {productStats?.low_stock_count || products?.filter(p => p.stock <= p.min_stock)?.length || 0}
+                <div className="text-2xl font-bold text-turquoise-600">
+                  {activeStats?.totalStockQuantity?.toLocaleString("es-AR") ?? 0}
                 </div>
-                <p className="text-xs text-muted-foreground">Requieren reposición</p>
+                <p className="text-xs text-muted-foreground">Unidades en inventario (activos)</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Sin Stock</CardTitle>
-                <TrendingUp className="h-4 w-4 text-red-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">
-                  {productStats?.out_of_stock_count || products?.filter(p => p.stock === 0)?.length || 0}
-                </div>
-                <p className="text-xs text-muted-foreground">Agotados</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+                <CardTitle className="text-sm font-medium">Valor inventario</CardTitle>
                 <CheckCircle className="h-4 w-4 text-turquoise-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  ${productStats != null && productStats.total_stock_value != null
-                    ? parseFloat(String(productStats.total_stock_value).replace(/[^\d.-]/g, '') || '0').toLocaleString('es-AR', { maximumFractionDigits: 0 })
-                    : '0'}
+                  ${activeStats != null
+                    ? activeStats.totalStockValue.toLocaleString("es-AR", { maximumFractionDigits: 0 })
+                    : "0"}
+                </div>
+                <p className="text-xs text-muted-foreground">Solo stock físico (activos)</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Stock bajo</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-yellow-600">
+                  {activeStats?.lowStockCount ?? 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Requieren reposición (activos)</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Por encargo</CardTitle>
+                <Truck className="h-4 w-4 text-amber-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-amber-600">
+                   ${activeStats != null
+                    ? activeStats.reservationStockValue.toLocaleString("es-AR", { maximumFractionDigits: 0 })
+                    : "0"}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {productStats != null && productStats.total_stock_quantity != null
-                    ? `${productStats.total_stock_quantity.toLocaleString('es-AR')} unidades en inventario`
-                    : 'En inventario'}
+                  {activeStats?.withReservationCount ?? 0} cant productos
                 </p>
               </CardContent>
             </Card>
@@ -813,7 +852,7 @@ export default function ProductosPage() {
                           <div className="flex items-center gap-1 flex-wrap justify-end">
                             {product.allow_backorders && (
                               <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                Por encargo
+                                Valor productos por encargo
                               </Badge>
                             )}
                             <Badge
