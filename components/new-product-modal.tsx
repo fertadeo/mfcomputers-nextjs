@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap, Plus, AlertTriangle } from "lucide-react"
+import { CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap, Plus, AlertTriangle, Ruler, Truck } from "lucide-react"
 import Image from "next/image"
 import { createProductNew, getCategories, Category, CreateProductData } from "@/lib/api"
 import { generateProductCodes } from "@/lib/product-codes"
@@ -33,6 +33,11 @@ interface FormData {
   min_stock: string
   max_stock: string
   is_active: string
+  weight: string
+  length: string
+  width: string
+  height: string
+  allow_backorders: string  // "0" | "1"
 }
 
 interface ImageItem {
@@ -65,7 +70,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     stock: "0",
     min_stock: "0",
     max_stock: "1000",
-    is_active: "1"
+    is_active: "1",
+    weight: "",
+    length: "",
+    width: "",
+    height: "",
+    allow_backorders: "0",
   })
   const [barcode, setBarcode] = useState<string>("")
   const [qrCode, setQrCode] = useState<string>("")
@@ -140,6 +150,28 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       return false
     }
 
+    // Peso y dimensiones opcionales, pero si se ingresan deben ser ≥ 0
+    const weight = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+    if (weight != null && (isNaN(weight) || weight < 0)) {
+      setError("El peso debe ser un número mayor o igual a 0 (kg)")
+      return false
+    }
+    const length = formData.length.trim() === "" ? null : parseFloat(formData.length)
+    if (length != null && (isNaN(length) || length < 0)) {
+      setError("La longitud debe ser un número mayor o igual a 0 (cm)")
+      return false
+    }
+    const width = formData.width.trim() === "" ? null : parseFloat(formData.width)
+    if (width != null && (isNaN(width) || width < 0)) {
+      setError("El ancho debe ser un número mayor o igual a 0 (cm)")
+      return false
+    }
+    const height = formData.height.trim() === "" ? null : parseFloat(formData.height)
+    if (height != null && (isNaN(height) || height < 0)) {
+      setError("El alto debe ser un número mayor o igual a 0 (cm)")
+      return false
+    }
+
     return true
   }
 
@@ -153,13 +185,17 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     setFormData(prev => {
       const updated = { ...prev, [field]: value }
       
-      // Si el stock cambia a 0, automáticamente desactivar el producto
-      // Un producto no puede estar publicado sin stock
+      // Si el stock cambia a 0 y no es venta por encargo, desactivar el producto
       if (field === 'stock') {
         const stockValue = parseInt(value) || 0
-        if (stockValue === 0) {
+        const backorders = prev.allow_backorders === "1"
+        if (stockValue === 0 && !backorders) {
           updated.is_active = "0"
         }
+      }
+      if (field === 'allow_backorders') {
+        const stockValue = parseInt(prev.stock) || 0
+        if (stockValue === 0 && value === "0") updated.is_active = "0"
       }
       
       return updated
@@ -280,10 +316,9 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         .filter((id): id is number => id != null)
 
       const stock = parseInt(formData.stock) || 0
-      
-      // Si el stock es 0, el producto debe estar inactivo
-      // Un producto no puede estar publicado sin stock
-      const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : false
+      const allowBackorders = formData.allow_backorders === "1"
+      // Activo si tiene stock o si es venta por encargo (stock 0 permitido)
+      const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : (allowBackorders && parseInt(formData.is_active) === 1)
 
       // Si no hay barcode o qr_code pero hay código, generarlos automáticamente
       let finalBarcode = barcode
@@ -293,6 +328,11 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         finalBarcode = codes.barcode
         finalQrCode = codes.qr_code
       }
+
+      const weightVal = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+      const lengthVal = formData.length.trim() === "" ? null : parseFloat(formData.length)
+      const widthVal = formData.width.trim() === "" ? null : parseFloat(formData.width)
+      const heightVal = formData.height.trim() === "" ? null : parseFloat(formData.height)
 
       const productData: CreateProductData = {
         code: formData.code.trim(),
@@ -309,7 +349,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         is_active: isActive,
         barcode: finalBarcode || null,
         qr_code: finalQrCode || null,
-        sync_to_woocommerce: syncToWooCommerce
+        sync_to_woocommerce: syncToWooCommerce,
+        weight: weightVal ?? undefined,
+        length: lengthVal ?? undefined,
+        width: widthVal ?? undefined,
+        height: heightVal ?? undefined,
+        allow_backorders: allowBackorders,
       }
 
       const responseData = await createProductNew(productData)
@@ -341,7 +386,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       stock: "0",
       min_stock: "0",
       max_stock: "1000",
-      is_active: "1"
+      is_active: "1",
+      weight: "",
+      length: "",
+      width: "",
+      height: "",
+      allow_backorders: "0",
     })
     setBarcode("")
     setQrCode("")
@@ -681,9 +731,9 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    {parseInt(formData.stock) === 0 && (
+                    {parseInt(formData.stock) === 0 && formData.allow_backorders !== "1" && (
                       <p className="text-xs text-orange-600 dark:text-orange-400">
-                        ⚠️ Un producto con stock 0 no puede estar activo. Se creará como inactivo.
+                        ⚠️ Un producto con stock 0 no puede estar activo. Marcá &quot;Venta por encargo&quot; si querés venderlo con stock 0.
                       </p>
                     )}
                   </div>
@@ -699,6 +749,101 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                     <Label htmlFor="sync-woocommerce" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
                       Sincronizar con WooCommerce al crear
                     </Label>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Peso, dimensiones y venta por encargo */}
+            <Card className="border-0 shadow-lg bg-white/70 dark:bg-slate-800/90 backdrop-blur-sm border-slate-200 dark:border-slate-700">
+              <CardContent className="p-6 space-y-6">
+                <div className="flex items-center gap-3 pb-4 border-b border-slate-200 dark:border-slate-700">
+                  <div className="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-lg">
+                    <Truck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg text-slate-800 dark:text-slate-200">Peso, dimensiones y envío</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Opcional: para cálculo de envíos y productos por encargo</p>
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="allow_backorders"
+                      checked={formData.allow_backorders === "1"}
+                      onChange={(e) => handleInputChange("allow_backorders", e.target.checked ? "1" : "0")}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-turquoise-600 focus:ring-turquoise-500"
+                    />
+                    <Label htmlFor="allow_backorders" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                      Venta por encargo (permitir reservas con stock 0)
+                    </Label>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Si está marcado, el producto puede venderse con stock 0 y se avisará al cliente (WooCommerce: permitir reservas).
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="weight" className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        <Ruler className="h-3.5 w-3.5" />
+                        Peso (kg)
+                      </Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.weight}
+                        onChange={(e) => handleInputChange("weight", e.target.value)}
+                        onFocus={handleNumericFocus}
+                        placeholder="Ej: 2.5"
+                        className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="length" className="text-sm font-medium text-slate-700 dark:text-slate-300">Largo (cm)</Label>
+                      <Input
+                        id="length"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.length}
+                        onChange={(e) => handleInputChange("length", e.target.value)}
+                        onFocus={handleNumericFocus}
+                        placeholder="Ej: 35"
+                        className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="width" className="text-sm font-medium text-slate-700 dark:text-slate-300">Ancho (cm)</Label>
+                      <Input
+                        id="width"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.width}
+                        onChange={(e) => handleInputChange("width", e.target.value)}
+                        onFocus={handleNumericFocus}
+                        placeholder="Ej: 24"
+                        className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="height" className="text-sm font-medium text-slate-700 dark:text-slate-300">Alto (cm)</Label>
+                      <Input
+                        id="height"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.height}
+                        onChange={(e) => handleInputChange("height", e.target.value)}
+                        onFocus={handleNumericFocus}
+                        placeholder="Ej: 2"
+                        className="h-11 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
+                      />
+                    </div>
                   </div>
                 </div>
               </CardContent>

@@ -488,6 +488,12 @@ export interface Product {
   barcode?: string  // Código de barras del producto (para lectoras)
   qr_code?: string  // URL del código QR para consulta pública
   deleted_at?: string | null  // Soft delete: si existe, el producto está en papelera
+  // WooCommerce: reservas, dimensiones y peso (productos por encargo / envíos)
+  weight?: number | null  // Peso en kg (envíos)
+  length?: number | null  // Longitud en cm
+  width?: number | null   // Ancho en cm
+  height?: number | null  // Alto en cm
+  allow_backorders?: boolean  // true = venta por encargo (reservas con stock 0)
 }
 
 export interface CreateProductData {
@@ -505,6 +511,11 @@ export interface CreateProductData {
   barcode?: string | null  // Código de barras del producto
   qr_code?: string | null  // URL del código QR para consulta pública
   sync_to_woocommerce?: boolean  // Sincronizar con WooCommerce al crear
+  weight?: number | null   // Peso en kg (≥ 0)
+  length?: number | null   // Longitud en cm (≥ 0)
+  width?: number | null    // Ancho en cm (≥ 0)
+  height?: number | null   // Alto en cm (≥ 0)
+  allow_backorders?: boolean  // true = venta por encargo (stock 0 permitido)
 }
 
 export interface UpdateProductData {
@@ -522,6 +533,11 @@ export interface UpdateProductData {
   barcode?: string | null
   qr_code?: string | null
   sync_to_woocommerce?: boolean  // Sincronizar con WooCommerce al actualizar
+  weight?: number | null
+  length?: number | null
+  width?: number | null
+  height?: number | null
+  allow_backorders?: boolean
 }
 
 export interface UpdateStockData {

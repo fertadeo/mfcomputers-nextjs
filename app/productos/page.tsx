@@ -200,11 +200,12 @@ export default function ProductosPage() {
 
     let productsToShow: Product[] = []
 
-    // 1) Filtrar por pestaña según is_active y stock (la API no filtra por stock; devuelve stock >= 0)
-    // Publicados: activos y con stock; Borrador: activos sin stock; Eliminados: inactivos (soft delete)
+    // 1) Filtrar por pestaña según is_active, stock y allow_backorders
+    // Publicados: activos con stock > 0 o venta por encargo (stock 0 + allow_backorders)
+    // Borrador: activos sin stock y sin venta por encargo; Eliminados: inactivos (soft delete)
     const byTab = allProducts.filter((p) => {
-      if (productTab === "published") return !!p.is_active && p.stock > 0
-      if (productTab === "draft") return !!p.is_active && p.stock === 0
+      if (productTab === "published") return !!p.is_active && (p.stock > 0 || !!p.allow_backorders)
+      if (productTab === "draft") return !!p.is_active && p.stock === 0 && !p.allow_backorders
       return !p.is_active // deleted = inactivos / borrados
     })
 
@@ -499,14 +500,14 @@ export default function ProductosPage() {
                     <FileCheck className="h-4 w-4" />
                     Publicados
                     <Badge variant="secondary" className="ml-1 text-xs">
-                      {allProducts.filter((p) => p.is_active && p.stock > 0).length}
+                      {allProducts.filter((p) => p.is_active && (p.stock > 0 || !!p.allow_backorders)).length}
                     </Badge>
                   </TabsTrigger>
                   <TabsTrigger value="draft" className="flex items-center gap-2">
                     <FileEdit className="h-4 w-4" />
                     Borrador
                     <Badge variant="secondary" className="ml-1 text-xs">
-                      {allProducts.filter((p) => p.is_active && p.stock === 0).length}
+                      {allProducts.filter((p) => p.is_active && p.stock === 0 && !p.allow_backorders).length}
                     </Badge>
                   </TabsTrigger>
                   <TabsTrigger value="deleted" className="flex items-center gap-2">
@@ -809,12 +810,19 @@ export default function ProductosPage() {
                           <span className="font-semibold text-turquoise-600">
                             ${Math.round(Number(product.price)).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
-                          <Badge
-                            variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
-                            className="text-xs"
-                          >
-                            {!product.is_active ? "Inactivo" : `${product.stock} u.`}
-                          </Badge>
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {product.allow_backorders && (
+                              <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                Por encargo
+                              </Badge>
+                            )}
+                            <Badge
+                              variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
+                              className="text-xs"
+                            >
+                              {!product.is_active ? "Inactivo" : `${product.stock} u.`}
+                            </Badge>
+                          </div>
                         </div>
                         <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button
@@ -923,11 +931,18 @@ export default function ProductosPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge 
-                            variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
-                          >
-                            {!product.is_active ? "Inactivo" : product.stock > 0 ? "Activo" : "Sin stock"}
-                          </Badge>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {product.allow_backorders && (
+                              <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400">
+                                Por encargo
+                              </Badge>
+                            )}
+                            <Badge 
+                              variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
+                            >
+                              {!product.is_active ? "Inactivo" : product.stock > 0 ? "Activo" : "Sin stock"}
+                            </Badge>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">

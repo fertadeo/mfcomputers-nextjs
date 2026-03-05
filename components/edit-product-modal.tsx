@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X, ExternalLink, Loader2 } from "lucide-react"
+import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X, ExternalLink, Loader2, Ruler, Truck, ClipboardList } from "lucide-react"
 import Image from "next/image"
 import {
   Product,
@@ -38,6 +38,11 @@ interface FormData {
   min_stock: string
   max_stock: string
   is_active: string
+  weight: string
+  length: string
+  width: string
+  height: string
+  allow_backorders: string  // "0" | "1"
 }
 
 export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditProductModalProps) {
@@ -64,6 +69,11 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     min_stock: "0",
     max_stock: "1000",
     is_active: "1",
+    weight: "",
+    length: "",
+    width: "",
+    height: "",
+    allow_backorders: "0",
   })
 
   // Parsea precio en formato es-AR (ej. "543.020" o "1.250.000") a número
@@ -94,16 +104,23 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   // Rellenar formulario cuando se abre con un producto
   useEffect(() => {
     if (isOpen && product) {
+      const stock = product.stock ?? 0
+      const allowBackorders = product.allow_backorders === true
       setFormData({
         code: product.code ?? "",
         name: product.name ?? "",
         description: product.description ?? "",
         category_id: product.category_id != null ? String(product.category_id) : "",
         price: Math.round(Number(product.price ?? 0)).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-        stock: String(product.stock ?? 0),
+        stock: String(stock),
         min_stock: String(product.min_stock ?? 0),
         max_stock: String(product.max_stock ?? 1000),
-        is_active: (product.stock ?? 0) === 0 ? "0" : "1",
+        is_active: stock > 0 ? "1" : (allowBackorders && product.is_active ? "1" : "0"),
+        weight: product.weight != null ? String(product.weight) : "",
+        length: product.length != null ? String(product.length) : "",
+        width: product.width != null ? String(product.width) : "",
+        height: product.height != null ? String(product.height) : "",
+        allow_backorders: product.allow_backorders ? "1" : "0",
       })
       setSyncToWooCommerce(true)
       setImageUrlInput("")
@@ -231,13 +248,19 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   }
 
   const handleInputChange = (field: keyof FormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-    if (field === "stock") {
-      const stockValue = parseInt(value) || 0
-      if (stockValue === 0) {
-        setFormData((prev) => ({ ...prev, is_active: "0" }))
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value }
+      if (field === "stock") {
+        const stockValue = parseInt(value) || 0
+        const backorders = prev.allow_backorders === "1"
+        if (stockValue === 0 && !backorders) updated.is_active = "0"
       }
-    }
+      if (field === "allow_backorders" && value === "0") {
+        const stockValue = parseInt(prev.stock) || 0
+        if (stockValue === 0) updated.is_active = "0"
+      }
+      return updated
+    })
   }
 
   const validateForm = (): string | null => {
@@ -253,6 +276,14 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     if (minStock < 0) return "El stock mínimo no puede ser negativo"
     const maxStock = parseInt(formData.max_stock) || 1000
     if (maxStock < 0) return "El stock máximo no puede ser negativo"
+    const weight = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+    if (weight != null && (isNaN(weight) || weight < 0)) return "El peso debe ser ≥ 0 (kg)"
+    const length = formData.length.trim() === "" ? null : parseFloat(formData.length)
+    if (length != null && (isNaN(length) || length < 0)) return "La longitud debe ser ≥ 0 (cm)"
+    const width = formData.width.trim() === "" ? null : parseFloat(formData.width)
+    if (width != null && (isNaN(width) || width < 0)) return "El ancho debe ser ≥ 0 (cm)"
+    const height = formData.height.trim() === "" ? null : parseFloat(formData.height)
+    if (height != null && (isNaN(height) || height < 0)) return "El alto debe ser ≥ 0 (cm)"
     return null
   }
 
@@ -276,7 +307,8 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       }
 
       const stock = parseInt(formData.stock) || 0
-      const isActive = stock > 0 ? formData.is_active === "1" : false
+      const allowBackorders = formData.allow_backorders === "1"
+      const isActive = stock > 0 ? formData.is_active === "1" : (allowBackorders && formData.is_active === "1")
       const nextPrice = parsePrecioFormato(formData.price)
       const nextMinStock = parseInt(formData.min_stock) || 0
       const nextMaxStock = parseInt(formData.max_stock) || 1000
@@ -347,6 +379,11 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         await setStep(s)
       }
 
+      const weightVal = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+      const lengthVal = formData.length.trim() === "" ? null : parseFloat(formData.length)
+      const widthVal = formData.width.trim() === "" ? null : parseFloat(formData.width)
+      const heightVal = formData.height.trim() === "" ? null : parseFloat(formData.height)
+
       const payload: UpdateProductData = {
         code: nextCode,
         name: nextName,
@@ -359,6 +396,11 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         is_active: isActive,
         images: validImageUrls,
         sync_to_woocommerce: syncToWooCommerce || undefined,
+        weight: weightVal ?? undefined,
+        length: lengthVal ?? undefined,
+        width: widthVal ?? undefined,
+        height: heightVal ?? undefined,
+        allow_backorders: allowBackorders,
       }
 
       if (syncToWooCommerce) {
@@ -580,9 +622,9 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     <SelectItem value="0">Inactivo</SelectItem>
                   </SelectContent>
                 </Select>
-                {parseInt(formData.stock) === 0 && (
+                {parseInt(formData.stock) === 0 && formData.allow_backorders !== "1" && (
                   <p className="text-xs text-red-600 dark:text-red-400">
-                    Con stock 0 el producto se guardará como inactivo.
+                    Con stock 0 el producto se guardará como inactivo. Marcá &quot;Venta por encargo&quot; para vender con stock 0.
                   </p>
                 )}
               </div>
@@ -605,6 +647,100 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                   Este producto aún no está sincronizado con WooCommerce. Sincronizalo desde el detalle del producto para poder enviar cambios.
                 </p>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Reserva (venta por encargo)</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="edit-allow-backorders"
+                  checked={formData.allow_backorders === "1"}
+                  onChange={(e) => handleInputChange("allow_backorders", e.target.checked ? "1" : "0")}
+                  className="h-4 w-4 rounded border-primary"
+                />
+                <Label htmlFor="edit-allow-backorders" className="text-sm cursor-pointer">
+                  Permitir reservas con stock 0 (venta por encargo)
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                En WooCommerce se sincroniza como &quot;Permitir reservas&quot; → el cliente puede comprar con stock 0 y se le avisará.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <Truck className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Dimensiones y peso (envíos)</span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-weight" className="text-sm flex items-center gap-1">
+                    <Ruler className="h-3.5 w-3.5" />
+                    Peso (kg)
+                  </Label>
+                  <Input
+                    id="edit-weight"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.weight}
+                    onChange={(e) => handleInputChange("weight", e.target.value)}
+                    onFocus={handleNumericFocus}
+                    placeholder="Ej: 2.5"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-length">Largo (cm)</Label>
+                  <Input
+                    id="edit-length"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.length}
+                    onChange={(e) => handleInputChange("length", e.target.value)}
+                    onFocus={handleNumericFocus}
+                    placeholder="Ej: 35"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-width">Ancho (cm)</Label>
+                  <Input
+                    id="edit-width"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.width}
+                    onChange={(e) => handleInputChange("width", e.target.value)}
+                    onFocus={handleNumericFocus}
+                    placeholder="Ej: 24"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-height">Alto (cm)</Label>
+                  <Input
+                    id="edit-height"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.height}
+                    onChange={(e) => handleInputChange("height", e.target.value)}
+                    onFocus={handleNumericFocus}
+                    placeholder="Ej: 2"
+                    className="h-10"
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
 

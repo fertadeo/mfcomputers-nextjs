@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer, RefreshCw } from "lucide-react"
+import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer, RefreshCw, Ruler, Truck } from "lucide-react"
 import Image from "next/image"
 import { Product, updateProduct, syncProductToWooCommerce, getProductById } from "@/lib/api"
 import { getAllProductImages } from "@/lib/product-image-utils"
@@ -483,13 +483,30 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
 
           {/* Detalles del producto */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{displayedProduct.category_name || 'Sin categoría'}</Badge>
               <Badge variant={getEstadoColor(stockStatus)}>{getEstadoText(stockStatus)}</Badge>
               <Badge variant={displayedProduct.is_active ? "default" : "secondary"}>
                 {displayedProduct.is_active ? "Activo" : "Inactivo"}
               </Badge>
+              {displayedProduct.allow_backorders && (
+                <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30">
+                  <Truck className="h-3 w-3 mr-1" />
+                  Por encargo
+                </Badge>
+              )}
             </div>
+
+            {displayedProduct.allow_backorders && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Este producto permite reserva: Permitir, pero se avisará al cliente.
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  Se puede vender con stock 0; en WooCommerce equivale a &quot;Permitir reservas&quot; con aviso al cliente.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center gap-2">
@@ -537,7 +554,7 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
                 </div>
               </div>
 
-              {displayedProduct.stock <= displayedProduct.min_stock && (
+              {displayedProduct.stock <= displayedProduct.min_stock && !displayedProduct.allow_backorders && (
                 <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                   <span className="text-sm text-red-700 dark:text-red-400">
@@ -546,6 +563,45 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
                 </div>
               )}
             </div>
+
+            {/* Peso y dimensiones (envíos) */}
+            {(displayedProduct.weight != null || displayedProduct.length != null || displayedProduct.width != null || displayedProduct.height != null) && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <Ruler className="h-4 w-4" />
+                    Peso y dimensiones (envíos)
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    {displayedProduct.weight != null && (
+                      <div>
+                        <p className="text-muted-foreground">Peso</p>
+                        <p className="font-medium">{displayedProduct.weight} kg</p>
+                      </div>
+                    )}
+                    {displayedProduct.length != null && (
+                      <div>
+                        <p className="text-muted-foreground">Largo</p>
+                        <p className="font-medium">{displayedProduct.length} cm</p>
+                      </div>
+                    )}
+                    {displayedProduct.width != null && (
+                      <div>
+                        <p className="text-muted-foreground">Ancho</p>
+                        <p className="font-medium">{displayedProduct.width} cm</p>
+                      </div>
+                    )}
+                    {displayedProduct.height != null && (
+                      <div>
+                        <p className="text-muted-foreground">Alto</p>
+                        <p className="font-medium">{displayedProduct.height} cm</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
 
             <Separator />
 
