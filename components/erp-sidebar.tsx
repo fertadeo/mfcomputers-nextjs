@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { useRouter, usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -72,21 +73,55 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
         )}
       >
         <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border bg-sidebar/50">
-            {!isCollapsed && (
-              <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-               MF Computers
-              </h1>
+          {/* Header con logo de marca */}
+          <div
+            className={cn(
+              "flex border-b border-sidebar-border bg-sidebar/80 backdrop-blur-sm transition-all duration-300",
+              isCollapsed ? "h-16 flex-col justify-center gap-2 py-3 px-2" : "h-28 min-h-[7rem] items-center justify-between gap-3 px-4 py-4"
             )}
-            <div className="flex items-center gap-2">
-              {/* Theme toggle button */}
+          >
+            <div
+              className={cn(
+                "flex flex-shrink-0 items-center overflow-hidden",
+                isCollapsed ? "justify-center" : "min-w-0 flex-1 justify-center"
+              )}
+            >
+              <a
+                href="/dashboard"
+                className={cn(
+                  "flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar rounded-md",
+                  isCollapsed && "w-full"
+                )}
+                aria-label="MF Computers - Ir al inicio"
+              >
+                <span
+                  className={cn(
+                    "relative flex-shrink-0 transition-all duration-300",
+                    isCollapsed ? "h-12 w-12" : "h-[72px] w-[220px]"
+                  )}
+                >
+                  <Image
+                    src="/images/Recurso-7@3x.png"
+                    alt="MF Computers - Soluciones Informáticas"
+                    fill
+                    sizes="(max-width: 256px) 48px, 220px"
+                    className={cn(
+                      "object-contain object-center select-none",
+                      "invert dark:invert-0"
+                    )}
+                    priority
+                  />
+                </span>
+              </a>
+            </div>
+            <div className={cn("flex items-center gap-1", isCollapsed && "flex-col")}>
               <ThemeToggle />
               <Button
                 variant="ghost"
                 size="icon"
-                className="hidden md:flex hover:bg-sidebar-accent hover:scale-110 transition-all duration-300 focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
+                className="hidden md:flex hover:bg-sidebar-accent hover:scale-105 transition-all duration-300 focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 dark:focus:ring-offset-slate-800"
                 onClick={() => setIsCollapsed(!isCollapsed)}
+                aria-label={isCollapsed ? "Expandir menú" : "Colapsar menú"}
               >
                 <Menu className="h-4 w-4" />
               </Button>
