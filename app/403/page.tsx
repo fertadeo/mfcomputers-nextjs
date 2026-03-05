@@ -84,7 +84,7 @@ export default function ForbiddenPage() {
           {/* Información adicional */}
           <div className="text-center text-xs text-slate-500 dark:text-slate-500">
             <p>Error 403 - Forbidden</p>
-            <p>ERP Demo v1.0</p>
+            <p>Aurix ERP v1.0</p>
           </div>
         </CardContent>
       </Card>

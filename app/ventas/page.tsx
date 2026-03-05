@@ -126,16 +126,10 @@ export default function VentasPage() {
       if (salesSyncStatus !== "all") params.sync_status = salesSyncStatus as "pending" | "synced" | "error"
 
       const res = await getSales(params)
-      // Backend: GET /api/sales devuelve { data: { sales: [...], total?: number } } (sin body, solo query)
-      const rawData = res.data as Record<string, unknown> | undefined
-      const rawList =
-        Array.isArray(rawData?.sales) ? rawData.sales
-        : Array.isArray((rawData as Record<string, unknown>)?.ventas) ? (rawData as Record<string, unknown>).ventas
-        : Array.isArray(rawData) ? rawData
-        : []
-      const list = rawList as Sale[]
-      const total = typeof rawData?.total === 'number' ? rawData.total : list.length
-      const limit = params?.limit ?? 20
+      // Backend: GET /api/sales devuelve data.sales (array), data.total, data.page, data.limit
+      const list = Array.isArray(res.data?.sales) ? res.data.sales : []
+      const total = typeof res.data?.total === "number" ? res.data.total : list.length
+      const limit = typeof res.data?.limit === "number" ? res.data.limit : params?.limit ?? 20
 
       setSales(list)
       setSalesTotal(total)

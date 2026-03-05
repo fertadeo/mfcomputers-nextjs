@@ -259,7 +259,7 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
             {/* Información de versión */}
             {!isCollapsed && (
               <div className="text-xs text-muted-foreground text-center">
-                <div className="font-medium">ERP Demo v1.0</div>
+                <div className="font-medium">Aurix ERP v1.0</div>
                 <div className="text-xs opacity-70">Sistema de Gestión</div>
               </div>
             )}

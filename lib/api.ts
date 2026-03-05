@@ -720,18 +720,15 @@ export interface Sale {
   updated_at: string
 }
 
+/** Respuesta de GET /api/sales: listado en data.sales; paginación en data.total, data.page, data.limit */
 export interface SalesListResponse {
   success: boolean
   message: string
   data: {
     sales: Sale[]
-    pagination?: {
-      page: number
-      limit: number
-      total: number
-      totalPages: number
-    }
     total?: number
+    page?: number
+    limit?: number
   }
   timestamp: string
 }
