@@ -77,57 +77,22 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
   }
 
   const validateForm = (): boolean => {
-    if (!formData.client_type) {
-      setError("El tipo de cliente es obligatorio")
-      return false
-    }
-    if (!formData.sales_channel) {
-      setError("El canal de venta es obligatorio")
+    if (!formData.name.trim()) {
+      setError("El nombre es obligatorio")
       return false
     }
     if (!isManualChannel) {
       setError("Solo se pueden crear clientes con canal de venta «Manual». Seleccione Manual para completar el formulario.")
       return false
     }
-    if (!formData.name.trim()) {
-      setError("El nombre es obligatorio")
+    // Si ingresaron CUIL/CUIT, validar que tenga 11 dígitos
+    if (formData.cuil_cuit.trim() && cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
+      setError("El CUIL/CUIT debe tener exactamente 11 dígitos")
       return false
     }
-    const isFisicaOrJuridica = formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica"
-    if (isFisicaOrJuridica) {
-      const digits = cuilCuitDigitCount(formData.cuil_cuit)
-      if (digits === 0) {
-        setError("El CUIL/CUIT es requerido para persona física o jurídica")
-        return false
-      }
-      if (digits !== 11) {
-        setError("El CUIL/CUIT debe tener exactamente 11 dígitos")
-        return false
-      }
-    } else if (formData.cuil_cuit.trim()) {
-      if (cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
-        setError("El CUIL/CUIT debe tener exactamente 11 dígitos")
-        return false
-      }
-    }
-    if (!formData.email.trim()) {
-      setError("El email es obligatorio")
-      return false
-    }
-    if (!formData.email.includes("@")) {
+    // Si ingresaron email, validar formato
+    if (formData.email.trim() && !formData.email.includes("@")) {
       setError("El email debe tener un formato válido")
-      return false
-    }
-    if (!formData.phone.trim()) {
-      setError("El teléfono es obligatorio")
-      return false
-    }
-    if (!formData.city.trim()) {
-      setError("La ciudad es obligatoria")
-      return false
-    }
-    if (!formData.country.trim()) {
-      setError("El país es obligatorio")
       return false
     }
     return true
@@ -218,7 +183,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="client_type">Tipo de Cliente *</Label>
+                  <Label htmlFor="client_type">Tipo de Cliente</Label>
                   <Select
                     value={formData.client_type}
                     onValueChange={(value) => handleInputChange("client_type", value)}
@@ -235,7 +200,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sales_channel">Canal de Venta *</Label>
+                  <Label htmlFor="sales_channel">Canal de Venta</Label>
                   <Select
                     value={formData.sales_channel}
                     onValueChange={(value) => handleInputChange("sales_channel", value)}
@@ -282,10 +247,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cuil_cuit">
-                    CUIL / CUIT
-                    {(formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica") && " *"}
-                  </Label>
+                  <Label htmlFor="cuil_cuit">CUIL / CUIT</Label>
                   <Input
                     id="cuil_cuit"
                     value={formData.cuil_cuit}
@@ -304,7 +266,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">Email</Label>
                   <div className="relative">
                     <Mail className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -319,7 +281,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Teléfono *</Label>
+                  <Label htmlFor="phone">Teléfono</Label>
                   <div className="relative">
                     <Phone className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -356,7 +318,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="city">Ciudad *</Label>
+                  <Label htmlFor="city">Ciudad</Label>
                   <div className="relative">
                     <MapPin className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -370,7 +332,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="country">País *</Label>
+                  <Label htmlFor="country">País</Label>
                   <div className="relative">
                     <Building className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
