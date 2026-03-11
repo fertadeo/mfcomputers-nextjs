@@ -281,6 +281,10 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
     )
   }
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!displayedProduct) return null
 
   // Función para determinar el estado del stock
@@ -338,10 +342,6 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
     : null
 
   const qrNeedsUpdate = Boolean(expectedQr && displayedProduct.qr_code && displayedProduct.qr_code !== expectedQr)
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>
