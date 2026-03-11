@@ -136,45 +136,21 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    if (!formData.client_type.trim()) {
-      newErrors.client_type = "El tipo de cliente es requerido"
-    }
-
     if (!formData.name.trim()) {
       newErrors.name = "El nombre es requerido"
     } else if (formData.name.trim().length < 2) {
       newErrors.name = "El nombre debe tener al menos 2 caracteres"
     }
 
-    if (!formData.email.trim()) {
-      newErrors.email = "El email es requerido"
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "El formato del email no es válido"
     }
 
-    if (!formData.phone.trim()) {
-      newErrors.phone = "El teléfono es requerido"
-    } else if (formData.phone.trim().length < 8) {
+    if (formData.phone.trim() && formData.phone.trim().length < 8) {
       newErrors.phone = "El teléfono debe tener al menos 8 dígitos"
     }
 
-    if (!formData.city.trim()) {
-      newErrors.city = "La ciudad es requerida"
-    }
-
-    if (!formData.country.trim()) {
-      newErrors.country = "El país es requerido"
-    }
-
-    const isFisicaOrJuridica = formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica"
-    if (isFisicaOrJuridica) {
-      const digits = cuilCuitDigitCount(formData.cuil_cuit)
-      if (digits === 0) {
-        newErrors.cuil_cuit = "El CUIL/CUIT es requerido para persona física o jurídica"
-      } else if (digits !== 11) {
-        newErrors.cuil_cuit = "El CUIL/CUIT debe tener exactamente 11 dígitos"
-      }
-    } else if (formData.cuil_cuit.trim() && cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
+    if (formData.cuil_cuit.trim() && cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
       newErrors.cuil_cuit = "El CUIL/CUIT debe tener exactamente 11 dígitos"
     }
 
@@ -279,7 +255,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                 <div className="space-y-2">
                   <Label htmlFor="client_type" className="flex items-center gap-2">
                     <Building className="h-4 w-4 text-gray-500" />
-                    Tipo de Cliente *
+                    Tipo de Cliente
                   </Label>
                   <Select 
                     value={formData.client_type} 
@@ -330,7 +306,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                 <div className="space-y-2">
                   <Label htmlFor="email" className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-gray-500" />
-                    Email *
+                    Email
                   </Label>
                   <Input
                     id="email"
@@ -351,7 +327,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="flex items-center gap-2">
                     <Phone className="h-4 w-4 text-gray-500" />
-                    Teléfono *
+                    Teléfono
                   </Label>
                   <Input
                     id="phone"
@@ -401,7 +377,6 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   <Label htmlFor="cuil_cuit" className="flex items-center gap-2">
                     <IdCard className="h-4 w-4 text-gray-500" />
                     CUIL / CUIT
-                    {(formData.personeria === "persona_fisica" || formData.personeria === "persona_juridica") && " *"}
                   </Label>
                   <Input
                     id="cuil_cuit"
@@ -457,7 +432,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                 <div className="space-y-2">
                   <Label htmlFor="city" className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-gray-500" />
-                    Ciudad *
+                    Ciudad
                   </Label>
                   <Input
                     id="city"
@@ -478,7 +453,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                 <div className="space-y-2">
                   <Label htmlFor="country" className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-gray-500" />
-                    País *
+                    País
                   </Label>
                   <Input
                     id="country"
