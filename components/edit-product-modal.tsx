@@ -441,15 +441,15 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     if (!loading) onClose()
   }
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) handleClose()
+  })
+
   if (!product) return null
 
   const wcBaseUrl = (process.env.NEXT_PUBLIC_WOOCOMMERCE_URL || "https://mfcomputers.com.ar").replace(/\/+$/, "")
   const wcSlug = product.woocommerce_slug?.replace(/^\/+|\/+$/g, "").trim()
   const wcProductUrl = wcSlug ? `${wcBaseUrl}/${wcSlug}` : null
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) handleClose()
-  })
 
   return (
     <>

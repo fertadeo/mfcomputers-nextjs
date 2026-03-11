@@ -98,6 +98,10 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
     }
   }, [sale?.id, sale?.items?.map((i) => i.product_id).join(",")])
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!sale) return null
 
   const formatDate = (dateStr: string) => {
@@ -122,10 +126,6 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
       }
     : null
   const SyncIcon = syncConfig?.icon ?? Clock
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>

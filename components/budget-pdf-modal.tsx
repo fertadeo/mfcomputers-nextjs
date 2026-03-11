@@ -317,14 +317,14 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
     return configs[estado] || configs.pendiente
   }
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!budget) return null
 
   const estadoConfig = getEstadoConfig(budget.estado)
   const EstadoIcon = estadoConfig.icon
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>

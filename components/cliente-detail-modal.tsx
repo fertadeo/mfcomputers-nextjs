@@ -169,6 +169,10 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isCuentaCorrienteModalOpen, setIsCuentaCorrienteModalOpen] = useState(false)
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!cliente) return null
 
   const totalCompras = comprasData.reduce((sum, compra) => sum + compra.total, 0)
@@ -225,10 +229,6 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
       setIsDeleting(false)
     }
   }
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>

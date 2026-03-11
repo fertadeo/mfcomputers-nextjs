@@ -226,11 +226,11 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     }
   }
 
-  if (!cliente) return null
-
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
+
+  if (!cliente) return null
 
   return (
     <>

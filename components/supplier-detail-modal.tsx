@@ -191,6 +191,10 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
   const [isAccruedExpenseModalOpen, setIsAccruedExpenseModalOpen] = useState(false)
   const [isAccruedLiabilityModalOpen, setIsAccruedLiabilityModalOpen] = useState(false)
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!supplier) return null
 
   // Determinar tipo de proveedor
@@ -240,10 +244,6 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
     .filter(m => m.type === "payment")
     .reduce((sum, m) => sum + m.amount, 0))
   const currentBalance = mockAccountMovements[mockAccountMovements.length - 1]?.balance_after || 0
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>

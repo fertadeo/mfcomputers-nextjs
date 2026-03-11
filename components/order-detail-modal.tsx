@@ -88,6 +88,10 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
     }
   }, [order])
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!currentOrder) return null
 
   const jsonData = currentOrder.json || {}
@@ -221,10 +225,6 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
   const clientEmail = billing.email || currentOrder.client_email
   const clientPhone = billing.phone || currentOrder.delivery_phone || shipping.phone
   const currentWooCommerceStatus = getCurrentWooCommerceStatus()
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>

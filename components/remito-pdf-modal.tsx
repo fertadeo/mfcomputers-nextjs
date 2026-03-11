@@ -75,6 +75,10 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
   const [isGeneratingRemito, setIsGeneratingRemito] = useState(false)
   const [isGeneratingLabels, setIsGeneratingLabels] = useState(false)
 
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   if (!remito) return null
 
   const handleDownloadPDF = async () => {
@@ -570,10 +574,6 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
   ]
 
   const subtotal = itemsEjemplo.reduce((acc, item) => acc + item.total, 0)
-
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
 
   return (
     <>
