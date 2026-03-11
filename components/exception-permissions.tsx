@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Search, 
@@ -59,6 +60,8 @@ export function ExceptionPermissions() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [modules, setModules] = useState<string[]>([])
+
+  const handleAssignModalOpenChange = useConfirmBeforeClose(setIsAssignModalOpen)
 
   // Cargar usuarios y permisos
   useEffect(() => {
@@ -452,7 +455,7 @@ export function ExceptionPermissions() {
       )}
 
       {/* Modal para asignar permiso */}
-      <Dialog open={isAssignModalOpen} onOpenChange={setIsAssignModalOpen}>
+      <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Asignar Permiso Excepcional</DialogTitle>

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Building2, Mail, Phone, MapPin, User, FileText, DollarSign, ShoppingBag, Receipt } from "lucide-react"
@@ -244,8 +245,12 @@ export function SupplierModal({
   const isReadOnly = mode === 'view'
   const title = mode === 'create' ? 'Nuevo Proveedor' : mode === 'edit' ? 'Editar Proveedor' : 'Ver Proveedor'
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) handleClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

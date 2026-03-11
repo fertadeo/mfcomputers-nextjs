@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -132,8 +133,12 @@ export function NewSupplierModal({ isOpen, onClose, onSuccess }: NewSupplierModa
     }
   }
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) handleClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

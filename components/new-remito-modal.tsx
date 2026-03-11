@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -186,8 +187,12 @@ export function NewRemitoModal({ isOpen, onClose, onSuccess }: NewRemitoModalPro
   const canSubmit = formData.clienteId && formData.direccion && formData.ciudad && 
                      formData.contacto && formData.empresaTransporte && formData.items.length > 0
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) handleClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 -m-6 mb-6 rounded-t-lg border-b border-slate-700">
           <DialogTitle className="flex items-center gap-3 text-2xl font-bold">

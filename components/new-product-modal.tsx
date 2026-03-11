@@ -16,6 +16,7 @@ import { createProductNew, getCategories, Category, CreateProductData } from "@/
 import { generateProductCodes } from "@/lib/product-codes"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { CategoryManagerPanel } from "@/components/category-manager-panel"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -443,8 +444,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     }
   }
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) handleClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-slate-900">
         <DialogHeader className="pb-6">
           <DialogTitle className="text-2xl font-bold flex items-center gap-3 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">

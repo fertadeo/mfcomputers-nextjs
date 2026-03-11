@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -338,8 +339,12 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
 
   const qrNeedsUpdate = Boolean(expectedQr && displayedProduct.qr_code && displayedProduct.qr_code !== expectedQr)
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[96vw] max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">{displayedProduct.name}</DialogTitle>

@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Search, 
@@ -67,6 +68,9 @@ export function UsersManagement() {
   })
 
   const roles: Role[] = ['admin', 'gerencia', 'ventas', 'logistica', 'finanzas', 'manager', 'employee', 'viewer']
+
+  const handleCreateModalOpenChange = useConfirmBeforeClose(setIsCreateModalOpen)
+  const handleEditModalOpenChange = useConfirmBeforeClose(setIsEditModalOpen)
 
   useEffect(() => {
     loadUsers()
@@ -346,7 +350,7 @@ export function UsersManagement() {
       </Card>
 
       {/* Modal crear usuario */}
-      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+      <Dialog open={isCreateModalOpen} onOpenChange={handleCreateModalOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Crear Nuevo Usuario</DialogTitle>
@@ -532,7 +536,7 @@ export function UsersManagement() {
       </Dialog>
 
       {/* Modal editar usuario */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+      <Dialog open={isEditModalOpen} onOpenChange={handleEditModalOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>

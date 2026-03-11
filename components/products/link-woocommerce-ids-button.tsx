@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle2, Link2, Loader2 } from "lucide-react"
@@ -39,6 +40,8 @@ export function LinkWooCommerceIdsButton({
       reset()
     }
   }
+
+  const handleOpenChangeWithConfirm = useConfirmBeforeClose(handleOpenChange)
 
   const handleConfirm = async () => {
     const data = await execute()
@@ -77,7 +80,7 @@ export function LinkWooCommerceIdsButton({
         )}
       </Button>
 
-      <Dialog open={isDialogOpen} onOpenChange={handleOpenChange}>
+      <Dialog open={isDialogOpen} onOpenChange={handleOpenChangeWithConfirm}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Vincular productos con WooCommerce</DialogTitle>

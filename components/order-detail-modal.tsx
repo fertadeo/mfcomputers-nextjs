@@ -2,6 +2,7 @@
 
 import React, { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -221,8 +222,12 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
   const clientPhone = billing.phone || currentOrder.delivery_phone || shipping.phone
   const currentWooCommerceStatus = getCurrentWooCommerceStatus()
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header estilo WooCommerce */}
         <DialogHeader className="px-6 py-4 border-b flex-shrink-0">

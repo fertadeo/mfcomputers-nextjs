@@ -2,6 +2,7 @@
 
 import React, { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -58,6 +59,10 @@ export function CategoryManagerPanel({
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [categoryLoading, setCategoryLoading] = useState(false)
+
+  const handleDeleteModalOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) setDeletingCategory(null)
+  })
 
   const handleCreateCategory = async () => {
     if (!categoryFormData.name.trim()) {
@@ -359,7 +364,7 @@ export function CategoryManagerPanel({
         </CardContent>
       </Card>
 
-      <Dialog open={!!deletingCategory} onOpenChange={() => setDeletingCategory(null)}>
+      <Dialog open={!!deletingCategory} onOpenChange={handleDeleteModalOpenChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">

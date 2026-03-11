@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -451,8 +452,12 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
 
   const currentImages = formData.images ?? []
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,8 +53,10 @@ export function ExportCashModal({ onExport, trigger }: ExportCashModalProps) {
     setToDate(endOfMonth.toISOString().split('T')[0])
   }
 
+  const handleOpenChange = useConfirmBeforeClose(setIsOpen)
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" className="border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 hover:border-slate-400 dark:hover:border-slate-500 focus:ring-2 focus:ring-turquoise-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 active:bg-slate-200 dark:active:bg-slate-600 text-slate-700 dark:text-slate-300 transition-all duration-200">

@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { updateCliente } from "@/lib/api"
 import { SALES_CHANNEL_CONFIG, SalesChannel } from "@/lib/utils"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 
 type Personeria = "persona_fisica" | "persona_juridica" | "consumidor_final"
 
@@ -227,8 +228,12 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
 
   if (!cliente) return null
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">

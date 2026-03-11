@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Category, createCategory, updateCategory, CreateCategoryData, UpdateCategoryData } from "@/lib/api"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 
 export interface CategoryModalProps {
   open: boolean
@@ -101,8 +102,10 @@ export function CategoryModal({
 
   const activeCategories = categories.filter((c) => c.is_active !== false && c.id !== category?.id)
 
+  const handleOpenChange = useConfirmBeforeClose(onOpenChange)
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "Nueva categoría" : "Editar categoría"}</DialogTitle>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -439,8 +440,12 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
   const ccAvailable = ccLimit !== undefined && ccBalance !== undefined ? ccLimit + ccBalance : undefined
   const ccAvailableBadgeVariant = ccAvailable !== undefined && ccAvailable <= 0 ? "destructive" : "secondary"
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) onClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-7xl h-[95vh] max-h-[95vh] flex flex-col p-0">
         <DialogHeader className="px-6 py-4 border-b bg-muted/30">
           <DialogTitle className="flex items-center gap-2 text-lg">

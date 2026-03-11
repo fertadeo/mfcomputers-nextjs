@@ -20,6 +20,7 @@ import {
 import { getAllProductImages } from "@/lib/product-image-utils"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { useToast } from "@/contexts/ToastContext"
+import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 
 interface EditProductModalProps {
   product: Product | null
@@ -446,8 +447,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const wcSlug = product.woocommerce_slug?.replace(/^\/+|\/+$/g, "").trim()
   const wcProductUrl = wcSlug ? `${wcBaseUrl}/${wcSlug}` : null
 
+  const handleOpenChange = useConfirmBeforeClose((open) => {
+    if (!open) handleClose()
+  })
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
