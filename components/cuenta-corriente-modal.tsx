@@ -284,11 +284,12 @@ export function CuentaCorrienteModal({
     )
   }
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-6xl h-[95vh] max-h-[95vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="px-6 py-4 border-b bg-muted/30">
@@ -623,5 +624,7 @@ export function CuentaCorrienteModal({
         </div>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

@@ -69,8 +69,8 @@ export function UsersManagement() {
 
   const roles: Role[] = ['admin', 'gerencia', 'ventas', 'logistica', 'finanzas', 'manager', 'employee', 'viewer']
 
-  const handleCreateModalOpenChange = useConfirmBeforeClose(setIsCreateModalOpen)
-  const handleEditModalOpenChange = useConfirmBeforeClose(setIsEditModalOpen)
+  const [handleCreateModalOpenChange, confirmCreateDialog] = useConfirmBeforeClose(setIsCreateModalOpen)
+  const [handleEditModalOpenChange, confirmEditDialog] = useConfirmBeforeClose(setIsEditModalOpen)
 
   useEffect(() => {
     loadUsers()
@@ -722,6 +722,8 @@ export function UsersManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmCreateDialog}
+      {confirmEditDialog}
     </div>
   )
 }

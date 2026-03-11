@@ -228,11 +228,12 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
 
   if (!cliente) return null
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
@@ -529,5 +530,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

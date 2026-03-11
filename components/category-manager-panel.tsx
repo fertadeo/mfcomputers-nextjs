@@ -60,7 +60,7 @@ export function CategoryManagerPanel({
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [categoryLoading, setCategoryLoading] = useState(false)
 
-  const handleDeleteModalOpenChange = useConfirmBeforeClose((open) => {
+  const [handleDeleteModalOpenChange, confirmDeleteDialog] = useConfirmBeforeClose((open) => {
     if (!open) setDeletingCategory(null)
   })
 
@@ -416,6 +416,7 @@ export function CategoryManagerPanel({
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDeleteDialog}
     </>
   )
 }

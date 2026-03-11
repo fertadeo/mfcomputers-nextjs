@@ -175,11 +175,12 @@ export function AccruedExpenseModal({
 
   const selectedSupplier = suppliers.find(s => s.id === formData.supplier_id)
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -380,6 +381,8 @@ export function AccruedExpenseModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }
 

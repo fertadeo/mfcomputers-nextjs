@@ -171,11 +171,12 @@ export function NewPurchaseModal({ isOpen, onClose, onSuccess }: NewPurchaseModa
     supplier.code.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -380,5 +381,7 @@ export function NewPurchaseModal({ isOpen, onClose, onSuccess }: NewPurchaseModa
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

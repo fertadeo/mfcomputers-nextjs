@@ -84,11 +84,12 @@ export function NewMaterialModal({ isOpen, onClose, onSuccess }: NewMaterialModa
     handleClose()
   }
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -211,6 +212,8 @@ export function NewMaterialModal({ isOpen, onClose, onSuccess }: NewMaterialModa
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }
 

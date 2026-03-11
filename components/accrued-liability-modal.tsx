@@ -157,11 +157,12 @@ export function AccruedLiabilityModal({
   const isReadOnly = mode === 'view'
   const title = mode === 'create' ? 'Nuevo Pasivo Devengado' : mode === 'edit' ? 'Editar Pasivo Devengado' : 'Ver Pasivo Devengado'
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -320,6 +321,8 @@ export function AccruedLiabilityModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }
 

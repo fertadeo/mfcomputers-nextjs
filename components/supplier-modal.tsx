@@ -245,11 +245,12 @@ export function SupplierModal({
   const isReadOnly = mode === 'view'
   const title = mode === 'create' ? 'Nuevo Proveedor' : mode === 'edit' ? 'Editar Proveedor' : 'Ver Proveedor'
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -660,5 +661,7 @@ export function SupplierModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

@@ -447,11 +447,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const wcSlug = product.woocommerce_slug?.replace(/^\/+|\/+$/g, "").trim()
   const wcProductUrl = wcSlug ? `${wcBaseUrl}/${wcSlug}` : null
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -875,5 +876,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

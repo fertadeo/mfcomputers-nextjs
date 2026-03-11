@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClienteDetailModal } from "@/components/cliente-detail-modal"
-import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar, Edit, User, Activity } from "lucide-react"
+import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar, Edit, User, Activity, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
-import { getClientes, getClienteStats } from "@/lib/api"
+import { getClientes, getClienteStats, deleteCliente } from "@/lib/api"
+import { toast } from "sonner"
 
 const TAX_CONDITION_LABELS: Record<string, string> = {
   responsable_inscripto: "Responsable Inscripto",
@@ -33,6 +34,7 @@ import { CuentasCorrientesSummary } from "@/components/cuentas-corrientes-summar
 import { ClienteActivityModal } from "@/components/cliente-activity-modal"  
 import { CuentaCorrienteStatusBadge } from "@/components/cuenta-corriente-status-badge"
 import { EditClientModal } from "@/components/edit-client-modal"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 // Tipo para la UI (formato mapeado)
 interface ClienteUI {
@@ -82,6 +84,8 @@ export default function ClientesPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
   const [channelFilter, setChannelFilter] = useState<"all" | "sistema_principal" | "woocommerce_mayorista" | "woocommerce_minorista" | "mercadolibre" | "manual">("all")
+  const [clienteToDelete, setClienteToDelete] = useState<ClienteUI | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Función para cargar clientes reales desde la API
   const loadData = async (page: number = 1, search: string = "", status: string = "all", channel: string = "all") => {
@@ -156,6 +160,23 @@ export default function ClientesPage() {
   const handlePageChange = (page: number) => {
     console.log('📄 [COMPONENT] Cambiando a página:', page)
     setCurrentPage(page)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!clienteToDelete) return
+    setDeleting(true)
+    try {
+      const res = await deleteCliente(clienteToDelete.dbId)
+      const msg = res?.message ?? (res?.data?.message ?? "Cliente eliminado o inactivado correctamente.")
+      toast.success(msg)
+      setClienteToDelete(null)
+      loadData(currentPage, searchTerm, statusFilter, channelFilter)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Error al eliminar el cliente."
+      toast.error(message)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   // Función helper para mapear estadísticas de la API al formato esperado por la UI
@@ -397,8 +418,8 @@ export default function ClientesPage() {
                   <TableHead>Última Compra</TableHead>
                   <TableHead>Cuenta Corriente</TableHead>
                   <TableHead>Saldo / Límite</TableHead>
-                  <TableHead className="sticky right-0 z-10 w-[120px] min-w-[120px] text-right bg-muted/50 dark:bg-muted/30 border-l border-border shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
-                  Acciones
+<TableHead className="sticky right-0 z-10 w-[160px] min-w-[160px] text-right bg-muted/50 dark:bg-muted/30 border-l border-border shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
+                    Acciones
                 </TableHead>
                 </TableRow>
               </TableHeader>
@@ -490,7 +511,7 @@ export default function ClientesPage() {
                     </TableCell>
                     <TableCell
                       onClick={(e) => e.stopPropagation()}
-                      className="sticky right-0 z-10 w-[120px] min-w-[120px] text-right bg-card group-hover:bg-muted/50 border-l border-border shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors"
+                      className="sticky right-0 z-10 w-[160px] min-w-[160px] text-right bg-card group-hover:bg-muted/50 border-l border-border shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] transition-colors"
                     >
                       <div className="flex items-center justify-end gap-1">
                         <Button
@@ -529,6 +550,18 @@ export default function ClientesPage() {
                           }}
                         >
                           <Activity className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          title="Eliminar / inactivar cliente"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setClienteToDelete(cliente)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -593,6 +626,45 @@ export default function ClientesPage() {
             setClienteToEdit(null)
           }}
         />
+
+        {/* Modal de confirmación para eliminar / inactivar cliente */}
+        <Dialog open={!!clienteToDelete} onOpenChange={(open) => !open && setClienteToDelete(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-destructive" />
+                Eliminar cliente
+              </DialogTitle>
+              <DialogDescription>
+                {clienteToDelete && (
+                  <>
+                    ¿Eliminar a <strong>{clienteToDelete.nombre}</strong>?
+                    <br />
+                    <span className="mt-2 block text-sm">
+                      El cliente se <strong>inactivará</strong> (no se borra de la base de datos). Si no tiene pedidos asociados, se eliminará definitivamente.
+                    </span>
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setClienteToDelete(null)}
+                disabled={deleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Eliminando..." : "Sí, eliminar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         </div>
       </ERPLayout>
     </Protected>

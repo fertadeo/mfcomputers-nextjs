@@ -61,7 +61,7 @@ export function ExceptionPermissions() {
   const [error, setError] = useState<string | null>(null)
   const [modules, setModules] = useState<string[]>([])
 
-  const handleAssignModalOpenChange = useConfirmBeforeClose(setIsAssignModalOpen)
+  const [handleAssignModalOpenChange, confirmAssignDialog] = useConfirmBeforeClose(setIsAssignModalOpen)
 
   // Cargar usuarios y permisos
   useEffect(() => {
@@ -455,6 +455,7 @@ export function ExceptionPermissions() {
       )}
 
       {/* Modal para asignar permiso */}
+      <>
       <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalOpenChange}>
         <DialogContent>
           <DialogHeader>
@@ -549,6 +550,8 @@ export function ExceptionPermissions() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmAssignDialog}
+      </>
     </div>
   )
 }

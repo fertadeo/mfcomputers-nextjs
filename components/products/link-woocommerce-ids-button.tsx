@@ -41,7 +41,7 @@ export function LinkWooCommerceIdsButton({
     }
   }
 
-  const handleOpenChangeWithConfirm = useConfirmBeforeClose(handleOpenChange)
+  const [handleOpenChangeWithConfirm, confirmDialog] = useConfirmBeforeClose(handleOpenChange)
 
   const handleConfirm = async () => {
     const data = await execute()
@@ -132,6 +132,7 @@ export function LinkWooCommerceIdsButton({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
 
       {showSummary && result && (
         <LinkWooCommerceSummary summary={result} lastRunAt={lastRunAt} />

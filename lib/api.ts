@@ -343,7 +343,14 @@ export async function deleteCliente(id: number): Promise<any> {
         statusText: response.statusText,
         errorText: errorText
       });
-      throw new Error(`Error al eliminar cliente: ${response.status} ${response.statusText}`);
+      let message = errorText || `Error ${response.status}`
+      try {
+        const parsed = JSON.parse(errorText)
+        if (parsed?.message) message = parsed.message
+      } catch {
+        if (errorText && errorText.length < 200) message = errorText
+      }
+      throw new Error(message)
     }
 
     const data = await response.json();

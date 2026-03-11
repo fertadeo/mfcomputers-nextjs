@@ -339,11 +339,12 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
 
   const qrNeedsUpdate = Boolean(expectedQr && displayedProduct.qr_code && displayedProduct.qr_code !== expectedQr)
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[96vw] max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -767,5 +768,7 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
         )}
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

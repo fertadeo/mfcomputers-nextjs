@@ -444,11 +444,12 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     }
   }
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-slate-900">
         <DialogHeader className="pb-6">
@@ -1037,5 +1038,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

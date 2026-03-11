@@ -326,11 +326,12 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
 
   const selectedClient = clients.find(c => c.name === formData.client)
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) handleClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 -m-6 mb-6 rounded-t-lg border-b border-slate-700">
@@ -859,5 +860,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

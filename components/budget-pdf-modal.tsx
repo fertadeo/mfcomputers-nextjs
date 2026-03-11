@@ -322,11 +322,12 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
   const estadoConfig = getEstadoConfig(budget.estado)
   const EstadoIcon = estadoConfig.icon
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-50 dark:bg-slate-900">
         <DialogHeader>
@@ -517,5 +518,7 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
         </div>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

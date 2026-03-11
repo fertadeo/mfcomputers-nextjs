@@ -452,11 +452,12 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
 
   const currentImages = formData.images ?? []
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -947,6 +948,8 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
         )}
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }
  

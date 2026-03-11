@@ -102,9 +102,10 @@ export function CategoryModal({
 
   const activeCategories = categories.filter((c) => c.is_active !== false && c.id !== category?.id)
 
-  const handleOpenChange = useConfirmBeforeClose(onOpenChange)
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose(onOpenChange)
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -216,5 +217,7 @@ export function CategoryModal({
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

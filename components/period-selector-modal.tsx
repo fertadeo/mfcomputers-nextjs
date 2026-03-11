@@ -70,9 +70,10 @@ export function PeriodSelectorModal({ onPeriodSelect, trigger }: PeriodSelectorM
     setToDate(endOfLastMonth.toISOString().split('T')[0])
   }
 
-  const handleOpenChange = useConfirmBeforeClose(setIsOpen)
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose(setIsOpen)
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
@@ -172,5 +173,7 @@ export function PeriodSelectorModal({ onPeriodSelect, trigger }: PeriodSelectorM
         </form>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

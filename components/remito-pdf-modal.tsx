@@ -571,11 +571,12 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
 
   const subtotal = itemsEjemplo.reduce((acc, item) => acc + item.total, 0)
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -805,6 +806,8 @@ export function RemitoPdfModal({ isOpen, onClose, remito }: RemitoPdfModalProps)
         </div>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }
 

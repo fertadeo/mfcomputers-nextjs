@@ -123,11 +123,12 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
     : null
   const SyncIcon = syncConfig?.icon ?? Clock
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-[min(42rem,calc(100vw-2rem))] max-h-[90vh] overflow-y-auto overflow-x-hidden p-0 gap-0">
         <DialogHeader className="border-b bg-muted/30 px-6 pr-12 py-5">
@@ -292,5 +293,7 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
         </div>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

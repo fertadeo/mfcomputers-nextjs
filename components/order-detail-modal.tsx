@@ -222,11 +222,12 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
   const clientPhone = billing.phone || currentOrder.delivery_phone || shipping.phone
   const currentWooCommerceStatus = getCurrentWooCommerceStatus()
 
-  const handleOpenChange = useConfirmBeforeClose((open) => {
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header estilo WooCommerce */}
@@ -465,5 +466,7 @@ export function OrderDetailModal({ order, isOpen, onClose, onStatusUpdate }: Ord
         </div>
       </DialogContent>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }
