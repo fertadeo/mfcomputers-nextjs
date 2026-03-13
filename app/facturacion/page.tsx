@@ -77,8 +77,8 @@ export default function FacturacionPage() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">$1,247,580</div>
-              <p className="text-xs text-muted-foreground">+15% vs mes anterior</p>
+              <div className="text-2xl font-bold">$0</div>
+              <p className="text-xs text-muted-foreground">Sin datos disponibles</p>
             </CardContent>
           </Card>
 
@@ -88,8 +88,8 @@ export default function FacturacionPage() {
               <Clock className="h-4 w-4 text-yellow-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">$113,030</div>
-              <p className="text-xs text-muted-foreground">23 facturas</p>
+              <div className="text-2xl font-bold text-yellow-600">$0</div>
+              <p className="text-xs text-muted-foreground">0 facturas</p>
             </CardContent>
           </Card>
 
@@ -99,8 +99,8 @@ export default function FacturacionPage() {
               <AlertTriangle className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">$34,560</div>
-              <p className="text-xs text-muted-foreground">8 facturas</p>
+              <div className="text-2xl font-bold text-red-600">$0</div>
+              <p className="text-xs text-muted-foreground">0 facturas</p>
             </CardContent>
           </Card>
 
@@ -110,7 +110,7 @@ export default function FacturacionPage() {
               <CheckCircle className="h-4 w-4 text-turquoise-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">87%</div>
+              <div className="text-2xl font-bold text-turquoise-600">0%</div>
               <p className="text-xs text-muted-foreground">Promedio mensual</p>
             </CardContent>
           </Card>

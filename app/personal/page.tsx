@@ -87,8 +87,8 @@ export default function PersonalPage() {
               <UserCheck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">47</div>
-              <p className="text-xs text-muted-foreground">+3 este mes</p>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">Sin datos</p>
             </CardContent>
           </Card>
 
@@ -98,8 +98,8 @@ export default function PersonalPage() {
               <User className="h-4 w-4 text-turquoise-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">43</div>
-              <p className="text-xs text-muted-foreground">91% del total</p>
+              <div className="text-2xl font-bold text-turquoise-600">0</div>
+              <p className="text-xs text-muted-foreground">Sin datos</p>
             </CardContent>
           </Card>
 
@@ -109,7 +109,7 @@ export default function PersonalPage() {
               <Calendar className="h-4 w-4 text-turquoise-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">4</div>
+              <div className="text-2xl font-bold text-turquoise-600">0</div>
               <p className="text-xs text-muted-foreground">Temporalmente ausentes</p>
             </CardContent>
           </Card>
@@ -120,7 +120,7 @@ export default function PersonalPage() {
               <UserCheck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">$4,890,000</div>
+              <div className="text-2xl font-bold">$0</div>
               <p className="text-xs text-muted-foreground">Costo total</p>
             </CardContent>
           </Card>

@@ -14,7 +14,8 @@ import { SALES_CHANNEL_CONFIG } from "@/lib/utils"
 interface NewClientModalProps {
   isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
+  /** Llamado al crear el cliente. Opcionalmente recibe el cliente creado (id, name) si la API lo devuelve. */
+  onSuccess?: (created?: { id: number; name: string }) => void
 }
 
 type Personeria = "persona_fisica" | "persona_juridica" | "consumidor_final"
@@ -122,14 +123,19 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
       }
       console.log('📡 [NEW CLIENT] Enviando datos:', payload)
       
-      await createCliente(payload)
-      
+      const res = await createCliente(payload)
+      const raw = res?.data ?? res
+      const created =
+        raw && typeof raw === "object" && "id" in raw && "name" in raw
+          ? { id: (raw as { id: number }).id, name: String((raw as { name: string }).name) }
+          : undefined
+
       console.log('✅ [NEW CLIENT] Cliente creado exitosamente')
 
       setSuccess(true)
       setTimeout(() => {
         setSuccess(false)
-        onSuccess()
+        onSuccess?.(created)
         onClose()
         setFormData({
           client_type: "minorista",

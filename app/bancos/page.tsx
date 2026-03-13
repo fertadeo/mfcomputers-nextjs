@@ -928,7 +928,7 @@ export default function BancosPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Saldo Bancarios ($)</p>
-                      <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">890,62M</p>
+                      <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">0</p>
                     </div>
                     <DollarSign className="h-8 w-8 text-blue-500" />
                   </div>
@@ -952,7 +952,7 @@ export default function BancosPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Saldo Bancarios (total $)</p>
-                      <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">890,62M</p>
+                      <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">0</p>
                     </div>
                     <BarChart3 className="h-8 w-8 text-purple-500" />
                   </div>

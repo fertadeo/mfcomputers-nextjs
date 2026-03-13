@@ -73,7 +73,7 @@ export default function ProduccionPage() {
               <Clock className="h-4 w-4 text-yellow-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">18</div>
+              <div className="text-2xl font-bold text-yellow-600">0</div>
               <p className="text-xs text-muted-foreground">Órdenes activas</p>
             </CardContent>
           </Card>
@@ -84,8 +84,8 @@ export default function ProduccionPage() {
               <CheckCircle className="h-4 w-4 text-turquoise-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">24</div>
-              <p className="text-xs text-muted-foreground">+15% vs ayer</p>
+              <div className="text-2xl font-bold text-turquoise-600">0</div>
+              <p className="text-xs text-muted-foreground">Sin datos disponibles</p>
             </CardContent>
           </Card>
 
@@ -95,7 +95,7 @@ export default function ProduccionPage() {
               <AlertTriangle className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">3</div>
+              <div className="text-2xl font-bold text-red-600">0</div>
               <p className="text-xs text-muted-foreground">Requieren atención</p>
             </CardContent>
           </Card>
@@ -106,7 +106,7 @@ export default function ProduccionPage() {
               <Factory className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">87%</div>
+              <div className="text-2xl font-bold">0%</div>
               <p className="text-xs text-muted-foreground">Promedio semanal</p>
             </CardContent>
           </Card>

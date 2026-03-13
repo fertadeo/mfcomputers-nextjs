@@ -657,15 +657,15 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Promedio mensual</span>
-                      <span className="font-medium">2.3 compras</span>
+                      <span className="font-medium">0 compras</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Valor promedio</span>
-                      <span className="font-medium">$89,667</span>
+                      <span className="font-medium">$0</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Última compra</span>
-                      <span className="font-medium">Hace 5 días</span>
+                      <span className="font-medium">Sin datos</span>
                     </div>
                   </div>
                 </CardContent>

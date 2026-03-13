@@ -75,15 +75,15 @@ export default function LoginPage() {
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <div className="h-2 bg-turquoise-500 rounded w-1/3"></div>
-                  <div className="text-white text-xs">1,234</div>
+                  <div className="text-white text-xs">0</div>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="h-2 bg-yellow-500 rounded w-1/4"></div>
-                  <div className="text-white text-xs">856</div>
+                  <div className="text-white text-xs">0</div>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="h-2 bg-red-500 rounded w-1/6"></div>
-                  <div className="text-white text-xs">8</div>
+                  <div className="text-white text-xs">0</div>
                 </div>
               </div>
             </div>
@@ -129,15 +129,15 @@ export default function LoginPage() {
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <div className="text-white text-xs">Ventas Hoy</div>
-                  <div className="text-turquoise-400 text-xs font-bold">$45,230</div>
+                  <div className="text-turquoise-400 text-xs font-bold">$0</div>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="text-white text-xs">Facturas</div>
-                  <div className="text-white text-xs">34</div>
+                  <div className="text-white text-xs">0</div>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="text-white text-xs">Pendientes</div>
-                  <div className="text-yellow-400 text-xs">3</div>
+                  <div className="text-yellow-400 text-xs">0</div>
                 </div>
               </div>
             </div>

@@ -1,13 +1,23 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { ERPLayout } from "@/components/erp-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { useRole } from "@/app/hooks/useRole"
-import { getClienteStats, getProductStats, getPurchaseStats, getDashboardStats, type ProductStats, type PurchaseStats, type DashboardStats } from "@/lib/api"
+import {
+  getClienteStats,
+  getProductStats,
+  getPurchaseStats,
+  getDashboardStats,
+  getProducts,
+  type ProductStats,
+  type PurchaseStats,
+  type DashboardStats,
+  type Product,
+} from "@/lib/api"
 import { getCashDay } from "@/lib/cash"
 import {
   Package,
@@ -39,6 +49,7 @@ export default function Dashboard() {
   const [cashDay, setCashDay] = useState<{ incomes: number; expenses: number; balance: number } | null>(null)
   const [purchaseStats, setPurchaseStats] = useState<PurchaseStats | null>(null)
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  const [allProducts, setAllProducts] = useState<Product[] | null>(null)
 
   // Cargar datos al montar el componente (incl. GET /api/dashboard/stats para gerencia/finanzas)
   useEffect(() => {
@@ -46,12 +57,14 @@ export default function Dashboard() {
       try {
         setLoading(true)
         
-        const [clientesData, productosData, cajaData, comprasData, dashboardData] = await Promise.allSettled([
+        const [clientesData, productosData, cajaData, comprasData, dashboardData, productsData] = await Promise.allSettled([
           getClienteStats().catch(() => null),
           getProductStats().catch(() => null),
           getCashDay().catch(() => null),
           getPurchaseStats().catch(() => null),
           getDashboardStats().catch(() => null),
+          // active_only=false para que coincida con los KPIs de Productos (activos)
+          getProducts(1, 10000, false).catch(() => null),
         ])
 
         if (clientesData.status === 'fulfilled' && clientesData.value) {
@@ -73,6 +86,13 @@ export default function Dashboard() {
         if (dashboardData.status === 'fulfilled' && dashboardData.value?.data) {
           setDashboardStats(dashboardData.value.data)
         }
+
+        if (productsData.status === "fulfilled" && productsData.value) {
+          const data = productsData.value as Product[] | { products?: Product[] }
+          const list =
+            Array.isArray(data) ? data : Array.isArray((data as any).products) ? (data as any).products : []
+          setAllProducts(list)
+        }
       } catch (error) {
         console.error('Error al cargar datos del dashboard:', error)
       } finally {
@@ -82,6 +102,32 @@ export default function Dashboard() {
 
     loadDashboardData()
   }, [])
+
+  // Inventario calculado igual que en Gestión de Productos (solo productos activos con stock físico o por encargo)
+  const activeInventoryStats = useMemo(() => {
+    if (!allProducts || !allProducts.length) return null
+    const active = allProducts.filter((p) => p.is_active && (p.stock > 0 || !!p.allow_backorders))
+    const withPhysical = active.filter((p) => p.stock > 0)
+    const stockValue = active.reduce((sum, p) => sum + Number(p.price || 0) * (p.stock || 0), 0)
+    const stockQuantity = active.reduce((sum, p) => sum + (p.stock || 0), 0)
+    const lowStock = withPhysical.filter((p) => p.stock <= (p.min_stock ?? 0)).length
+    const outOfStock = active.filter((p) => p.stock === 0).length
+    return {
+      totalStockValue: stockValue,
+      totalStockQuantity: stockQuantity,
+      lowStockCount: lowStock,
+      outOfStockCount: outOfStock,
+    }
+  }, [allProducts])
+
+  // Valor total de compras pendientes, seguro a 0 cuando no hay datos
+  const purchaseTotalAmount = (() => {
+    const raw = purchaseStats?.total_amount
+    if (typeof raw === "number") return raw
+    if (raw == null) return 0
+    const parsed = parseFloat(String(raw).replace(/[^\d.-]/g, "") || "0")
+    return Number.isNaN(parsed) ? 0 : parsed
+  })()
   
   return (
     <ERPLayout activeItem="dashboard">
@@ -116,7 +162,7 @@ export default function Dashboard() {
                 <Bell className="h-4 w-4 mr-2" />
                 Notificaciones
                 <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 text-xs">
-                  3
+                  0
                 </Badge>
               </Button>
             </div>
@@ -232,15 +278,20 @@ export default function Dashboard() {
               ) : (
                 <>
                   <div className="text-2xl font-bold text-turquoise-600">
-                    ${productStats?.total_stock_value != null
-                      ? parseFloat(String(productStats.total_stock_value).replace(/[^\d.-]/g, "") || "0").toLocaleString("es-AR", { maximumFractionDigits: 0 })
-                      : "0"}
+                    $
+                    {(activeInventoryStats?.totalStockValue ??
+                      (productStats?.total_stock_value != null
+                        ? parseFloat(String(productStats.total_stock_value).replace(/[^\d.-]/g, "") || "0")
+                        : 0)
+                    ).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <Package className="h-3 w-3 text-turquoise-500" />
-                    {productStats?.total_stock_quantity != null
-                      ? `${productStats.total_stock_quantity.toLocaleString("es-AR")} unidades en inventario`
-                      : "Valor total de artículos"}
+                    {(activeInventoryStats?.totalStockQuantity ??
+                      productStats?.total_stock_quantity ??
+                      0
+                    ).toLocaleString("es-AR")}{" "}
+                    unidades en inventario
                   </div>
                 </>
               )}
@@ -253,10 +304,10 @@ export default function Dashboard() {
               <ShoppingCart className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">1,847</div>
+              <div className="text-2xl font-bold text-turquoise-600">0</div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                 <TrendingUp className="h-3 w-3 text-turquoise-500" />
-                +12% vs mes anterior
+                Sin datos disponibles
               </div>
             </CardContent>
           </Card>
@@ -330,7 +381,7 @@ export default function Dashboard() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Valor Total</span>
                     <span className="font-semibold">
-                      ${purchaseStats?.total_amount?.toLocaleString() ?? '0'}
+                      ${purchaseTotalAmount.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -457,7 +508,7 @@ export default function Dashboard() {
                 <Clock className="h-4 w-4 text-yellow-500 mt-0.5" />
                 <div className="flex-1">
                   <div className="text-sm font-medium">Pedidos atrasados</div>
-                  <div className="text-xs text-muted-foreground">3 pedidos superaron el tiempo estimado de entrega</div>
+                  <div className="text-xs text-muted-foreground">0 pedidos superaron el tiempo estimado de entrega</div>
                 </div>
                 <Button variant="outline" size="sm">
                   Ver pedidos

@@ -5744,3 +5744,418 @@ export async function sendBudgetByEmail(id: string, email?: string): Promise<{ s
     throw error
   }
 }
+
+// ========== Repair Orders (Órdenes de reparación) ==========
+
+export type RepairOrderStatus =
+  | 'consulta_recibida'
+  | 'presupuestado'
+  | 'aceptado'
+  | 'en_proceso_reparacion'
+  | 'listo_entrega'
+  | 'entregado'
+  | 'cancelado'
+
+export const REPAIR_ORDER_STATUS_LABELS: Record<RepairOrderStatus, string> = {
+  consulta_recibida: 'Consulta recibida',
+  presupuestado: 'Presupuestado',
+  aceptado: 'Aceptado',
+  en_proceso_reparacion: 'En proceso de reparación',
+  listo_entrega: 'Listo entrega',
+  entregado: 'Entregado',
+  cancelado: 'Cancelado',
+}
+
+export interface RepairOrderItem {
+  id: number
+  repair_order_id: number
+  product_id: number
+  quantity: number
+  unit_price: string
+  total_price: string
+  stock_deducted: number
+  created_at: string
+  product?: { id: number; name: string; code?: string; stock?: number }
+}
+
+export interface RepairOrder {
+  id: number
+  repair_number: string
+  client_id: number
+  equipment_description: string
+  diagnosis: string | null
+  work_description: string | null
+  reception_date: string
+  delivery_date_estimated: string | null
+  delivery_date_actual: string | null
+  labor_amount: string
+  total_amount: string
+  amount_paid: string
+  status: RepairOrderStatus
+  budget_sent_at: string | null
+  accepted_at: string | null
+  days_to_claim: number | null
+  notes: string | null
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  client?: { id: number; name: string; email?: string; phone?: string }
+  items?: RepairOrderItem[]
+  balance?: string
+}
+
+export interface RepairOrderPayment {
+  id: number
+  amount: string
+  method: string
+  payment_date: string
+  related_type: string
+  related_id: number
+  created_at?: string
+}
+
+export interface RepairOrdersListParams {
+  status?: RepairOrderStatus
+  client_id?: number
+  date_from?: string
+  date_to?: string
+  page?: number
+  limit?: number
+}
+
+export interface RepairOrdersListResponse {
+  repair_orders: RepairOrder[]
+  total: number
+  page: number
+  limit: number
+}
+
+export interface RepairOrderStats {
+  total?: number
+  by_status?: Record<string, number>
+  total_amount?: number
+  [key: string]: unknown
+}
+
+export interface ApiResponseRepair<T = unknown> {
+  success: boolean
+  message: string
+  data: T
+  error?: string
+  timestamp: string
+}
+
+function getRepairOrderHeaders(): HeadersInit {
+  const h: HeadersInit = { ...getAuthHeaders() }
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+    if (apiKey) (h as Record<string, string>)['x-api-key'] = apiKey
+  }
+  return h
+}
+
+export async function getRepairOrders(
+  params?: RepairOrdersListParams
+): Promise<ApiResponseRepair<RepairOrdersListResponse>> {
+  const apiUrl = getApiUrl()
+  const q = new URLSearchParams()
+  if (params?.status) q.set('status', params.status)
+  if (params?.client_id != null) q.set('client_id', String(params.client_id))
+  if (params?.date_from) q.set('date_from', params.date_from)
+  if (params?.date_to) q.set('date_to', params.date_to)
+  if (params?.page != null && params.page > 0) q.set('page', String(params.page))
+  if (params?.limit != null && params.limit > 0) q.set('limit', String(params.limit))
+  const url = `${apiUrl}repair-orders${q.toString() ? `?${q.toString()}` : ''}`
+  const res = await fetch(url, { method: 'GET', headers: getRepairOrderHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function getRepairOrderStats(): Promise<ApiResponseRepair<RepairOrderStats>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/stats`, { method: 'GET', headers: getRepairOrderHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function getRepairOrder(id: number | string): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}`, { method: 'GET', headers: getRepairOrderHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export interface CreateRepairOrderBody {
+  client_id: number
+  equipment_description: string
+  diagnosis?: string
+  work_description?: string
+  reception_date: string
+  delivery_date_estimated?: string
+  labor_amount?: number
+  notes?: string
+}
+
+export async function createRepairOrder(
+  body: CreateRepairOrderBody
+): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export interface UpdateRepairOrderBody extends Partial<CreateRepairOrderBody> {}
+
+export async function updateRepairOrder(
+  id: number | string,
+  body: UpdateRepairOrderBody
+): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}`, {
+    method: 'PUT',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function getRepairOrderItems(id: number | string): Promise<ApiResponseRepair<RepairOrderItem[]>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/items`, { method: 'GET', headers: getRepairOrderHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export interface AddRepairOrderItemBody {
+  product_id: number
+  quantity: number
+  unit_price: number
+}
+
+export async function addRepairOrderItem(
+  orderId: number | string,
+  body: AddRepairOrderItemBody
+): Promise<ApiResponseRepair<RepairOrderItem>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${orderId}/items`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function updateRepairOrderItem(
+  orderId: number | string,
+  itemId: number,
+  body: { quantity?: number; unit_price?: number }
+): Promise<ApiResponseRepair<RepairOrderItem>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${orderId}/items/${itemId}`, {
+    method: 'PUT',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function deleteRepairOrderItem(
+  orderId: number | string,
+  itemId: number
+): Promise<ApiResponseRepair<unknown>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${orderId}/items/${itemId}`, {
+    method: 'DELETE',
+    headers: getRepairOrderHeaders(),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function sendRepairOrderBudget(id: number | string): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/send-budget`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function acceptRepairOrder(
+  id: number | string,
+  body?: { days_to_claim?: number }
+): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/accept`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function cancelRepairOrder(id: number | string): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/cancel`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function updateRepairOrderStatus(
+  id: number | string,
+  status: 'en_proceso_reparacion' | 'listo_entrega' | 'entregado'
+): Promise<ApiResponseRepair<RepairOrder>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/status`, {
+    method: 'PUT',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify({ status }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export interface RepairOrderAcceptanceDocument {
+  repair_number: string
+  client_name: string
+  equipment_description: string
+  work_description: string | null
+  reception_date: string
+  delivery_date_estimated: string | null
+  total_amount: string
+  days_to_claim: number | null
+  disclaimer_text?: string
+  items?: { product_name: string; quantity: number; unit_price: string; total_price: string }[]
+}
+
+export async function getRepairOrderAcceptanceDocument(
+  id: number | string
+): Promise<ApiResponseRepair<RepairOrderAcceptanceDocument>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/acceptance-document`, {
+    method: 'GET',
+    headers: getRepairOrderHeaders(),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export async function getRepairOrderPayments(id: number | string): Promise<ApiResponseRepair<RepairOrderPayment[]>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/payments`, { method: 'GET', headers: getRepairOrderHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+
+export interface CreateRepairOrderPaymentBody {
+  amount: number
+  method: 'efectivo' | 'tarjeta' | 'transferencia'
+  payment_date: string
+}
+
+export async function createRepairOrderPayment(
+  id: number | string,
+  body: CreateRepairOrderPaymentBody
+): Promise<ApiResponseRepair<RepairOrderPayment>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/payments`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return data
+}

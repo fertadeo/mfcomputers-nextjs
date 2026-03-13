@@ -24,6 +24,7 @@ import {
   CalendarDays,
   Receipt,
   TrendingUp,
+  Wrench,
 } from "lucide-react"
 
 // Definición de roles disponibles según el backend
@@ -155,6 +156,13 @@ export const MENU_GROUPS: MenuGroup[] = [
         label: "Presupuestos", 
         icon: Calculator, 
         href: "/presupuestos",
+        requiredRoles: ['gerencia', 'ventas', 'admin']
+      },
+      { 
+        id: "reparaciones", 
+        label: "Órdenes de reparación", 
+        icon: Wrench, 
+        href: "/reparaciones",
         requiredRoles: ['gerencia', 'ventas', 'admin']
       },
       { 

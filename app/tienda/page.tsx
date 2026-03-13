@@ -68,8 +68,8 @@ export default function TiendaPage() {
               <Store className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">$337,040</div>
-              <p className="text-xs text-muted-foreground">+18% vs mes anterior</p>
+              <div className="text-2xl font-bold">$0</div>
+              <p className="text-xs text-muted-foreground">Sin datos disponibles</p>
             </CardContent>
           </Card>
 
@@ -79,7 +79,7 @@ export default function TiendaPage() {
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">546</div>
+              <div className="text-2xl font-bold">0</div>
               <p className="text-xs text-muted-foreground">Este mes</p>
             </CardContent>
           </Card>
@@ -90,7 +90,7 @@ export default function TiendaPage() {
               <TrendingUp className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">6.7%</div>
+              <div className="text-2xl font-bold text-green-600">0%</div>
               <p className="text-xs text-muted-foreground">Todos los canales</p>
             </CardContent>
           </Card>
@@ -101,7 +101,7 @@ export default function TiendaPage() {
               <Globe className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">4</div>
+              <div className="text-2xl font-bold">0</div>
               <p className="text-xs text-muted-foreground">Plataformas conectadas</p>
             </CardContent>
           </Card>
