@@ -157,7 +157,7 @@ export default function PuntoVentaPage() {
             p.category_name?.toLowerCase().includes(term)
         )
       : products
-    return [...list.slice(0, 50)].sort((a, b) => (a.stock < 1 ? 1 : 0) - (b.stock < 1 ? 1 : 0))
+    return [...list].sort((a, b) => (a.stock < 1 ? 1 : 0) - (b.stock < 1 ? 1 : 0))
   }, [products, searchProduct])
 
   const productsModalList = useMemo(() => {
@@ -336,11 +336,18 @@ export default function PuntoVentaPage() {
             {/* Columna izquierda: búsqueda + productos + carrito */}
             <div className="lg:col-span-2 space-y-4">
               <Card>
-                <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Search className="h-4 w-4" />
-                    Productos
-                  </CardTitle>
+                <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Search className="h-4 w-4" />
+                      Productos
+                    </CardTitle>
+                    {!loadingProducts && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Mostrando {filteredProducts.length} producto{filteredProducts.length !== 1 ? "s" : ""}.
+                      </p>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1">
                     <Button
                       variant={productsViewMode === "list" ? "secondary" : "ghost"}
@@ -499,11 +506,21 @@ export default function PuntoVentaPage() {
               </Card>
 
               <Card>
-                <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Receipt className="h-4 w-4" />
-                    Carrito
-                  </CardTitle>
+                <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Receipt className="h-4 w-4" />
+                      Carrito
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {cart.length === 0
+                        ? "0 productos en el carrito"
+                        : (() => {
+                            const total = cart.reduce((s, i) => s + i.quantity, 0)
+                            return `${total} producto${total !== 1 ? "s" : ""} agregado${total !== 1 ? "s" : ""} al carrito`
+                          })()}
+                    </p>
+                  </div>
                   <div className="flex items-center gap-1">
                     {cart.length > 0 && (
                       <>
@@ -864,6 +881,9 @@ export default function PuntoVentaPage() {
                   <Search className="h-5 w-5" />
                   Productos — Vista ampliada
                 </DialogTitle>
+                <p className="text-sm text-muted-foreground">
+                  Mostrando {productsModalList.length} producto{productsModalList.length !== 1 ? "s" : ""}.
+                </p>
               </DialogHeader>
               <div className="flex flex-col gap-3 flex-1 min-h-0">
                 <Input
@@ -966,6 +986,14 @@ export default function PuntoVentaPage() {
                   <Receipt className="h-5 w-5" />
                   Carrito — Vista ampliada
                 </DialogTitle>
+                <p className="text-sm text-muted-foreground">
+                  {cart.length === 0
+                    ? "0 productos en el carrito"
+                    : (() => {
+                        const total = cart.reduce((s, i) => s + i.quantity, 0)
+                        return `${total} producto${total !== 1 ? "s" : ""} agregado${total !== 1 ? "s" : ""} al carrito`
+                      })()}
+                </p>
               </DialogHeader>
               <div className="flex flex-col gap-3 flex-1 min-h-0">
                 {cart.length === 0 ? (
