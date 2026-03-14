@@ -614,6 +614,8 @@ export interface CreateSaleRequest {
   payment_details?: CreateSalePaymentDetails
   notes?: string
   sync_to_woocommerce?: boolean
+  /** true = permitir vender productos inactivos (el backend rechaza por defecto) */
+  allow_inactive?: boolean
 }
 
 export interface SaleItemResponse {

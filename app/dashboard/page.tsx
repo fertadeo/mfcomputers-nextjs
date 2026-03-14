@@ -376,17 +376,15 @@ export default function Dashboard() {
                 <>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Órdenes Pendientes</span>
-                    <Badge variant="outline">{purchaseStats?.pending_purchases ?? 0}</Badge>
+                    <Badge variant="outline">0</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Valor Total</span>
-                    <span className="font-semibold">
-                      ${purchaseTotalAmount.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
-                    </span>
+                    <span className="font-semibold">$0</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Total compras</span>
-                    <Badge variant="secondary">{purchaseStats?.total_purchases ?? 0}</Badge>
+                    <Badge variant="secondary">0</Badge>
                   </div>
                 </>
               )}

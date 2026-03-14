@@ -18,6 +18,7 @@ import {
   getOrders,
   getOrderStats,
   getSale,
+  getProductById,
   type Sale,
   type SalesStats,
   type Order,
@@ -26,6 +27,7 @@ import {
   type SalePaymentMethod,
   type ApiErrorWithStatus,
 } from "@/lib/api"
+import { generateSaleReceiptPdf } from "@/lib/generate-sale-receipt-pdf"
 import { SaleDetailModal } from "@/components/sale-detail-modal"
 import { OrderDetailModal } from "@/components/order-detail-modal"
 import { Pagination } from "@/components/ui/pagination"
@@ -38,6 +40,7 @@ import {
   Loader2,
   TrendingUp,
   ExternalLink,
+  FileDown,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -103,6 +106,7 @@ export default function VentasPage() {
   const [salesSyncStatus, setSalesSyncStatus] = useState<string>("all")
   const [selectedSale, setSelectedSale] = useState<SaleResponseData | null>(null)
   const [saleDetailOpen, setSaleDetailOpen] = useState(false)
+  const [downloadingPdfSaleId, setDownloadingPdfSaleId] = useState<number | null>(null)
 
   // Pedidos
   const [orders, setOrders] = useState<Order[]>([])
@@ -268,6 +272,45 @@ export default function VentasPage() {
         return
       }
       toast.error(e instanceof Error ? e.message : "Error al cargar detalle de la venta")
+    }
+  }
+
+  const downloadSaleReceiptPdf = async (s: Sale) => {
+    if (downloadingPdfSaleId != null) return
+    setDownloadingPdfSaleId(s.id)
+    try {
+      const res = await getSale(s.id)
+      const saleData = res.data
+      if (!saleData?.items?.length) {
+        toast.error("No hay ítems en esta venta para generar el comprobante.")
+        return
+      }
+      const productIds = [...new Set(saleData.items.map((i) => i.product_id))]
+      const productNames = await Promise.all(
+        productIds.map(async (id) => {
+          try {
+            const p = await getProductById(id)
+            return { id, name: p.name }
+          } catch {
+            return { id, name: `Producto #${id}` }
+          }
+        })
+      ).then((arr) => Object.fromEntries(arr.map(({ id, name }) => [id, name])))
+      const cartItems = saleData.items.map((item) => ({
+        product: { id: item.product_id, name: productNames[item.product_id] ?? `Producto #${item.product_id}` },
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+      }))
+      generateSaleReceiptPdf({
+        sale: saleData,
+        cartItems,
+        clientName: s.client_name ?? "Consumidor final",
+      })
+      toast.success("Comprobante descargado")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al generar el comprobante")
+    } finally {
+      setDownloadingPdfSaleId(null)
     }
   }
 
@@ -441,10 +484,25 @@ export default function VentasPage() {
                               </TableCell>
                               <TableCell>{getSyncStatusBadge(s.sync_status)}</TableCell>
                               <TableCell onClick={(e) => e.stopPropagation()}>
-                                <Button variant="ghost" size="sm" onClick={() => openSaleDetail(s)}>
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  Ver
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => openSaleDetail(s)}>
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    Ver
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => downloadSaleReceiptPdf(s)}
+                                    disabled={downloadingPdfSaleId === s.id}
+                                    title="Descargar comprobante de venta"
+                                  >
+                                    {downloadingPdfSaleId === s.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <FileDown className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}

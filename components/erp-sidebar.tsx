@@ -129,7 +129,14 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-2 p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
+          <nav
+            className={cn(
+              "flex-1 space-y-2 overflow-y-auto transition-all duration-300",
+              isCollapsed
+                ? "px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:[display:none]"
+                : "p-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
+            )}
+          >
             {filteredGroups.map((group) => {
               const GroupIcon = group.icon
               const isGroupCollapsed = collapsedGroups.has(group.id)
