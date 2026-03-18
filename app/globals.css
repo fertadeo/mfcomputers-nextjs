@@ -209,3 +209,14 @@
   .dark .bg-modal { background-color: oklch(0.16 0.01 200); }
   .dark .bg-modal-card { background-color: oklch(0.18 0.01 200); }
 }
+
+/* Oculta las flechas/“spinners” de los input type="number" (Chrome/Edge/Safari y Firefox) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
