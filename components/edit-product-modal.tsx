@@ -59,7 +59,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageUrlInput, setImageUrlInput] = useState("")
   const [isDragOverUpload, setIsDragOverUpload] = useState(false)
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null)
+  const [reorderInsertIndex, setReorderInsertIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const reorderGridRef = useRef<HTMLDivElement>(null)
   const submitBottomRef = useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<FormData>({
@@ -180,22 +183,47 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     setWoocommerceImageIds((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const moveImage = (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= imageUrls.length || toIndex >= imageUrls.length) {
+  const moveImage = (fromIndex: number, insertIndex: number) => {
+    if (fromIndex < 0 || fromIndex >= imageUrls.length) {
       return
     }
     setImageUrls((prev) => {
       const next = [...prev]
       const [moved] = next.splice(fromIndex, 1)
-      next.splice(toIndex, 0, moved)
+      const boundedInsert = Math.max(0, Math.min(insertIndex, next.length))
+      next.splice(boundedInsert, 0, moved)
       return next
     })
     setWoocommerceImageIds((prev) => {
       const next = [...prev]
       const [moved] = next.splice(fromIndex, 1)
-      next.splice(toIndex, 0, moved)
+      const boundedInsert = Math.max(0, Math.min(insertIndex, next.length))
+      next.splice(boundedInsert, 0, moved)
       return next
     })
+  }
+
+  const isReorderDrag = (e: React.DragEvent) => e.dataTransfer.types.includes(IMAGE_REORDER_MIME)
+
+  const getReorderInsertIndex = (e: React.DragEvent<HTMLDivElement>, itemCount: number) => {
+    const grid = reorderGridRef.current
+    if (!grid) return 0
+    const rect = grid.getBoundingClientRect()
+    const style = window.getComputedStyle(grid)
+    const columns = Math.max(1, style.gridTemplateColumns.split(" ").filter(Boolean).length)
+    const rowGap = Number.parseFloat(style.rowGap || "0") || 0
+    const colGap = Number.parseFloat(style.columnGap || "0") || 0
+    const firstItem = grid.querySelector('[data-reorder-item="true"]') as HTMLElement | null
+    if (!firstItem) return itemCount
+    const itemRect = firstItem.getBoundingClientRect()
+    const cellWidth = itemRect.width + colGap
+    const cellHeight = itemRect.height + rowGap
+    const x = Math.max(0, e.clientX - rect.left)
+    const y = Math.max(0, e.clientY - rect.top)
+    const col = Math.max(0, Math.min(columns - 1, Math.floor(x / Math.max(1, cellWidth))))
+    const row = Math.max(0, Math.floor(y / Math.max(1, cellHeight)))
+    const index = row * columns + col
+    return Math.max(0, Math.min(index, itemCount))
   }
 
   const processFilesUpload = async (incomingFiles: FileList | File[]) => {
@@ -506,33 +534,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Card
-            className={`transition-colors ${isDragOverUpload ? "ring-2 ring-primary/60" : ""}`}
-            onDragOver={(e) => {
-              if (uploadingImages || imageUrls.length >= 5) return
-              e.preventDefault()
-              setIsDragOverUpload(true)
-            }}
-            onDragEnter={(e) => {
-              if (uploadingImages || imageUrls.length >= 5) return
-              e.preventDefault()
-              setIsDragOverUpload(true)
-            }}
-            onDragLeave={(e) => {
-              const nextTarget = e.relatedTarget as Node | null
-              if (nextTarget && e.currentTarget.contains(nextTarget)) return
-              setIsDragOverUpload(false)
-            }}
-            onDrop={async (e) => {
-              if (uploadingImages || imageUrls.length >= 5) return
-              e.preventDefault()
-              setIsDragOverUpload(false)
-              const droppedFiles = e.dataTransfer.files
-              if (droppedFiles?.length) {
-                await processFilesUpload(droppedFiles)
-              }
-            }}
-          >
+          <Card>
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <Package className="h-4 w-4 text-muted-foreground" />
@@ -603,34 +605,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             </CardContent>
           </Card>
 
-          <Card
-            className={`transition-colors ${isDragOverUpload ? "ring-2 ring-primary/60" : ""}`}
-            onDragOver={(e) => {
-              if (uploadingImages || imageUrls.length >= 5) return
-              e.preventDefault()
-              setIsDragOverUpload(true)
-            }}
-            onDragEnter={(e) => {
-              if (uploadingImages || imageUrls.length >= 5) return
-              e.preventDefault()
-              setIsDragOverUpload(true)
-            }}
-            onDragLeave={(e) => {
-              const nextTarget = e.relatedTarget as Node | null
-              if (nextTarget && e.currentTarget.contains(nextTarget)) return
-              setIsDragOverUpload(false)
-            }}
-            onDrop={async (e) => {
-              if (uploadingImages || imageUrls.length >= 5) return
-              e.preventDefault()
-              setIsDragOverUpload(false)
-              if (e.dataTransfer.types.includes(IMAGE_REORDER_MIME)) return
-              const droppedFiles = e.dataTransfer.files
-              if (droppedFiles?.length) {
-                await processFilesUpload(droppedFiles)
-              }
-            }}
-          >
+          <Card>
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -759,7 +734,44 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className={`transition-colors ${isDragOverUpload ? "ring-2 ring-primary/60 shadow-sm shadow-primary/20" : ""}`}
+            onDragOver={(e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              if (isReorderDrag(e)) {
+                e.preventDefault()
+                setIsDragOverUpload(false)
+                return
+              }
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragEnter={(e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              if (isReorderDrag(e)) {
+                e.preventDefault()
+                setIsDragOverUpload(false)
+                return
+              }
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragLeave={(e) => {
+              const nextTarget = e.relatedTarget as Node | null
+              if (nextTarget && e.currentTarget.contains(nextTarget)) return
+              setIsDragOverUpload(false)
+            }}
+            onDrop={async (e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(false)
+              if (isReorderDrag(e)) return
+              const droppedFiles = e.dataTransfer.files
+              if (droppedFiles?.length) {
+                await processFilesUpload(droppedFiles)
+              }
+            }}
+          >
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <Truck className="h-4 w-4 text-muted-foreground" />
@@ -894,67 +906,107 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
               </div>
               {imageUrls.length > 0 && (
                 <div className="space-y-2">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  {imageUrls.map((url, index) => (
-                    <div
-                      key={`${url}-${index}`}
-                      className={`relative group aspect-square rounded-lg overflow-hidden bg-muted border ${uploadingImages ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"}`}
-                      draggable={!uploadingImages}
-                      onDragStart={(e) => {
-                        if (uploadingImages) return
-                        e.dataTransfer.setData(IMAGE_REORDER_MIME, String(index))
-                        e.dataTransfer.setData("text/plain", String(index))
-                        e.dataTransfer.effectAllowed = "move"
-                      }}
-                      onDragOver={(e) => {
-                        if (uploadingImages) return
-                        e.preventDefault()
-                        e.stopPropagation()
-                        e.dataTransfer.dropEffect = "move"
-                      }}
-                      onDrop={(e) => {
-                        if (uploadingImages) return
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setIsDragOverUpload(false)
-                        const fromByMime = Number(e.dataTransfer.getData(IMAGE_REORDER_MIME))
-                        if (!Number.isNaN(fromByMime)) {
-                          moveImage(fromByMime, index)
-                          return
+                  <div
+                    ref={reorderGridRef}
+                    className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 min-h-[88px] rounded-lg transition-colors ${
+                      draggedImageIndex !== null ? "bg-muted/40 p-2" : ""
+                    }`}
+                    onDragOver={(e) => {
+                      if (uploadingImages || draggedImageIndex === null || !isReorderDrag(e)) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.dataTransfer.dropEffect = "move"
+                      const visibleCount = imageUrls.length - 1
+                      setReorderInsertIndex(getReorderInsertIndex(e, visibleCount))
+                      setIsDragOverUpload(false)
+                    }}
+                    onDrop={(e) => {
+                      if (uploadingImages || draggedImageIndex === null || !isReorderDrag(e)) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const insertIndex = reorderInsertIndex ?? 0
+                      moveImage(draggedImageIndex, insertIndex)
+                      setDraggedImageIndex(null)
+                      setReorderInsertIndex(null)
+                      setIsDragOverUpload(false)
+                    }}
+                  >
+                    {(() => {
+                      const visibleItems = imageUrls
+                        .map((url, originalIndex) => ({ url, originalIndex }))
+                        .filter((item) => item.originalIndex !== draggedImageIndex)
+                      const insertAt = Math.max(0, Math.min(reorderInsertIndex ?? visibleItems.length, visibleItems.length))
+                      const nodes: React.ReactNode[] = []
+                      for (let i = 0; i <= visibleItems.length; i += 1) {
+                        if (draggedImageIndex !== null && i === insertAt) {
+                          nodes.push(
+                            <div
+                              key="drop-placeholder"
+                              className="aspect-square rounded-lg border-2 border-dashed border-primary bg-primary/5 flex items-center justify-center"
+                            >
+                              <span className="text-[11px] font-medium text-primary">Soltar aqui</span>
+                            </div>
+                          )
                         }
-                        const from = Number(e.dataTransfer.getData("text/plain"))
-                        if (!Number.isNaN(from)) moveImage(from, index)
-                      }}
-                    >
-                      <Image
-                        src={url}
-                        alt={`Imagen ${index + 1}`}
-                        fill
-                        className="object-cover"
-                        sizes="120px"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = `https://via.placeholder.com/120?text=Error`
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => removeImage(index)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
-                        {index + 1}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Arrastrá y soltá para reordenar las imágenes.
-                </p>
+                        if (i < visibleItems.length) {
+                          const { url, originalIndex } = visibleItems[i]
+                          nodes.push(
+                            <div
+                              key={`${url}-${originalIndex}`}
+                              data-reorder-item="true"
+                              className="relative group aspect-square rounded-lg overflow-hidden bg-muted border transition-all duration-200"
+                              draggable={!uploadingImages}
+                              onDragStart={(e) => {
+                                if (uploadingImages) return
+                                setDraggedImageIndex(originalIndex)
+                                setReorderInsertIndex(i)
+                                e.dataTransfer.setData(IMAGE_REORDER_MIME, String(originalIndex))
+                                e.dataTransfer.setData("text/plain", String(originalIndex))
+                                e.dataTransfer.effectAllowed = "move"
+                              }}
+                              onDragEnd={() => {
+                                setDraggedImageIndex(null)
+                                setReorderInsertIndex(null)
+                              }}
+                            >
+                              <Image
+                                src={url}
+                                alt={`Imagen ${originalIndex + 1}`}
+                                fill
+                                className="object-cover"
+                                sizes="120px"
+                                onError={(ev) => {
+                                  const target = ev.target as HTMLImageElement
+                                  target.src = "https://via.placeholder.com/120?text=Error"
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => removeImage(originalIndex)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+                                {originalIndex + 1}
+                              </span>
+                              {originalIndex === 0 && (
+                                <span className="absolute top-1 left-1 rounded bg-emerald-600 text-white text-[10px] px-1.5 py-0.5">
+                                  Principal
+                                </span>
+                              )}
+                            </div>
+                          )
+                        }
+                      }
+                      return nodes
+                    })()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Arrastrá y soltá en cualquier espacio de la grilla para reordenar. La imagen <span className="font-semibold text-emerald-600 dark:text-emerald-400">Principal</span> se usa como portada.
+                  </p>
                 </div>
               )}
             </CardContent>
