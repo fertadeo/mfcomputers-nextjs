@@ -6,7 +6,7 @@ import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer, RefreshCw, Ruler, Truck } from "lucide-react"
+import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as ImageIcon, ChevronLeft, ChevronRight, Loader2, QrCode, ScanLine, Printer, RefreshCw, Ruler, Truck, ExternalLink } from "lucide-react"
 import Image from "next/image"
 import { Product, updateProduct, syncProductToWooCommerce, getProductById } from "@/lib/api"
 import { getAllProductImages } from "@/lib/product-image-utils"
@@ -332,6 +332,9 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
   const codesGenerated = Boolean(displayedProduct.barcode && displayedProduct.qr_code)
   const qrWrongDomain = isQrFromErpDomain(displayedProduct.qr_code ?? null)
   const skuMissing = !displayedProduct.code || !displayedProduct.code.trim()
+  const wcBaseUrl = (process.env.NEXT_PUBLIC_WOOCOMMERCE_URL || "https://mfcomputers.com.ar").replace(/\/+$/, "")
+  const wcSlug = displayedProduct.woocommerce_slug?.replace(/^\/+|\/+$/g, "").trim()
+  const wcProductUrl = wcSlug ? `${wcBaseUrl}/${wcSlug}` : null
 
   const expectedQr = !skuMissing
     ? generateProductCodes(
@@ -474,6 +477,18 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
                 )}
                 {isSyncingWooCommerce ? "Sincronizando…" : "Sync WooCommerce"}
               </Button>
+              {wcProductUrl && (
+                <Button
+                  variant="outline"
+                  className="bg-transparent hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-500/50 dark:hover:text-emerald-400 transition-colors"
+                  asChild
+                >
+                  <a href={wcProductUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Ir al producto en WooCommerce
+                  </a>
+                </Button>
+              )}
               {onDelete && (
                 <Button
                   variant="outline"
