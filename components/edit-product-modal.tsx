@@ -60,9 +60,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [imageUrlInput, setImageUrlInput] = useState("")
   const [isDragOverUpload, setIsDragOverUpload] = useState(false)
   const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null)
-  const [reorderInsertIndex, setReorderInsertIndex] = useState<number | null>(null)
+  const [reorderTargetIndex, setReorderTargetIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reorderGridRef = useRef<HTMLDivElement>(null)
+  const dragPreviewRef = useRef<HTMLElement | null>(null)
   const submitBottomRef = useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<FormData>({
@@ -183,29 +184,33 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     setWoocommerceImageIds((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const moveImage = (fromIndex: number, insertIndex: number) => {
-    if (fromIndex < 0 || fromIndex >= imageUrls.length) {
+  const moveImage = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= imageUrls.length ||
+      toIndex >= imageUrls.length ||
+      fromIndex === toIndex
+    ) {
       return
     }
     setImageUrls((prev) => {
       const next = [...prev]
       const [moved] = next.splice(fromIndex, 1)
-      const boundedInsert = Math.max(0, Math.min(insertIndex, next.length))
-      next.splice(boundedInsert, 0, moved)
+      next.splice(toIndex, 0, moved)
       return next
     })
     setWoocommerceImageIds((prev) => {
       const next = [...prev]
       const [moved] = next.splice(fromIndex, 1)
-      const boundedInsert = Math.max(0, Math.min(insertIndex, next.length))
-      next.splice(boundedInsert, 0, moved)
+      next.splice(toIndex, 0, moved)
       return next
     })
   }
 
   const isReorderDrag = (e: React.DragEvent) => e.dataTransfer.types.includes(IMAGE_REORDER_MIME)
 
-  const getReorderInsertIndex = (e: React.DragEvent<HTMLDivElement>, itemCount: number) => {
+  const getReorderTargetIndex = (e: React.DragEvent<HTMLDivElement>, itemCount: number) => {
     const grid = reorderGridRef.current
     if (!grid) return 0
     const rect = grid.getBoundingClientRect()
@@ -223,7 +228,32 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     const col = Math.max(0, Math.min(columns - 1, Math.floor(x / Math.max(1, cellWidth))))
     const row = Math.max(0, Math.floor(y / Math.max(1, cellHeight)))
     const index = row * columns + col
-    return Math.max(0, Math.min(index, itemCount))
+    return Math.max(0, Math.min(index, Math.max(0, itemCount - 1)))
+  }
+
+  const cleanupDragPreview = () => {
+    if (dragPreviewRef.current) {
+      dragPreviewRef.current.remove()
+      dragPreviewRef.current = null
+    }
+  }
+
+  const setDragPreviewImage = (e: React.DragEvent, element: HTMLElement) => {
+    cleanupDragPreview()
+    const clone = element.cloneNode(true) as HTMLElement
+    const rect = element.getBoundingClientRect()
+    clone.style.position = "fixed"
+    clone.style.top = "-9999px"
+    clone.style.left = "-9999px"
+    clone.style.width = `${rect.width}px`
+    clone.style.height = `${rect.height}px`
+    clone.style.opacity = "0.95"
+    clone.style.pointerEvents = "none"
+    clone.style.transform = "none"
+    clone.style.zIndex = "9999"
+    document.body.appendChild(clone)
+    dragPreviewRef.current = clone
+    e.dataTransfer.setDragImage(clone, rect.width / 2, rect.height / 2)
   }
 
   const processFilesUpload = async (incomingFiles: FileList | File[]) => {
@@ -916,96 +946,93 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                       e.preventDefault()
                       e.stopPropagation()
                       e.dataTransfer.dropEffect = "move"
-                      const visibleCount = imageUrls.length - 1
-                      setReorderInsertIndex(getReorderInsertIndex(e, visibleCount))
+                      setReorderTargetIndex(getReorderTargetIndex(e, imageUrls.length))
                       setIsDragOverUpload(false)
                     }}
                     onDrop={(e) => {
                       if (uploadingImages || draggedImageIndex === null || !isReorderDrag(e)) return
                       e.preventDefault()
                       e.stopPropagation()
-                      const insertIndex = reorderInsertIndex ?? 0
-                      moveImage(draggedImageIndex, insertIndex)
+                      const targetIndex = reorderTargetIndex ?? draggedImageIndex
+                      moveImage(draggedImageIndex, targetIndex)
                       setDraggedImageIndex(null)
-                      setReorderInsertIndex(null)
+                      setReorderTargetIndex(null)
                       setIsDragOverUpload(false)
+                      cleanupDragPreview()
+                    }}
+                    onDragLeave={(e) => {
+                      const nextTarget = e.relatedTarget as Node | null
+                      if (nextTarget && e.currentTarget.contains(nextTarget)) return
+                      setReorderTargetIndex(null)
                     }}
                   >
-                    {(() => {
-                      const visibleItems = imageUrls
-                        .map((url, originalIndex) => ({ url, originalIndex }))
-                        .filter((item) => item.originalIndex !== draggedImageIndex)
-                      const insertAt = Math.max(0, Math.min(reorderInsertIndex ?? visibleItems.length, visibleItems.length))
-                      const nodes: React.ReactNode[] = []
-                      for (let i = 0; i <= visibleItems.length; i += 1) {
-                        if (draggedImageIndex !== null && i === insertAt) {
-                          nodes.push(
-                            <div
-                              key="drop-placeholder"
-                              className="aspect-square rounded-lg border-2 border-dashed border-primary bg-primary/5 flex items-center justify-center"
-                            >
-                              <span className="text-[11px] font-medium text-primary">Soltar aqui</span>
-                            </div>
-                          )
-                        }
-                        if (i < visibleItems.length) {
-                          const { url, originalIndex } = visibleItems[i]
-                          nodes.push(
-                            <div
-                              key={`${url}-${originalIndex}`}
-                              data-reorder-item="true"
-                              className="relative group aspect-square rounded-lg overflow-hidden bg-muted border transition-all duration-200"
-                              draggable={!uploadingImages}
-                              onDragStart={(e) => {
-                                if (uploadingImages) return
-                                setDraggedImageIndex(originalIndex)
-                                setReorderInsertIndex(i)
-                                e.dataTransfer.setData(IMAGE_REORDER_MIME, String(originalIndex))
-                                e.dataTransfer.setData("text/plain", String(originalIndex))
-                                e.dataTransfer.effectAllowed = "move"
-                              }}
-                              onDragEnd={() => {
-                                setDraggedImageIndex(null)
-                                setReorderInsertIndex(null)
-                              }}
-                            >
-                              <Image
-                                src={url}
-                                alt={`Imagen ${originalIndex + 1}`}
-                                fill
-                                className="object-cover"
-                                sizes="120px"
-                                onError={(ev) => {
-                                  const target = ev.target as HTMLImageElement
-                                  target.src = "https://via.placeholder.com/120?text=Error"
-                                }}
-                              />
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="icon"
-                                className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => removeImage(originalIndex)}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
-                                {originalIndex + 1}
-                              </span>
-                              {originalIndex === 0 && (
-                                <span className="absolute top-1 left-1 rounded bg-emerald-600 text-white text-[10px] px-1.5 py-0.5">
-                                  Principal
-                                </span>
-                              )}
-                            </div>
-                          )
-                        }
-                      }
-                      return nodes
-                    })()}
+                    {imageUrls.map((url, index) => (
+                      <div
+                        key={`${url}-${index}`}
+                        data-reorder-item="true"
+                        className={`relative group aspect-square rounded-lg overflow-hidden bg-muted border transition-all duration-200 ${
+                          uploadingImages ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"
+                        } ${draggedImageIndex === index ? "opacity-60" : ""} ${
+                          reorderTargetIndex === index && draggedImageIndex !== null
+                            ? "ring-2 ring-dashed ring-primary shadow-md shadow-primary/20"
+                            : ""
+                        }`}
+                        draggable={!uploadingImages}
+                        onDragStart={(e) => {
+                          if (uploadingImages) return
+                          setDraggedImageIndex(index)
+                          setReorderTargetIndex(index)
+                          setDragPreviewImage(e, e.currentTarget)
+                          e.dataTransfer.setData(IMAGE_REORDER_MIME, String(index))
+                          e.dataTransfer.setData("text/plain", String(index))
+                          e.dataTransfer.effectAllowed = "move"
+                        }}
+                        onDragEnd={() => {
+                          setDraggedImageIndex(null)
+                          setReorderTargetIndex(null)
+                          cleanupDragPreview()
+                        }}
+                      >
+                        <Image
+                          src={url}
+                          alt={`Imagen ${index + 1}`}
+                          fill
+                          className="object-cover"
+                          sizes="120px"
+                          onError={(ev) => {
+                            const target = ev.target as HTMLImageElement
+                            target.src = "https://via.placeholder.com/120?text=Error"
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => removeImage(index)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+                          {index + 1}
+                        </span>
+                        {index === 0 && (
+                          <span className="absolute top-1 left-1 rounded bg-emerald-600 text-white text-[10px] px-1.5 py-0.5">
+                            Principal
+                          </span>
+                        )}
+                        {reorderTargetIndex === index && draggedImageIndex !== null && (
+                          <div className="absolute inset-0 rounded-lg bg-primary/10 border-2 border-dashed border-primary flex items-center justify-center pointer-events-none">
+                            <span className="text-[11px] font-semibold text-primary bg-background/80 px-2 py-0.5 rounded">
+                              Soltar aqui
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Arrastrá y soltá en cualquier espacio de la grilla para reordenar. La imagen <span className="font-semibold text-emerald-600 dark:text-emerald-400">Principal</span> se usa como portada.
+                    Arrastrá y soltá en cualquier espacio de la grilla para reordenar. La primera imagen siempre será la <span className="font-semibold text-emerald-600 dark:text-emerald-400">Principal</span> (portada).
                   </p>
                 </div>
               )}
