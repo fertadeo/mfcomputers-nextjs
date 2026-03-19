@@ -57,6 +57,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [woocommerceImageIds, setWoocommerceImageIds] = useState<(number | null)[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageUrlInput, setImageUrlInput] = useState("")
+  const [isDragOverUpload, setIsDragOverUpload] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const submitBottomRef = useRef<HTMLDivElement>(null)
 
@@ -178,21 +179,37 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     setWoocommerceImageIds((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length) return
+  const moveImage = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= imageUrls.length || toIndex >= imageUrls.length) {
+      return
+    }
+    setImageUrls((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+    setWoocommerceImageIds((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+  }
+
+  const processFilesUpload = async (incomingFiles: FileList | File[]) => {
+    const files = Array.from(incomingFiles)
+    if (!files.length) return
     const remaining = 5 - imageUrls.length
     if (remaining <= 0) {
       showToast({ message: "Máximo 5 imágenes", type: "error" })
-      e.target.value = ""
       return
     }
-    const toAdd = Array.from(files)
+    const toAdd = files
       .slice(0, remaining)
       .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
     if (!toAdd.length) {
       showToast({ message: "Solo se permiten imágenes (jpeg, png, gif, webp)", type: "error" })
-      e.target.value = ""
       return
     }
 
@@ -238,8 +255,14 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       })
     } finally {
       setUploadingImages(false)
-      e.target.value = ""
     }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    await processFilesUpload(files)
+    e.target.value = ""
   }
 
   // Al enfocar un input numérico con valor "0", seleccionar todo para que al escribir se reemplace (no "01")
@@ -482,7 +505,33 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Card>
+          <Card
+            className={`transition-colors ${isDragOverUpload ? "ring-2 ring-primary/60" : ""}`}
+            onDragOver={(e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragEnter={(e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragLeave={(e) => {
+              const nextTarget = e.relatedTarget as Node | null
+              if (nextTarget && e.currentTarget.contains(nextTarget)) return
+              setIsDragOverUpload(false)
+            }}
+            onDrop={async (e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(false)
+              const droppedFiles = e.dataTransfer.files
+              if (droppedFiles?.length) {
+                await processFilesUpload(droppedFiles)
+              }
+            }}
+          >
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <Package className="h-4 w-4 text-muted-foreground" />
@@ -761,7 +810,13 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
               <p className="text-sm text-muted-foreground">
                 Hasta 5 imágenes. Agregá URLs o subí archivos al equipo (se cargan a la galería de WooCommerce). JPG, PNG, GIF, WebP · máx. 10 MB c/u.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div
+                className={`flex flex-wrap gap-2 rounded-lg border-2 border-dashed p-3 transition-colors ${
+                  isDragOverUpload
+                    ? "border-primary bg-primary/5"
+                    : "border-border"
+                }`}
+              >
                 <Button
                   type="button"
                   variant="outline"
@@ -805,11 +860,35 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     Agregar URL
                   </Button>
                 </div>
+                <p className="w-full text-xs text-muted-foreground">
+                  También podés arrastrar y soltar archivos desde tu ordenador en esta zona.
+                </p>
               </div>
               {imageUrls.length > 0 && (
+                <div className="space-y-2">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {imageUrls.map((url, index) => (
-                    <div key={index} className="relative group aspect-square rounded-lg overflow-hidden bg-muted border">
+                    <div
+                      key={`${url}-${index}`}
+                      className={`relative group aspect-square rounded-lg overflow-hidden bg-muted border ${uploadingImages ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"}`}
+                      draggable={!uploadingImages}
+                      onDragStart={(e) => {
+                        if (uploadingImages) return
+                        e.dataTransfer.setData("text/plain", String(index))
+                        e.dataTransfer.effectAllowed = "move"
+                      }}
+                      onDragOver={(e) => {
+                        if (uploadingImages) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = "move"
+                      }}
+                      onDrop={(e) => {
+                        if (uploadingImages) return
+                        e.preventDefault()
+                        const from = Number(e.dataTransfer.getData("text/plain"))
+                        if (!Number.isNaN(from)) moveImage(from, index)
+                      }}
+                    >
                       <Image
                         src={url}
                         alt={`Imagen ${index + 1}`}
@@ -835,6 +914,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                       </span>
                     </div>
                   ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Arrastrá y soltá para reordenar las imágenes.
+                </p>
                 </div>
               )}
             </CardContent>

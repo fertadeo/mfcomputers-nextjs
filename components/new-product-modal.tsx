@@ -58,6 +58,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const [images, setImages] = useState<ImageItem[]>([])
   const [imageUrlInput, setImageUrlInput] = useState("")
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [isDragOverUpload, setIsDragOverUpload] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const [showCategoryManager, setShowCategoryManager] = useState(false)
@@ -224,23 +225,20 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     }
   }
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
-
+  const processFilesUpload = async (incomingFiles: FileList | File[]) => {
+    const filesArray = Array.from(incomingFiles)
+    if (!filesArray.length) return
     const remainingSlots = 5 - images.length
     if (remainingSlots <= 0) {
       setError("Máximo 5 imágenes permitidas")
-      event.target.value = ""
       return
     }
 
-    const toAdd = Array.from(files)
+    const toAdd = filesArray
       .slice(0, remainingSlots)
       .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
     if (!toAdd.length) {
       setError("Solo se permiten imágenes (jpeg, png, gif, webp)")
-      event.target.value = ""
       return
     }
 
@@ -286,11 +284,29 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     } finally {
       setUploadingImages(false)
     }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files) return
+    await processFilesUpload(files)
     event.target.value = ""
   }
 
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const moveImage = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= images.length || toIndex >= images.length) {
+      return
+    }
+    setImages((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -858,7 +874,35 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
           </div>
 
           {/* Carga de imágenes */}
-          <Card className="border-0 shadow-lg bg-white/70 dark:bg-slate-800/90 backdrop-blur-sm border-slate-200 dark:border-slate-700">
+          <Card
+            className={`border-0 shadow-lg bg-white/70 dark:bg-slate-800/90 backdrop-blur-sm border-slate-200 dark:border-slate-700 transition-colors ${
+              isDragOverUpload ? "ring-2 ring-turquoise-500/60" : ""
+            }`}
+            onDragOver={(e) => {
+              if (uploadingImages || images.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragEnter={(e) => {
+              if (uploadingImages || images.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragLeave={(e) => {
+              const nextTarget = e.relatedTarget as Node | null
+              if (nextTarget && e.currentTarget.contains(nextTarget)) return
+              setIsDragOverUpload(false)
+            }}
+            onDrop={async (e) => {
+              if (uploadingImages || images.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(false)
+              const droppedFiles = e.dataTransfer.files
+              if (droppedFiles?.length) {
+                await processFilesUpload(droppedFiles)
+              }
+            }}
+          >
             <CardContent className="p-6 space-y-6">
               <div className="flex items-center gap-3 pb-4 border-b border-slate-200 dark:border-slate-700">
                 <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
@@ -876,7 +920,13 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                   <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     Cargar desde el ordenador
                   </Label>
-                  <div className="flex items-center gap-4 p-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl hover:border-turquoise-400 dark:hover:border-turquoise-500 transition-colors bg-slate-50 dark:bg-slate-800/50">
+                  <div
+                    className={`flex items-center gap-4 p-4 border-2 border-dashed rounded-xl transition-colors ${
+                      isDragOverUpload
+                        ? "border-turquoise-500 bg-turquoise-50 dark:bg-turquoise-900/20"
+                        : "border-slate-300 dark:border-slate-600 hover:border-turquoise-400 dark:hover:border-turquoise-500 bg-slate-50 dark:bg-slate-800/50"
+                    }`}
+                  >
                     <Button
                       type="button"
                       variant="outline"
@@ -893,6 +943,9 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         JPG, PNG, GIF, WebP • Máx. 10MB por imagen
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        También podés arrastrar y soltar archivos aquí
                       </p>
                     </div>
                   </div>
@@ -958,7 +1011,27 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                       {images.map((image, index) => (
-                        <div key={index} className="relative group">
+                        <div
+                          key={`${image.url}-${index}`}
+                          className={`relative group ${uploadingImages ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"}`}
+                          draggable={!uploadingImages}
+                          onDragStart={(e) => {
+                            if (uploadingImages) return
+                            e.dataTransfer.setData("text/plain", String(index))
+                            e.dataTransfer.effectAllowed = "move"
+                          }}
+                          onDragOver={(e) => {
+                            if (uploadingImages) return
+                            e.preventDefault()
+                            e.dataTransfer.dropEffect = "move"
+                          }}
+                          onDrop={(e) => {
+                            if (uploadingImages) return
+                            e.preventDefault()
+                            const from = Number(e.dataTransfer.getData("text/plain"))
+                            if (!Number.isNaN(from)) moveImage(from, index)
+                          }}
+                        >
                           <div className="aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
                             <Image
                               src={image.preview || image.url}
@@ -995,9 +1068,15 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                               Archivo
                             </Badge>
                           )}
+                          <Badge className="absolute top-2 right-2 bg-black/60 text-white text-xs pointer-events-none">
+                            {index + 1}
+                          </Badge>
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Arrastrá y soltá las imágenes para definir el orden de carga.
+                    </p>
                   </div>
                 )}
               </div>
