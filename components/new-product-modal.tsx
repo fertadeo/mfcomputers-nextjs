@@ -50,6 +50,7 @@ interface ImageItem {
 }
 
 export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalProps) {
+  const IMAGE_REORDER_MIME = "application/x-mf-image-reorder-index"
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -897,6 +898,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
               if (uploadingImages || images.length >= 5) return
               e.preventDefault()
               setIsDragOverUpload(false)
+              if (e.dataTransfer.types.includes(IMAGE_REORDER_MIME)) return
               const droppedFiles = e.dataTransfer.files
               if (droppedFiles?.length) {
                 await processFilesUpload(droppedFiles)
@@ -1017,17 +1019,26 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                           draggable={!uploadingImages}
                           onDragStart={(e) => {
                             if (uploadingImages) return
+                            e.dataTransfer.setData(IMAGE_REORDER_MIME, String(index))
                             e.dataTransfer.setData("text/plain", String(index))
                             e.dataTransfer.effectAllowed = "move"
                           }}
                           onDragOver={(e) => {
                             if (uploadingImages) return
                             e.preventDefault()
+                            e.stopPropagation()
                             e.dataTransfer.dropEffect = "move"
                           }}
                           onDrop={(e) => {
                             if (uploadingImages) return
                             e.preventDefault()
+                            e.stopPropagation()
+                            setIsDragOverUpload(false)
+                            const fromByMime = Number(e.dataTransfer.getData(IMAGE_REORDER_MIME))
+                            if (!Number.isNaN(fromByMime)) {
+                              moveImage(fromByMime, index)
+                              return
+                            }
                             const from = Number(e.dataTransfer.getData("text/plain"))
                             if (!Number.isNaN(from)) moveImage(from, index)
                           }}
