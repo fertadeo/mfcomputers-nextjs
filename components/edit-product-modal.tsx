@@ -47,6 +47,7 @@ interface FormData {
 }
 
 export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditProductModalProps) {
+  const IMAGE_REORDER_MIME = "application/x-mf-image-reorder-index"
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
   const [submitStep, setSubmitStep] = useState<string | null>(null)
@@ -57,7 +58,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [woocommerceImageIds, setWoocommerceImageIds] = useState<(number | null)[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageUrlInput, setImageUrlInput] = useState("")
+  const [isDragOverUpload, setIsDragOverUpload] = useState(false)
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null)
+  const [reorderTargetIndex, setReorderTargetIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const reorderGridRef = useRef<HTMLDivElement>(null)
+  const dragPreviewRef = useRef<HTMLElement | null>(null)
   const submitBottomRef = useRef<HTMLDivElement>(null)
 
   const [formData, setFormData] = useState<FormData>({
@@ -178,21 +184,91 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     setWoocommerceImageIds((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length) return
+  const moveImage = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= imageUrls.length ||
+      toIndex >= imageUrls.length ||
+      fromIndex === toIndex
+    ) {
+      return
+    }
+    setImageUrls((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+    setWoocommerceImageIds((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+  }
+
+  const isReorderDrag = (e: React.DragEvent) => e.dataTransfer.types.includes(IMAGE_REORDER_MIME)
+
+  const getReorderTargetIndex = (e: React.DragEvent<HTMLDivElement>, itemCount: number) => {
+    const grid = reorderGridRef.current
+    if (!grid) return 0
+    const rect = grid.getBoundingClientRect()
+    const style = window.getComputedStyle(grid)
+    const columns = Math.max(1, style.gridTemplateColumns.split(" ").filter(Boolean).length)
+    const rowGap = Number.parseFloat(style.rowGap || "0") || 0
+    const colGap = Number.parseFloat(style.columnGap || "0") || 0
+    const firstItem = grid.querySelector('[data-reorder-item="true"]') as HTMLElement | null
+    if (!firstItem) return itemCount
+    const itemRect = firstItem.getBoundingClientRect()
+    const cellWidth = itemRect.width + colGap
+    const cellHeight = itemRect.height + rowGap
+    const x = Math.max(0, e.clientX - rect.left)
+    const y = Math.max(0, e.clientY - rect.top)
+    const col = Math.max(0, Math.min(columns - 1, Math.floor(x / Math.max(1, cellWidth))))
+    const row = Math.max(0, Math.floor(y / Math.max(1, cellHeight)))
+    const index = row * columns + col
+    return Math.max(0, Math.min(index, Math.max(0, itemCount - 1)))
+  }
+
+  const cleanupDragPreview = () => {
+    if (dragPreviewRef.current) {
+      dragPreviewRef.current.remove()
+      dragPreviewRef.current = null
+    }
+  }
+
+  const setDragPreviewImage = (e: React.DragEvent, element: HTMLElement) => {
+    cleanupDragPreview()
+    const clone = element.cloneNode(true) as HTMLElement
+    const rect = element.getBoundingClientRect()
+    clone.style.position = "fixed"
+    clone.style.top = "-9999px"
+    clone.style.left = "-9999px"
+    clone.style.width = `${rect.width}px`
+    clone.style.height = `${rect.height}px`
+    clone.style.opacity = "0.95"
+    clone.style.pointerEvents = "none"
+    clone.style.transform = "none"
+    clone.style.zIndex = "9999"
+    document.body.appendChild(clone)
+    dragPreviewRef.current = clone
+    e.dataTransfer.setDragImage(clone, rect.width / 2, rect.height / 2)
+  }
+
+  const processFilesUpload = async (incomingFiles: FileList | File[]) => {
+    const files = Array.from(incomingFiles)
+    if (!files.length) return
     const remaining = 5 - imageUrls.length
     if (remaining <= 0) {
       showToast({ message: "Máximo 5 imágenes", type: "error" })
-      e.target.value = ""
       return
     }
-    const toAdd = Array.from(files)
+    const toAdd = files
       .slice(0, remaining)
       .filter((f) => ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(f.type))
     if (!toAdd.length) {
       showToast({ message: "Solo se permiten imágenes (jpeg, png, gif, webp)", type: "error" })
-      e.target.value = ""
       return
     }
 
@@ -238,8 +314,14 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       })
     } finally {
       setUploadingImages(false)
-      e.target.value = ""
     }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    await processFilesUpload(files)
+    e.target.value = ""
   }
 
   // Al enfocar un input numérico con valor "0", seleccionar todo para que al escribir se reemplace (no "01")
@@ -682,7 +764,44 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className={`transition-colors ${isDragOverUpload ? "ring-2 ring-primary/60 shadow-sm shadow-primary/20" : ""}`}
+            onDragOver={(e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              if (isReorderDrag(e)) {
+                e.preventDefault()
+                setIsDragOverUpload(false)
+                return
+              }
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragEnter={(e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              if (isReorderDrag(e)) {
+                e.preventDefault()
+                setIsDragOverUpload(false)
+                return
+              }
+              e.preventDefault()
+              setIsDragOverUpload(true)
+            }}
+            onDragLeave={(e) => {
+              const nextTarget = e.relatedTarget as Node | null
+              if (nextTarget && e.currentTarget.contains(nextTarget)) return
+              setIsDragOverUpload(false)
+            }}
+            onDrop={async (e) => {
+              if (uploadingImages || imageUrls.length >= 5) return
+              e.preventDefault()
+              setIsDragOverUpload(false)
+              if (isReorderDrag(e)) return
+              const droppedFiles = e.dataTransfer.files
+              if (droppedFiles?.length) {
+                await processFilesUpload(droppedFiles)
+              }
+            }}
+          >
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <Truck className="h-4 w-4 text-muted-foreground" />
@@ -761,7 +880,13 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
               <p className="text-sm text-muted-foreground">
                 Hasta 5 imágenes. Agregá URLs o subí archivos al equipo (se cargan a la galería de WooCommerce). JPG, PNG, GIF, WebP · máx. 10 MB c/u.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div
+                className={`flex flex-wrap gap-2 rounded-lg border-2 border-dashed p-3 transition-colors ${
+                  isDragOverUpload
+                    ? "border-primary bg-primary/5"
+                    : "border-border"
+                }`}
+              >
                 <Button
                   type="button"
                   variant="outline"
@@ -805,36 +930,110 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                     Agregar URL
                   </Button>
                 </div>
+                <p className="w-full text-xs text-muted-foreground">
+                  También podés arrastrar y soltar archivos desde tu ordenador en esta zona.
+                </p>
               </div>
               {imageUrls.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  {imageUrls.map((url, index) => (
-                    <div key={index} className="relative group aspect-square rounded-lg overflow-hidden bg-muted border">
-                      <Image
-                        src={url}
-                        alt={`Imagen ${index + 1}`}
-                        fill
-                        className="object-cover"
-                        sizes="120px"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = `https://via.placeholder.com/120?text=Error`
+                <div className="space-y-2">
+                  <div
+                    ref={reorderGridRef}
+                    className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 min-h-[88px] rounded-lg transition-colors ${
+                      draggedImageIndex !== null ? "bg-muted/40 p-2" : ""
+                    }`}
+                    onDragOver={(e) => {
+                      if (uploadingImages || draggedImageIndex === null || !isReorderDrag(e)) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      e.dataTransfer.dropEffect = "move"
+                      setReorderTargetIndex(getReorderTargetIndex(e, imageUrls.length))
+                      setIsDragOverUpload(false)
+                    }}
+                    onDrop={(e) => {
+                      if (uploadingImages || draggedImageIndex === null || !isReorderDrag(e)) return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const targetIndex = reorderTargetIndex ?? draggedImageIndex
+                      moveImage(draggedImageIndex, targetIndex)
+                      setDraggedImageIndex(null)
+                      setReorderTargetIndex(null)
+                      setIsDragOverUpload(false)
+                      cleanupDragPreview()
+                    }}
+                    onDragLeave={(e) => {
+                      const nextTarget = e.relatedTarget as Node | null
+                      if (nextTarget && e.currentTarget.contains(nextTarget)) return
+                      setReorderTargetIndex(null)
+                    }}
+                  >
+                    {imageUrls.map((url, index) => (
+                      <div
+                        key={`${url}-${index}`}
+                        data-reorder-item="true"
+                        className={`relative group aspect-square rounded-lg overflow-hidden bg-muted border transition-all duration-200 ${
+                          uploadingImages ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"
+                        } ${draggedImageIndex === index ? "opacity-60" : ""} ${
+                          reorderTargetIndex === index && draggedImageIndex !== null
+                            ? "ring-2 ring-dashed ring-primary shadow-md shadow-primary/20"
+                            : ""
+                        }`}
+                        draggable={!uploadingImages}
+                        onDragStart={(e) => {
+                          if (uploadingImages) return
+                          setDraggedImageIndex(index)
+                          setReorderTargetIndex(index)
+                          setDragPreviewImage(e, e.currentTarget)
+                          e.dataTransfer.setData(IMAGE_REORDER_MIME, String(index))
+                          e.dataTransfer.setData("text/plain", String(index))
+                          e.dataTransfer.effectAllowed = "move"
                         }}
-                      />
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => removeImage(index)}
+                        onDragEnd={() => {
+                          setDraggedImageIndex(null)
+                          setReorderTargetIndex(null)
+                          cleanupDragPreview()
+                        }}
                       >
-                        <X className="h-3 w-3" />
-                      </Button>
-                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
-                        {index + 1}
-                      </span>
-                    </div>
-                  ))}
+                        <Image
+                          src={url}
+                          alt={`Imagen ${index + 1}`}
+                          fill
+                          className="object-cover"
+                          sizes="120px"
+                          onError={(ev) => {
+                            const target = ev.target as HTMLImageElement
+                            target.src = "https://via.placeholder.com/120?text=Error"
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => removeImage(index)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+                          {index + 1}
+                        </span>
+                        {index === 0 && (
+                          <span className="absolute top-1 left-1 rounded bg-emerald-600 text-white text-[10px] px-1.5 py-0.5">
+                            Principal
+                          </span>
+                        )}
+                        {reorderTargetIndex === index && draggedImageIndex !== null && (
+                          <div className="absolute inset-0 rounded-lg bg-primary/10 border-2 border-dashed border-primary flex items-center justify-center pointer-events-none">
+                            <span className="text-[11px] font-semibold text-primary bg-background/80 px-2 py-0.5 rounded">
+                              Soltar aqui
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Arrastrá y soltá en cualquier espacio de la grilla para reordenar. La primera imagen siempre será la <span className="font-semibold text-emerald-600 dark:text-emerald-400">Principal</span> (portada).
+                  </p>
                 </div>
               )}
             </CardContent>
