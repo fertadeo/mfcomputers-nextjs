@@ -46,6 +46,18 @@ function formatDate(dateStr: string | null) {
   }
 }
 
+/** Fecha estimada de retiro ya pasó y la orden sigue activa. */
+function isRetiroEstimadoVencido(order: RepairOrder): boolean {
+  if (!order.delivery_date_estimated) return false
+  if (order.status === "entregado" || order.status === "cancelado") return false
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  const est = new Date(order.delivery_date_estimated)
+  if (Number.isNaN(est.getTime())) return false
+  est.setHours(0, 0, 0, 0)
+  return est < hoy
+}
+
 function formatMoney(value: string | number) {
   const n = typeof value === "string" ? parseFloat(value) : value
   if (Number.isNaN(n)) return "—"
@@ -55,6 +67,43 @@ function formatMoney(value: string | number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(n)
+}
+
+/** Dígitos para wa.me (Argentina: agrega 54 si falta código país). */
+function normalizeWhatsAppNumber(raw: string): string | null {
+  let d = raw.replace(/\D/g, "")
+  if (!d) return null
+  if (d.startsWith("0")) d = d.slice(1)
+  if (d.startsWith("54")) return d
+  if (d.length >= 8 && d.length <= 11) return `54${d}`
+  return d.length >= 12 ? d : null
+}
+
+function buildRepairReadyWhatsAppUrl(
+  phone: string,
+  order: RepairOrder,
+  clientDisplayName?: string
+): string | null {
+  const num = normalizeWhatsAppNumber(phone)
+  if (!num) return null
+  const clientName =
+    clientDisplayName?.trim() || order.client?.name?.trim() || "cliente"
+  const text = `Hola ${clientName}, te avisamos que la reparación de tu equipo ya está lista para retirar. Orden: ${order.repair_number}. Saludos, MF Computers.`
+  return `https://wa.me/${num}?text=${encodeURIComponent(text)}`
+}
+
+function WhatsAppGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="currentColor"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  )
 }
 
 function getStatusVariant(
@@ -109,6 +158,7 @@ export default function ReparacionesPage() {
   const [onlyPending, setOnlyPending] = useState(false)
   const [newOrderOpen, setNewOrderOpen] = useState(false)
   const [clientNameById, setClientNameById] = useState<Record<number, string>>({})
+  const [clientPhoneById, setClientPhoneById] = useState<Record<number, string>>({})
 
   const loadOrders = async () => {
     setLoading(true)
@@ -165,7 +215,11 @@ export default function ReparacionesPage() {
 
   useEffect(() => {
     const missingClientOrderIds = orders
-      .filter((order) => !order.client?.name && !clientNameById[order.client_id])
+      .filter(
+        (order) =>
+          (!order.client?.name && !clientNameById[order.client_id]) ||
+          (!order.client?.phone && !clientPhoneById[order.client_id])
+      )
       .map((order) => order.id)
     if (missingClientOrderIds.length === 0) return
 
@@ -173,16 +227,20 @@ export default function ReparacionesPage() {
     Promise.allSettled(missingClientOrderIds.map((orderId) => getRepairOrder(orderId)))
       .then((results) => {
         if (!active) return
-        const next: Record<number, string> = {}
+        const nextNames: Record<number, string> = {}
+        const nextPhones: Record<number, string> = {}
         results.forEach((result) => {
           if (result.status !== "fulfilled") return
           const order = result.value?.data
-          if (order?.client_id && order.client?.name) {
-            next[order.client_id] = order.client.name
-          }
+          if (!order?.client_id) return
+          if (order.client?.name) nextNames[order.client_id] = order.client.name
+          if (order.client?.phone) nextPhones[order.client_id] = order.client.phone
         })
-        if (Object.keys(next).length > 0) {
-          setClientNameById((prev) => ({ ...prev, ...next }))
+        if (Object.keys(nextNames).length > 0) {
+          setClientNameById((prev) => ({ ...prev, ...nextNames }))
+        }
+        if (Object.keys(nextPhones).length > 0) {
+          setClientPhoneById((prev) => ({ ...prev, ...nextPhones }))
         }
       })
       .catch(() => undefined)
@@ -190,7 +248,7 @@ export default function ReparacionesPage() {
     return () => {
       active = false
     }
-  }, [orders, clientNameById])
+  }, [orders, clientNameById, clientPhoneById])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const normalizedSearch = searchQuery.trim().toLowerCase()
@@ -380,15 +438,24 @@ export default function ReparacionesPage() {
                         <TableHead>Equipo</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead>Recepción</TableHead>
+                        <TableHead>Retiro estimado</TableHead>
                         <TableHead className="text-right">Total</TableHead>
                         <TableHead className="text-right">Saldo</TableHead>
-                        <TableHead className="w-[80px]"></TableHead>
+                        <TableHead className="w-[100px] text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredOrders.map((order) => {
                         const balance =
                           parseFloat(order.total_amount || "0") - parseFloat(order.amount_paid || "0")
+                        const clientPhone = order.client?.phone ?? clientPhoneById[order.client_id]
+                        const clientLabel =
+                          order.client?.name ?? clientNameById[order.client_id] ?? undefined
+                        const waUrl = clientPhone
+                          ? buildRepairReadyWhatsAppUrl(clientPhone, order, clientLabel)
+                          : null
+                        const hasPhoneRaw = Boolean(clientPhone?.trim())
+                        const retiroVencido = isRetiroEstimadoVencido(order)
                         return (
                           <TableRow key={order.id}>
                             <TableCell className="font-medium">{order.repair_number}</TableCell>
@@ -407,6 +474,20 @@ export default function ReparacionesPage() {
                               </Badge>
                             </TableCell>
                             <TableCell>{formatDate(order.reception_date)}</TableCell>
+                            <TableCell
+                              className={
+                                retiroVencido
+                                  ? "text-amber-700 dark:text-amber-500 font-medium"
+                                  : undefined
+                              }
+                              title={
+                                retiroVencido
+                                  ? "Fecha estimada de retiro superada"
+                                  : undefined
+                              }
+                            >
+                              {formatDate(order.delivery_date_estimated)}
+                            </TableCell>
                             <TableCell className="text-right">
                               {formatMoney(order.total_amount)}
                             </TableCell>
@@ -414,11 +495,56 @@ export default function ReparacionesPage() {
                               {formatMoney(balance)}
                             </TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="sm" asChild>
-                                <Link href={`/reparaciones/${order.id}`}>
-                                  <Eye className="h-4 w-4" />
-                                </Link>
-                              </Button>
+                              <div className="flex items-center justify-end gap-0.5">
+                                {waUrl ? (
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-[#25D366] hover:text-[#128C7E]" asChild>
+                                    <a
+                                      href={waUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="Avisar por WhatsApp que el pedido está listo"
+                                      aria-label="Avisar por WhatsApp que el pedido está listo"
+                                    >
+                                      <WhatsAppGlyph className="h-5 w-5" />
+                                    </a>
+                                  </Button>
+                                ) : hasPhoneRaw ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-amber-600/80"
+                                    title="Teléfono no válido para WhatsApp"
+                                    aria-label="Teléfono no válido para WhatsApp"
+                                    onClick={() =>
+                                      toast.error(
+                                        "El teléfono registrado no es válido para abrir WhatsApp."
+                                      )
+                                    }
+                                  >
+                                    <WhatsAppGlyph className="h-5 w-5 opacity-70" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground"
+                                    title="Sin teléfono del cliente — cargalo en la ficha del cliente"
+                                    aria-label="WhatsApp no disponible: falta teléfono"
+                                    onClick={() =>
+                                      toast.error("No hay teléfono del cliente para enviar WhatsApp.")
+                                    }
+                                  >
+                                    <WhatsAppGlyph className="h-5 w-5 opacity-40" />
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                                  <Link href={`/reparaciones/${order.id}`} title="Ver orden" aria-label="Ver orden">
+                                    <Eye className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         )

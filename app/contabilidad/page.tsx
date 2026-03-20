@@ -14,6 +14,7 @@ import {
   ListOrdered,
   CalendarDays,
   BarChart3,
+  Table2,
   ArrowRight,
   DollarSign,
   FileText,
@@ -80,6 +81,12 @@ export default function ContabilidadPage() {
       icon: BookOpen,
     },
     {
+      title: "Sumas y saldos",
+      description: "Balance de comprobación por período y circuito.",
+      href: "/contabilidad/sumas-saldos",
+      icon: Table2,
+    },
+    {
       title: "Plan de cuentas",
       description: "Estructura jerárquica de cuentas contables.",
       href: "/contabilidad/plan-cuentas",
@@ -93,7 +100,7 @@ export default function ContabilidadPage() {
     },
     {
       title: "Reportes",
-      description: "Sumas y saldos, estado de resultados, balance.",
+      description: "Estado de resultados, balance y otros informes.",
       href: "/contabilidad/reportes",
       icon: BarChart3,
     },

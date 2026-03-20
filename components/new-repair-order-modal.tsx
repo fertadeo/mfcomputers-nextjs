@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import {
   Dialog,
   DialogContent,
@@ -50,6 +50,9 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const [clientSearchQuery, setClientSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<ClientOption[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
+  /** Cliente elegido de la lista: evita que el debounce vuelva a abrir el dropdown con el mismo texto. */
+  const [selectedClientPreview, setSelectedClientPreview] = useState<ClientOption | null>(null)
+  const clientSearchSeq = useRef(0)
   const [newClientModalOpen, setNewClientModalOpen] = useState(false)
   const today = () => new Date().toISOString().slice(0, 10)
   const [formData, setFormData] = useState({
@@ -75,30 +78,47 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const [newItemQuantity, setNewItemQuantity] = useState("1")
   const [newItemUnitPrice, setNewItemUnitPrice] = useState("")
   const [step, setStep] = useState<1 | 2>(1)
+  const pendingItemsTotal = useMemo(
+    () => pendingItems.reduce((acc, item) => acc + item.quantity * item.unit_price, 0),
+    [pendingItems]
+  )
 
-  // Búsqueda de clientes con debounce
+  // Búsqueda de clientes con debounce (no corre si ya hay cliente confirmado)
   useEffect(() => {
     if (!isOpen) return
+    if (selectedClientPreview) {
+      setSearchResults([])
+      setLoadingSearch(false)
+      return
+    }
     const query = clientSearchQuery.trim()
     if (query.length < 1) {
       setSearchResults([])
       return
     }
     const t = setTimeout(() => {
+      const seq = ++clientSearchSeq.current
       setLoadingSearch(true)
       getClientes(1, 50, query, "active")
         .then((res) => {
+          if (seq !== clientSearchSeq.current) return
           const list = (res.clients || []).map((c: { id: number; name: string }) => ({
             id: c.id,
             name: c.name,
           }))
           setSearchResults(list)
         })
-        .catch(() => setSearchResults([]))
-        .finally(() => setLoadingSearch(false))
+        .catch(() => {
+          if (seq !== clientSearchSeq.current) return
+          setSearchResults([])
+        })
+        .finally(() => {
+          if (seq !== clientSearchSeq.current) return
+          setLoadingSearch(false)
+        })
     }, 300)
     return () => clearTimeout(t)
-  }, [isOpen, clientSearchQuery])
+  }, [isOpen, clientSearchQuery, selectedClientPreview])
 
   // Cargar productos al abrir el modal
   useEffect(() => {
@@ -144,6 +164,8 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     }))
     setClientSearchQuery("")
     setSearchResults([])
+    setSelectedClientPreview(null)
+    clientSearchSeq.current += 1
     setPendingItems([])
     setProductSearchQuery("")
     setNewItemProductId("")
@@ -153,15 +175,21 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   }, [isOpen])
 
   const selectClient = (c: ClientOption) => {
+    clientSearchSeq.current += 1
+    setLoadingSearch(false)
     setFormData((prev) => ({ ...prev, client_id: c.id }))
     setClientSearchQuery(c.name)
     setSearchResults([])
+    setSelectedClientPreview(c)
   }
 
   const clearClient = () => {
+    clientSearchSeq.current += 1
     setFormData((prev) => ({ ...prev, client_id: 0 }))
     setClientSearchQuery("")
     setSearchResults([])
+    setSelectedClientPreview(null)
+    setLoadingSearch(false)
   }
 
   const addPendingItem = () => {
@@ -203,9 +231,12 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const handleNewClientSuccess = (created?: { id: number; name: string }) => {
     setNewClientModalOpen(false)
     if (created) {
+      clientSearchSeq.current += 1
+      setLoadingSearch(false)
       setFormData((prev) => ({ ...prev, client_id: created.id }))
       setClientSearchQuery(created.name)
       setSearchResults([])
+      setSelectedClientPreview({ id: created.id, name: created.name })
     }
   }
 
@@ -268,6 +299,8 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       }))
       setClientSearchQuery("")
       setSearchResults([])
+      setSelectedClientPreview(null)
+      clientSearchSeq.current += 1
       setPendingItems([])
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error al crear la orden"
@@ -315,25 +348,40 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                   placeholder="Buscar por nombre..."
                   value={clientSearchQuery}
                   onChange={(e) => {
-                    setClientSearchQuery(e.target.value)
-                    if (!e.target.value.trim()) clearClient()
+                    const v = e.target.value
+                    setClientSearchQuery(v)
+                    if (!v.trim()) {
+                      clearClient()
+                      return
+                    }
+                    if (selectedClientPreview && v !== selectedClientPreview.name) {
+                      clientSearchSeq.current += 1
+                      setSelectedClientPreview(null)
+                      setFormData((prev) => ({ ...prev, client_id: 0 }))
+                    }
                   }}
                   onFocus={() => {
+                    if (selectedClientPreview) return
                     if (clientSearchQuery.trim().length >= 1 && searchResults.length === 0 && !loadingSearch) {
+                      const seq = ++clientSearchSeq.current
                       getClientes(1, 50, clientSearchQuery.trim(), "active")
                         .then((res) => {
+                          if (seq !== clientSearchSeq.current) return
                           const list = (res.clients || []).map((c: { id: number; name: string }) => ({
                             id: c.id,
                             name: c.name,
                           }))
                           setSearchResults(list)
                         })
-                        .catch(() => setSearchResults([]))
+                        .catch(() => {
+                          if (seq !== clientSearchSeq.current) return
+                          setSearchResults([])
+                        })
                     }
                   }}
-                  className={`pl-9 ${formData.client_id > 0 ? "pr-16" : ""}`}
+                  className={`pl-9 ${selectedClientPreview ? "pr-16" : ""}`}
                 />
-                {formData.client_id > 0 && (
+                {selectedClientPreview && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -345,7 +393,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                   </Button>
                 )}
               </div>
-              {(searchResults.length > 0 || loadingSearch) && (
+              {!selectedClientPreview && (searchResults.length > 0 || loadingSearch) && (
                 <ul className="border rounded-md divide-y max-h-40 overflow-y-auto bg-background z-10 shadow-md">
                   {loadingSearch && (
                     <li className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
@@ -376,12 +424,21 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                   )}
                 </ul>
               )}
-              {formData.client_id > 0 && (
+              {selectedClientPreview && (
                 <div className="border rounded-md p-3 bg-muted/50">
-                  <p className="text-sm font-medium text-primary">Cliente seleccionado: {clientSearchQuery}</p>
+                  <p className="text-sm font-medium text-primary">
+                    Cliente seleccionado: {selectedClientPreview.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tocá «Limpiar» o editá el nombre para buscar otro cliente.
+                  </p>
                 </div>
               )}
-              {!loadingSearch && formData.client_id === 0 && clientSearchQuery.trim().length >= 1 && searchResults.length === 0 && (
+              {!loadingSearch &&
+                !selectedClientPreview &&
+                formData.client_id === 0 &&
+                clientSearchQuery.trim().length >= 1 &&
+                searchResults.length === 0 && (
                 <div className="border rounded-md p-3 flex flex-col gap-2">
                   <p className="text-sm text-muted-foreground">No se encontraron clientes.</p>
                   <Button
@@ -524,179 +581,229 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
             </>
           ) : (
             <>
-          <Button
-            type="button"
-            variant="ghost"
-            className="mb-2 -ml-2"
-            onClick={() => setStep(1)}
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" /> Volver al resumen (Paso 1)
-          </Button>
+          <div className="rounded-lg border p-3 md:p-4 space-y-4 bg-muted/20">
+            <Button
+              type="button"
+              variant="ghost"
+              className="-ml-2"
+              onClick={() => setStep(1)}
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" /> Volver al resumen (Paso 1)
+            </Button>
 
-          {/* Paso 2: Materiales con búsqueda y miniaturas */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-[260px] flex-1 space-y-1 relative">
-                <Label className="text-xs">Buscar producto</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  <Input
-                    type="text"
-                    placeholder={loadingProducts ? "Cargando…" : "Buscar por nombre o código..."}
-                    value={productSearchQuery}
-                    onChange={(e) => {
-                      setProductSearchQuery(e.target.value)
-                      if (!e.target.value.trim()) clearProductSelection()
-                      else setNewItemProductId("")
-                    }}
-                    disabled={loadingProducts}
-                    className={`pl-9 ${newItemProductId ? "pr-16" : ""}`}
-                  />
-                  {!!newItemProductId && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
-                      onClick={clearProductSelection}
-                    >
-                      Limpiar
-                    </Button>
-                  )}
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-sm">Buscar producto</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input
+                      type="text"
+                      placeholder={loadingProducts ? "Cargando productos..." : "Buscar por nombre o código"}
+                      value={productSearchQuery}
+                      onChange={(e) => {
+                        setProductSearchQuery(e.target.value)
+                        if (!e.target.value.trim()) clearProductSelection()
+                        else setNewItemProductId("")
+                      }}
+                      disabled={loadingProducts}
+                      className={`pl-9 ${newItemProductId ? "pr-16" : ""}`}
+                    />
+                    {!!newItemProductId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
+                        onClick={clearProductSelection}
+                      >
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                {filteredProducts.length > 0 && !newItemProductId && (
-                  <ul className="border rounded-md divide-y max-h-64 overflow-y-auto bg-background z-20 shadow-lg absolute left-0 right-0 mt-1">
-                    {filteredProducts.map((p) => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          className="w-full px-3 py-2.5 text-left text-sm hover:bg-muted flex items-center gap-3"
-                          onClick={() => selectProductForItem(p)}
-                        >
-                          <span className="relative flex-shrink-0 block w-12 h-12 rounded overflow-hidden bg-muted">
-                            <Image
-                              src={getProductImageUrl(p, { size: 96 })}
-                              alt=""
-                              fill
-                              className="object-cover"
-                              sizes="48px"
-                            />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="font-medium block truncate">{p.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {p.code ? `${p.code} — ` : ""}Stock: {p.stock ?? 0}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+
+                {!newItemProductId && (
+                  <div className="rounded-md border bg-background overflow-hidden">
+                    <div className="px-3 py-2 text-xs text-muted-foreground border-b">
+                      {loadingProducts
+                        ? "Cargando productos..."
+                        : filteredProducts.length > 0
+                        ? "Seleccioná un producto de la lista"
+                        : "Sin resultados para la búsqueda actual"}
+                    </div>
+                    {filteredProducts.length > 0 && (
+                      <ul className="max-h-72 overflow-y-auto divide-y">
+                        {filteredProducts.map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2.5 text-left text-sm hover:bg-muted flex items-center gap-3"
+                              onClick={() => selectProductForItem(p)}
+                            >
+                              <span className="relative flex-shrink-0 block w-11 h-11 rounded overflow-hidden bg-muted">
+                                <Image
+                                  src={getProductImageUrl(p, { size: 96 })}
+                                  alt=""
+                                  fill
+                                  className="object-cover"
+                                  sizes="44px"
+                                />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="font-medium block truncate">{p.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {p.code ? `${p.code} · ` : ""}Stock: {p.stock ?? 0}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
+
                 {!!newItemProductId && selectedProduct && (
-                  <div className="flex items-center gap-2 mt-2 p-2 rounded-md bg-muted/50">
-                    <span className="relative flex-shrink-0 block w-10 h-10 rounded overflow-hidden bg-muted">
-                      <Image
-                        src={getProductImageUrl(selectedProduct, { size: 80 })}
-                        alt=""
-                        fill
-                        className="object-cover"
-                        sizes="40px"
-                      />
-                    </span>
-                    <span className="text-sm font-medium truncate">Producto seleccionado: {selectedProduct.name}</span>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-xs text-muted-foreground mb-2">Producto seleccionado</p>
+                    <div className="flex items-center gap-3">
+                      <span className="relative flex-shrink-0 block w-12 h-12 rounded overflow-hidden bg-muted">
+                        <Image
+                          src={getProductImageUrl(selectedProduct, { size: 96 })}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="48px"
+                        />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="text-sm font-medium block truncate">{selectedProduct.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {selectedProduct.code ? `${selectedProduct.code} · ` : ""}Stock: {selectedProduct.stock ?? 0}
+                        </span>
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
-              <div className="w-24 space-y-1">
-                <Label className="text-xs">Cant.</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={newItemQuantity}
-                  onChange={(e) => setNewItemQuantity(e.target.value)}
-                />
+
+              <div className="space-y-3">
+                <div className="rounded-md border bg-background p-3 space-y-3">
+                  <p className="text-sm font-medium">Agregar material</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Cantidad</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={newItemQuantity}
+                        onChange={(e) => setNewItemQuantity(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Precio unitario ($)</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={newItemUnitPrice}
+                        onChange={(e) => setNewItemUnitPrice(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={addPendingItem}
+                    disabled={!selectedProduct || !newItemQuantity || !newItemUnitPrice || loadingProducts}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Agregar material a la orden
+                  </Button>
+                </div>
+
+                <div className="rounded-md border bg-background">
+                  <div className="flex items-center justify-between px-3 py-2 border-b">
+                    <p className="text-sm font-medium">Materiales cargados</p>
+                    <span className="text-xs text-muted-foreground">
+                      {pendingItems.length} item(s)
+                    </span>
+                  </div>
+                  {pendingItems.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      Aun no agregaste materiales.
+                    </div>
+                  ) : (
+                    <div className="max-h-72 overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-14"></TableHead>
+                            <TableHead>Producto</TableHead>
+                            <TableHead className="w-20">Cant.</TableHead>
+                            <TableHead className="text-right">P. unit.</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="w-10"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pendingItems.map((item, index) => {
+                            const prod = products.find((x) => x.id === item.product_id)
+                            return (
+                              <TableRow key={`${item.product_id}-${index}`}>
+                                <TableCell className="w-14">
+                                  {prod && (
+                                    <span className="relative inline-block w-10 h-10 rounded overflow-hidden bg-muted">
+                                      <Image
+                                        src={getProductImageUrl(prod, { size: 80 })}
+                                        alt=""
+                                        fill
+                                        className="object-cover"
+                                        sizes="40px"
+                                      />
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="font-medium">{item.product_name}</TableCell>
+                                <TableCell>{item.quantity}</TableCell>
+                                <TableCell className="text-right">
+                                  ${item.unit_price.toLocaleString("es-AR")}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  ${(item.quantity * item.unit_price).toLocaleString("es-AR")}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive"
+                                    onClick={() => removePendingItem(index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between border-t px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Total de materiales</span>
+                    <span className="font-semibold">
+                      ${pendingItemsTotal.toLocaleString("es-AR")}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="w-28 space-y-1">
-                <Label className="text-xs">P. unit. ($)</Label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={newItemUnitPrice}
-                  onChange={(e) => setNewItemUnitPrice(e.target.value)}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addPendingItem}
-                disabled={!selectedProduct || !newItemQuantity || !newItemUnitPrice || loadingProducts}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Agregar
-              </Button>
             </div>
-            {pendingItems.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-14"></TableHead>
-                    <TableHead>Producto</TableHead>
-                    <TableHead className="w-20">Cant.</TableHead>
-                    <TableHead className="text-right">P. unit.</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingItems.map((item, index) => {
-                    const prod = products.find((x) => x.id === item.product_id)
-                    return (
-                      <TableRow key={`${item.product_id}-${index}`}>
-                        <TableCell className="w-14">
-                          {prod && (
-                            <span className="relative inline-block w-10 h-10 rounded overflow-hidden bg-muted">
-                              <Image
-                                src={getProductImageUrl(prod, { size: 80 })}
-                                alt=""
-                                fill
-                                className="object-cover"
-                                sizes="40px"
-                              />
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{item.product_name}</TableCell>
-                        <TableCell>{item.quantity}</TableCell>
-                        <TableCell className="text-right">
-                          ${item.unit_price.toLocaleString("es-AR")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          ${(item.quantity * item.unit_price).toLocaleString("es-AR")}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => removePendingItem(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            )}
           </div>
 
-          <DialogFooter>
-            <Button type="button" onClick={() => setStep(1)}>
-              <ArrowLeft className="h-4 w-4 mr-2" /> Volver al resumen (Paso 1)
+          <DialogFooter className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t pt-3">
+            <Button type="button" onClick={() => setStep(1)} className="w-full sm:w-auto">
+              <ArrowLeft className="h-4 w-4 mr-2" /> Guardar materiales y volver al Paso 1
             </Button>
           </DialogFooter>
             </>
