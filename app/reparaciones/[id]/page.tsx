@@ -91,6 +91,27 @@ function getStatusVariant(s: RepairOrderStatus): "default" | "secondary" | "dest
   }
 }
 
+function getStatusClassName(status: RepairOrderStatus): string {
+  switch (status) {
+    case "consulta_recibida":
+      return "bg-sky-100 text-sky-800 border-sky-200"
+    case "presupuestado":
+      return "bg-amber-100 text-amber-800 border-amber-200"
+    case "aceptado":
+      return "bg-indigo-100 text-indigo-800 border-indigo-200"
+    case "en_proceso_reparacion":
+      return "bg-violet-100 text-violet-800 border-violet-200"
+    case "listo_entrega":
+      return "bg-emerald-100 text-emerald-800 border-emerald-200"
+    case "entregado":
+      return "bg-green-100 text-green-800 border-green-200"
+    case "cancelado":
+      return "bg-red-100 text-red-800 border-red-200"
+    default:
+      return ""
+  }
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
   tarjeta: "Tarjeta",
@@ -299,6 +320,13 @@ export default function RepairOrderDetailPage() {
 
   const status = order.status
   const items = order.items ?? []
+  const nextActionLabel: Partial<Record<RepairOrderStatus, string>> = {
+    consulta_recibida: "Enviar presupuesto",
+    presupuestado: "Aceptar presupuesto",
+    aceptado: "Pasar a en reparación",
+    en_proceso_reparacion: "Marcar como listo para entrega",
+    listo_entrega: "Marcar como entregado",
+  }
 
   return (
     <Protected requiredRoles={["gerencia", "ventas", "admin"]}>
@@ -317,7 +345,7 @@ export default function RepairOrderDetailPage() {
                   {order.client?.name ?? `Cliente #${order.client_id}`}
                 </p>
               </div>
-              <Badge variant={getStatusVariant(status)}>
+              <Badge variant={getStatusVariant(status)} className={getStatusClassName(status)}>
                 {REPAIR_ORDER_STATUS_LABELS[status] ?? status}
               </Badge>
             </div>
@@ -559,6 +587,12 @@ export default function RepairOrderDetailPage() {
               <CardDescription>Transiciones de estado según el flujo de la orden</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
+              {nextActionLabel[status] && (
+                <div className="w-full rounded-md border bg-muted/30 p-3 mb-2">
+                  <p className="text-sm text-muted-foreground">Siguiente paso recomendado</p>
+                  <p className="font-medium">{nextActionLabel[status]}</p>
+                </div>
+              )}
               {status === "consulta_recibida" && (
                 <Button onClick={handleSendBudget}>
                   <Send className="h-4 w-4 mr-1" /> Enviar presupuesto

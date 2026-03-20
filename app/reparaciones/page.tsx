@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   getRepairOrders,
+  getRepairOrder,
   getRepairOrderStats,
   REPAIR_ORDER_STATUS_LABELS,
   type RepairOrder,
@@ -20,7 +21,7 @@ import {
   type RepairOrderStats,
 } from "@/lib/api"
 import { NewRepairOrderModal } from "@/components/new-repair-order-modal"
-import { Wrench, Plus, Search, RefreshCw, Eye, Calendar, Filter } from "lucide-react"
+import { Wrench, Plus, Search, RefreshCw, Eye, Calendar } from "lucide-react"
 import { toast } from "sonner"
 import { Pagination } from "@/components/ui/pagination"
 
@@ -72,6 +73,27 @@ function getStatusVariant(
   }
 }
 
+function getStatusClassName(status: RepairOrderStatus): string {
+  switch (status) {
+    case "consulta_recibida":
+      return "bg-sky-100 text-sky-800 border-sky-200"
+    case "presupuestado":
+      return "bg-amber-100 text-amber-800 border-amber-200"
+    case "aceptado":
+      return "bg-indigo-100 text-indigo-800 border-indigo-200"
+    case "en_proceso_reparacion":
+      return "bg-violet-100 text-violet-800 border-violet-200"
+    case "listo_entrega":
+      return "bg-emerald-100 text-emerald-800 border-emerald-200"
+    case "entregado":
+      return "bg-green-100 text-green-800 border-green-200"
+    case "cancelado":
+      return "bg-red-100 text-red-800 border-red-200"
+    default:
+      return ""
+  }
+}
+
 export default function ReparacionesPage() {
   const router = useRouter()
   const [orders, setOrders] = useState<RepairOrder[]>([])
@@ -83,7 +105,10 @@ export default function ReparacionesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [onlyPending, setOnlyPending] = useState(false)
   const [newOrderOpen, setNewOrderOpen] = useState(false)
+  const [clientNameById, setClientNameById] = useState<Record<number, string>>({})
 
   const loadOrders = async () => {
     setLoading(true)
@@ -138,7 +163,54 @@ export default function ReparacionesPage() {
     loadStats()
   }, [])
 
+  useEffect(() => {
+    const missingClientOrderIds = orders
+      .filter((order) => !order.client?.name && !clientNameById[order.client_id])
+      .map((order) => order.id)
+    if (missingClientOrderIds.length === 0) return
+
+    let active = true
+    Promise.allSettled(missingClientOrderIds.map((orderId) => getRepairOrder(orderId)))
+      .then((results) => {
+        if (!active) return
+        const next: Record<number, string> = {}
+        results.forEach((result) => {
+          if (result.status !== "fulfilled") return
+          const order = result.value?.data
+          if (order?.client_id && order.client?.name) {
+            next[order.client_id] = order.client.name
+          }
+        })
+        if (Object.keys(next).length > 0) {
+          setClientNameById((prev) => ({ ...prev, ...next }))
+        }
+      })
+      .catch(() => undefined)
+
+    return () => {
+      active = false
+    }
+  }, [orders, clientNameById])
+
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const normalizedSearch = searchQuery.trim().toLowerCase()
+  const filteredOrders = orders.filter((order) => {
+    const statusMatches = onlyPending
+      ? order.status !== "entregado" && order.status !== "cancelado"
+      : true
+    if (!statusMatches) return false
+    if (!normalizedSearch) return true
+    const searchable = [
+      order.repair_number,
+      order.client?.name,
+      order.equipment_description,
+      REPAIR_ORDER_STATUS_LABELS[order.status],
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+    return searchable.includes(normalizedSearch)
+  })
 
   const handleNewOrderSuccess = (createdId?: number) => {
     setNewOrderOpen(false)
@@ -218,6 +290,15 @@ export default function ReparacionesPage() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-4 mb-4">
+                <div className="relative min-w-[220px] flex-1 md:max-w-[340px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por número, cliente o equipo..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
                 <Select value={statusFilter || "all"} onValueChange={(v) => setStatusFilter(v === "all" ? "" : v)}>
                   <SelectTrigger className="w-[220px]">
                     <SelectValue placeholder="Estado" />
@@ -251,16 +332,40 @@ export default function ReparacionesPage() {
                 <Button variant="outline" size="icon" onClick={() => loadOrders()} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                 </Button>
+                <Button
+                  variant={onlyPending ? "default" : "outline"}
+                  onClick={() => setOnlyPending((prev) => !prev)}
+                >
+                  Pendientes
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setStatusFilter("")
+                    setDateFrom("")
+                    setDateTo("")
+                    setSearchQuery("")
+                    setOnlyPending(false)
+                    setPage(1)
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
               </div>
+              {!loading && (
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Mostrando {filteredOrders.length} de {orders.length} orden(es) en esta página.
+                </p>
+              )}
 
               {loading ? (
                 <div className="flex items-center justify-center py-12 text-muted-foreground">
                   Cargando…
                 </div>
-              ) : orders.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <Wrench className="h-12 w-12 mb-2 opacity-50" />
-                  <p>No hay órdenes de reparación con los filtros aplicados.</p>
+                  <p>No hay órdenes de reparación con los filtros aplicados en esta página.</p>
                   <Button variant="outline" className="mt-4" onClick={() => setNewOrderOpen(true)}>
                     Crear primera orden
                   </Button>
@@ -281,20 +386,23 @@ export default function ReparacionesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {orders.map((order) => {
+                      {filteredOrders.map((order) => {
                         const balance =
                           parseFloat(order.total_amount || "0") - parseFloat(order.amount_paid || "0")
                         return (
                           <TableRow key={order.id}>
                             <TableCell className="font-medium">{order.repair_number}</TableCell>
                             <TableCell>
-                              {order.client?.name ?? `Cliente #${order.client_id}`}
+                              {order.client?.name ?? clientNameById[order.client_id] ?? `Cliente #${order.client_id}`}
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate">
                               {order.equipment_description || "—"}
                             </TableCell>
                             <TableCell>
-                              <Badge variant={getStatusVariant(order.status)}>
+                              <Badge
+                                variant={getStatusVariant(order.status)}
+                                className={getStatusClassName(order.status)}
+                              >
                                 {REPAIR_ORDER_STATUS_LABELS[order.status] ?? order.status}
                               </Badge>
                             </TableCell>
