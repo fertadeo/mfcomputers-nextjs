@@ -71,13 +71,18 @@ export default function ComprasPage() {
       if (supplierFilter !== "all") params.supplier_id = parseInt(supplierFilter)
 
       const response = await getPurchases(params)
-      if (response.success) {
+      if (response.success && Array.isArray(response.data?.purchases)) {
         setPurchases(response.data.purchases)
-        setTotalPages(response.data.pagination.totalPages)
+        setTotalPages(response.data.pagination?.totalPages ?? 1)
+      } else {
+        setPurchases([])
+        setTotalPages(1)
       }
     } catch (error) {
       console.error("Error al cargar compras:", error)
       toast.error("Error al cargar las compras")
+      setPurchases([])
+      setTotalPages(1)
     }
   }
 

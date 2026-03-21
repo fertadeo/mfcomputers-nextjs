@@ -6125,6 +6125,15 @@ export async function getRepairOrderAcceptanceDocument(
   return data
 }
 
+/** Normaliza la carga útil de GET /repair-orders/:id/payments (array directo o { payments: [] }). */
+export function parseRepairOrderPaymentsPayload(data: unknown): RepairOrderPayment[] {
+  if (Array.isArray(data)) return data as RepairOrderPayment[]
+  if (data && typeof data === 'object' && Array.isArray((data as { payments?: unknown }).payments)) {
+    return (data as { payments: RepairOrderPayment[] }).payments
+  }
+  return []
+}
+
 export async function getRepairOrderPayments(id: number | string): Promise<ApiResponseRepair<RepairOrderPayment[]>> {
   const apiUrl = getApiUrl()
   const res = await fetch(`${apiUrl}repair-orders/${id}/payments`, { method: 'GET', headers: getRepairOrderHeaders() })

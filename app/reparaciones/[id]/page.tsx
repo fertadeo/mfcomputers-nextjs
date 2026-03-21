@@ -28,6 +28,7 @@ import {
   cancelRepairOrder,
   updateRepairOrderStatus,
   getRepairOrderPayments,
+  parseRepairOrderPaymentsPayload,
   deleteRepairOrderItem,
   REPAIR_ORDER_STATUS_LABELS,
   type RepairOrder,
@@ -176,7 +177,7 @@ export default function RepairOrderDetailPage() {
     if (!id) return
     try {
       const res = await getRepairOrderPayments(id)
-      setPayments(Array.isArray(res.data) ? res.data : [])
+      setPayments(parseRepairOrderPaymentsPayload(res.data))
     } catch {
       setPayments([])
     }
@@ -553,12 +554,20 @@ export default function RepairOrderDetailPage() {
             </CardContent>
           </Card>
 
-          {payments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Pagos registrados</CardTitle>
-              </CardHeader>
-              <CardContent>
+          <Card>
+            <CardHeader>
+              <CardTitle>Pagos y movimientos</CardTitle>
+              <CardDescription>
+                Historial de cobros registrados en esta orden (coherente con el total pagado arriba).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {payments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Aún no hay pagos registrados. Usá &quot;Registrar pago&quot; cuando el cliente abone (desde estado
+                  aceptado, en reparación o listo para entrega).
+                </p>
+              ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -577,9 +586,9 @@ export default function RepairOrderDetailPage() {
                     ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

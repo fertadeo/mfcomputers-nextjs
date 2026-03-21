@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,7 +29,7 @@ import {
   Plus,
   Wallet
 } from "lucide-react"
-import { type Supplier } from "@/lib/api"
+import { type Supplier, getPurchases, type Purchase } from "@/lib/api"
 import { SupplierInvoiceModal } from "@/components/supplier-invoice-modal"
 import { AccruedExpenseModal } from "@/components/accrued-expense-modal"
 import { AccruedLiabilityModal } from "@/components/accrued-liability-modal"
@@ -41,43 +41,6 @@ interface SupplierDetailModalProps {
   onEdit?: () => void
   onRefresh?: () => void
 }
-
-// Datos hardcodeados para visualización
-const mockPurchaseOrders = [
-  {
-    id: 1,
-    purchase_number: "OC-2024-001",
-    date: "2024-01-15",
-    status: "pending",
-    debt_type: "compromiso",
-    total_amount: 150000.00,
-    commitment_amount: 150000.00,
-    debt_amount: 0.00,
-    items_count: 5
-  },
-  {
-    id: 2,
-    purchase_number: "OC-2024-002",
-    date: "2024-01-20",
-    status: "received",
-    debt_type: "deuda_directa",
-    total_amount: 250000.00,
-    commitment_amount: 0.00,
-    debt_amount: 250000.00,
-    items_count: 8
-  },
-  {
-    id: 3,
-    purchase_number: "OC-2024-003",
-    date: "2024-01-25",
-    status: "pending",
-    debt_type: "compromiso",
-    total_amount: 85000.00,
-    commitment_amount: 85000.00,
-    debt_amount: 0.00,
-    items_count: 3
-  }
-]
 
 const mockInvoices = [
   {
@@ -190,10 +153,50 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false)
   const [isAccruedExpenseModalOpen, setIsAccruedExpenseModalOpen] = useState(false)
   const [isAccruedLiabilityModalOpen, setIsAccruedLiabilityModalOpen] = useState(false)
+  const [supplierPurchases, setSupplierPurchases] = useState<Purchase[]>([])
+  const [loadingPurchases, setLoadingPurchases] = useState(false)
 
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
+
+  useEffect(() => {
+    if (!isOpen || !supplier) {
+      setSupplierPurchases([])
+      return
+    }
+    let cancelled = false
+    setLoadingPurchases(true)
+    getPurchases({ supplier_id: supplier.id, all: true })
+      .then((res) => {
+        if (cancelled) return
+        if (res.success && Array.isArray(res.data?.purchases)) {
+          setSupplierPurchases(res.data.purchases)
+        } else {
+          setSupplierPurchases([])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSupplierPurchases([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPurchases(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, supplier?.id])
+
+  const ocStats = useMemo(() => {
+    const count = supplierPurchases.length
+    const total = supplierPurchases.reduce((s, p) => s + (Number(p.total_amount) || 0), 0)
+    const commitment = supplierPurchases.reduce((s, p) => s + (Number(p.commitment_amount) || 0), 0)
+    const debt = supplierPurchases.reduce((s, p) => s + (Number(p.debt_amount) || 0), 0)
+    const pending = supplierPurchases
+      .filter((p) => p.status === "pending")
+      .reduce((s, p) => s + (Number(p.total_amount) || 0), 0)
+    return { count, total, commitment, debt, pending }
+  }, [supplierPurchases])
 
   if (!supplier) return null
 
@@ -226,11 +229,21 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
-  const getDebtTypeBadge = (debtType: string) => {
+  const getDebtTypeBadge = (debtType?: string | null) => {
+    if (!debtType) {
+      return (
+        <Badge variant="outline" className="text-muted-foreground">
+          Sin tipo
+        </Badge>
+      )
+    }
     if (debtType === "compromiso") {
       return <Badge className="bg-blue-500 hover:bg-blue-600 text-white">Compromiso</Badge>
     }
-    return <Badge className="bg-orange-500 hover:bg-orange-600 text-white">Deuda Directa</Badge>
+    if (debtType === "deuda_directa") {
+      return <Badge className="bg-orange-500 hover:bg-orange-600 text-white">Deuda Directa</Badge>
+    }
+    return <Badge variant="outline">{debtType}</Badge>
   }
 
   // Calcular resumen de cuenta corriente
@@ -326,9 +339,9 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                     <ShoppingCart className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                    <div className="text-2xl font-bold">{mockPurchaseOrders.length}</div>
+                    <div className="text-2xl font-bold">{ocStats.count}</div>
                 <p className="text-xs text-muted-foreground">
-                      {formatCurrency(mockPurchaseOrders.reduce((sum, oc) => sum + oc.total_amount, 0))}
+                      {formatCurrency(ocStats.total)}
                 </p>
               </CardContent>
             </Card>
@@ -340,9 +353,9 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
               </CardHeader>
               <CardContent>
                     <div className="text-2xl font-bold text-blue-600">
-                      {formatCurrency(totalCommitment)}
+                      {formatCurrency(ocStats.commitment)}
                     </div>
-                    <p className="text-xs text-muted-foreground">En compromiso</p>
+                    <p className="text-xs text-muted-foreground">En compromiso (OC)</p>
               </CardContent>
             </Card>
 
@@ -353,22 +366,22 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
               </CardHeader>
               <CardContent>
                     <div className="text-2xl font-bold text-orange-600">
-                      {formatCurrency(totalDebt)}
+                      {formatCurrency(ocStats.debt)}
                     </div>
-                    <p className="text-xs text-muted-foreground">Deuda real</p>
+                    <p className="text-xs text-muted-foreground">Deuda en OC</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Balance</CardTitle>
+                    <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
                     <CreditCard className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                     <div className="text-2xl font-bold">
-                      {formatCurrency(currentBalance)}
+                      {formatCurrency(ocStats.pending)}
                     </div>
-                    <p className="text-xs text-muted-foreground">Saldo actual</p>
+                    <p className="text-xs text-muted-foreground">Monto en OC con estado pendiente</p>
               </CardContent>
             </Card>
           </div>
@@ -446,32 +459,50 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockPurchaseOrders.map((oc) => (
-                        <TableRow key={oc.id}>
-                          <TableCell className="font-medium">{oc.purchase_number}</TableCell>
-                          <TableCell>{formatDate(oc.date)}</TableCell>
-                          <TableCell>{getDebtTypeBadge(oc.debt_type)}</TableCell>
-                          <TableCell>
-                            {oc.commitment_amount > 0 ? (
-                              <span className="text-blue-600 font-medium">
-                                {formatCurrency(oc.commitment_amount)}
-                              </span>
-                            ) : '-'}
+                      {loadingPurchases ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            Cargando órdenes de compra…
                           </TableCell>
-                          <TableCell>
-                            {oc.debt_amount > 0 ? (
-                              <span className="text-orange-600 font-medium">
-                                {formatCurrency(oc.debt_amount)}
-                              </span>
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            {formatCurrency(oc.total_amount)}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(oc.status)}</TableCell>
-                          <TableCell>{oc.items_count} items</TableCell>
                         </TableRow>
-                      ))}
+                      ) : supplierPurchases.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            Sin órdenes de compra para este proveedor.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        supplierPurchases.map((oc) => (
+                          <TableRow key={oc.id}>
+                            <TableCell className="font-medium">{oc.purchase_number}</TableCell>
+                            <TableCell>{formatDate(oc.purchase_date)}</TableCell>
+                            <TableCell>{getDebtTypeBadge(oc.debt_type)}</TableCell>
+                            <TableCell>
+                              {(Number(oc.commitment_amount) || 0) > 0 ? (
+                                <span className="text-blue-600 font-medium">
+                                  {formatCurrency(Number(oc.commitment_amount))}
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {(Number(oc.debt_amount) || 0) > 0 ? (
+                                <span className="text-orange-600 font-medium">
+                                  {formatCurrency(Number(oc.debt_amount))}
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                            <TableCell className="font-semibold">
+                              {formatCurrency(Number(oc.total_amount) || 0)}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(oc.status)}</TableCell>
+                            <TableCell className="text-muted-foreground">—</TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </CardContent>
