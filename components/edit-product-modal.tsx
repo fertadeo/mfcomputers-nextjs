@@ -21,6 +21,12 @@ import { getAllProductImages } from "@/lib/product-image-utils"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { useToast } from "@/contexts/ToastContext"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
+import {
+  getProductListDestination,
+  buildDestinationExplanation,
+  type ProductListTabKey,
+} from "@/lib/product-list-destination"
+import { ProductSaveConfirmDialog } from "@/components/product-save-confirm-dialog"
 
 interface EditProductModalProps {
   product: Product | null
@@ -65,6 +71,12 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const reorderGridRef = useRef<HTMLDivElement>(null)
   const dragPreviewRef = useRef<HTMLElement | null>(null)
   const submitBottomRef = useRef<HTMLDivElement>(null)
+  const saveRunnerRef = useRef<(() => Promise<void>) | null>(null)
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false)
+  const [saveConfirmDestination, setSaveConfirmDestination] =
+    useState<ProductListTabKey>("published")
+  const [saveConfirmName, setSaveConfirmName] = useState("")
+  const [saveConfirmLines, setSaveConfirmLines] = useState<string[]>([])
 
   const [formData, setFormData] = useState<FormData>({
     code: "",
@@ -371,7 +383,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     return null
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!product) return
     const validationError = validateForm()
@@ -380,21 +392,45 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       return
     }
 
-    setLoading(true)
+    const stock = parseInt(formData.stock) || 0
+    const allowBackorders = formData.allow_backorders === "1"
+    const isActive =
+      stock > 0
+        ? formData.is_active === "1"
+        : allowBackorders
+          ? true
+          : formData.is_active === "1"
 
-    try {
-      const STEP_VIEW_MS = 650
-      const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
-      const setStep = async (msg: string, ms: number = STEP_VIEW_MS) => {
-        setSubmitStep(msg)
-        await wait(ms)
-      }
+    const destination = getProductListDestination({
+      is_active: isActive,
+      stock,
+      allow_backorders: allowBackorders,
+    })
+    const previousDestination = getProductListDestination({
+      is_active: product.is_active ?? true,
+      stock: product.stock ?? 0,
+      allow_backorders: product.allow_backorders,
+    })
+    const explanationLines = buildDestinationExplanation({
+      destination,
+      stock,
+      allow_backorders: allowBackorders,
+      sync_to_woocommerce: syncToWooCommerce,
+      previousDestination,
+    })
 
-      const stock = parseInt(formData.stock) || 0
-      const allowBackorders = formData.allow_backorders === "1"
-      // Con stock > 0: respetar estado elegido. Con stock 0 y reserva: siempre activo para que no pase a borrador en WooCommerce
-      const isActive = stock > 0 ? formData.is_active === "1" : (allowBackorders ? true : formData.is_active === "1")
-      const nextPrice = parsePrecioFormato(formData.price)
+    saveRunnerRef.current = async () => {
+      setLoading(true)
+
+      try {
+        const STEP_VIEW_MS = 650
+        const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+        const setStep = async (msg: string, ms: number = STEP_VIEW_MS) => {
+          setSubmitStep(msg)
+          await wait(ms)
+        }
+
+        const nextPrice = parsePrecioFormato(formData.price)
       const nextMinStock = parseInt(formData.min_stock) || 0
       const nextMaxStock = parseInt(formData.max_stock) || 1000
       const nextCategoryId = formData.category_id ? parseInt(formData.category_id) : null
@@ -507,16 +543,34 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       showToast({ message: "Producto actualizado correctamente.", type: "success" })
       onSuccess(updated)
       onClose()
-    } catch (err) {
-      console.error("Error al actualizar producto:", err)
-      showToast({
-        message: err instanceof Error ? err.message : "Error al actualizar el producto",
-        type: "error",
-      })
-    } finally {
-      setSubmitStep(null)
-      setLoading(false)
+      } catch (err) {
+        console.error("Error al actualizar producto:", err)
+        showToast({
+          message: err instanceof Error ? err.message : "Error al actualizar el producto",
+          type: "error",
+        })
+      } finally {
+        setSubmitStep(null)
+        setLoading(false)
+      }
     }
+
+    setSaveConfirmDestination(destination)
+    setSaveConfirmName(formData.name.trim())
+    setSaveConfirmLines(explanationLines)
+    setSaveConfirmOpen(true)
+  }
+
+  const handleConfirmSave = () => {
+    setSaveConfirmOpen(false)
+    const run = saveRunnerRef.current
+    saveRunnerRef.current = null
+    void run?.()
+  }
+
+  const handleCancelSaveConfirm = () => {
+    setSaveConfirmOpen(false)
+    saveRunnerRef.current = null
   }
 
   const handleClose = () => {
@@ -1076,6 +1130,14 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       </DialogContent>
     </Dialog>
     {confirmDialog}
+    <ProductSaveConfirmDialog
+      open={saveConfirmOpen}
+      productName={saveConfirmName}
+      destination={saveConfirmDestination}
+      explanationLines={saveConfirmLines}
+      onConfirm={handleConfirmSave}
+      onCancel={handleCancelSaveConfirm}
+    />
     </>
   )
 }

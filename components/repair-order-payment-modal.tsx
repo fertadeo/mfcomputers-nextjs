@@ -21,6 +21,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { createRepairOrderPayment, type CreateRepairOrderPaymentBody } from "@/lib/api"
+import {
+  formatCurrencyIntegerInput,
+  parseCurrencyIntegerDigits,
+} from "@/lib/currency-input"
 import { DollarSign, Loader2 } from "lucide-react"
 
 interface RepairOrderPaymentModalProps {
@@ -54,8 +58,8 @@ export function RepairOrderPaymentModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const num = parseFloat(amount.replace(",", "."))
-    if (isNaN(num) || num <= 0) {
+    const num = parseCurrencyIntegerDigits(amount)
+    if (num <= 0) {
       setError("Ingresá un monto mayor a 0")
       return
     }
@@ -103,10 +107,13 @@ export function RepairOrderPaymentModal({
             <Label>Monto ($)</Label>
             <Input
               type="text"
-              inputMode="decimal"
-              placeholder="0"
+              inputMode="numeric"
+              placeholder="Ej: 150000"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                const n = parseCurrencyIntegerDigits(e.target.value)
+                setAmount(n > 0 ? formatCurrencyIntegerInput(n) : "")
+              }}
             />
           </div>
           <div className="space-y-2">

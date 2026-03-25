@@ -27,6 +27,8 @@ import { Wrench, Loader2, Search, UserPlus, Package, Plus, Trash2, ArrowLeft } f
 import Image from "next/image"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { NewClientModal } from "@/components/new-client-modal"
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/currency-input"
+import { cn } from "@/lib/utils"
 
 interface NewRepairOrderModalProps {
   isOpen: boolean
@@ -62,7 +64,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     work_description: "",
     reception_date: today(),
     delivery_date_estimated: "",
-    labor_amount: "",
+    labor_amount: 0,
     notes: "",
   })
   const [loading, setLoading] = useState(false)
@@ -76,7 +78,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const [productSearchQuery, setProductSearchQuery] = useState("")
   const [newItemProductId, setNewItemProductId] = useState<number | "">("")
   const [newItemQuantity, setNewItemQuantity] = useState("1")
-  const [newItemUnitPrice, setNewItemUnitPrice] = useState("")
+  const [newItemUnitPrice, setNewItemUnitPrice] = useState("") // valor formateado para display
   const [step, setStep] = useState<1 | 2>(1)
   const pendingItemsTotal = useMemo(
     () => pendingItems.reduce((acc, item) => acc + item.quantity * item.unit_price, 0),
@@ -120,32 +122,53 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     return () => clearTimeout(t)
   }, [isOpen, clientSearchQuery, selectedClientPreview])
 
-  // Cargar productos al abrir el modal
+  // Cargar todos los productos al abrir (paginando la API hasta completar)
   useEffect(() => {
     if (!isOpen) return
+    let cancelled = false
     setLoadingProducts(true)
-    getProducts(1, 200)
-      .then((res) => {
-        const list = Array.isArray(res) ? res : (res as { products: Product[] }).products || []
-        setProducts(list)
-      })
-      .catch(() => setProducts([]))
-      .finally(() => setLoadingProducts(false))
+    const PAGE_SIZE = 500
+    ;(async () => {
+      const all: Product[] = []
+      try {
+        let page = 1
+        for (;;) {
+          const res = await getProducts(page, PAGE_SIZE)
+          const list = Array.isArray(res) ? res : (res as { products: Product[] }).products || []
+          if (list.length === 0) break
+          all.push(...list)
+          const pag =
+            !Array.isArray(res) && res && typeof res === "object" && "pagination" in res
+              ? (res as { pagination: { totalPages?: number; page?: number } }).pagination
+              : null
+          const totalPages = Math.max(1, pag?.totalPages ?? 1)
+          if (list.length < PAGE_SIZE || page >= totalPages) break
+          page += 1
+          if (page > 200) break // límite de seguridad
+        }
+        if (!cancelled) setProducts(all)
+      } catch {
+        if (!cancelled) setProducts([])
+      } finally {
+        if (!cancelled) setLoadingProducts(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [isOpen])
 
   const selectedProduct = products.find((p) => p.id === newItemProductId)
 
-  // Filtrar productos por búsqueda (nombre o código)
+  // Filtrar productos por búsqueda (nombre o código); sin tope — se muestran todos los cargados
   const filteredProducts = useMemo(() => {
     const q = productSearchQuery.trim().toLowerCase()
-    if (q.length < 1) return products.slice(0, 30)
-    return products
-      .filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          (p.code && p.code.toLowerCase().includes(q))
-      )
-      .slice(0, 30)
+    if (q.length < 1) return products
+    return products.filter(
+      (p) =>
+        p.name?.toLowerCase().includes(q) ||
+        (p.code && p.code.toLowerCase().includes(q))
+    )
   }, [products, productSearchQuery])
 
   // Al abrir el modal, resetear formulario y búsqueda (fecha de recepción = hoy)
@@ -159,7 +182,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       work_description: "",
       reception_date: today(),
       delivery_date_estimated: "",
-      labor_amount: "",
+      labor_amount: 0,
       notes: "",
     }))
     setClientSearchQuery("")
@@ -195,8 +218,8 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const addPendingItem = () => {
     if (!selectedProduct || !newItemQuantity || !newItemUnitPrice) return
     const q = parseInt(newItemQuantity, 10)
-    const price = parseFloat(newItemUnitPrice.replace(",", "."))
-    if (isNaN(q) || q < 1 || isNaN(price) || price < 0) return
+    const price = parseCurrencyInput(newItemUnitPrice)
+    if (isNaN(q) || q < 1 || price < 0) return
     setPendingItems((prev) => [
       ...prev,
       {
@@ -215,7 +238,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const selectProductForItem = (p: Product) => {
     setNewItemProductId(p.id)
     setProductSearchQuery(p.name)
-    if (!newItemUnitPrice || newItemUnitPrice === "0") setNewItemUnitPrice(String(p.price ?? 0))
+    if (!newItemUnitPrice || parseCurrencyInput(newItemUnitPrice) === 0) setNewItemUnitPrice(formatCurrencyInput(Number(p.price ?? 0)))
   }
 
   const clearProductSelection = () => {
@@ -268,7 +291,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       if (formData.diagnosis.trim()) body.diagnosis = formData.diagnosis.trim()
       if (formData.work_description.trim()) body.work_description = formData.work_description.trim()
       if (formData.delivery_date_estimated.trim()) body.delivery_date_estimated = formData.delivery_date_estimated
-      const labor = parseFloat(formData.labor_amount.replace(",", "."))
+      const labor = typeof formData.labor_amount === "number" ? formData.labor_amount : parseCurrencyInput(String(formData.labor_amount))
       if (!Number.isNaN(labor) && labor > 0) body.labor_amount = labor
       if (formData.notes.trim()) body.notes = formData.notes.trim()
 
@@ -294,7 +317,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
         work_description: "",
         reception_date: "",
         delivery_date_estimated: "",
-        labor_amount: "",
+        labor_amount: 0,
         notes: "",
       }))
       setClientSearchQuery("")
@@ -321,7 +344,14 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className={cn(
+          "overflow-y-auto",
+          step === 2
+            ? "max-w-[min(1200px,calc(100vw-1.5rem))] w-[calc(100vw-1.5rem)] sm:max-w-[min(1200px,calc(100vw-2rem))] max-h-[min(92vh,920px)] gap-3 p-4 sm:p-6"
+            : "max-w-2xl max-h-[90vh]"
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5" />
@@ -529,9 +559,14 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                 id="labor_amount"
                 type="text"
                 inputMode="decimal"
-                placeholder="0"
-                value={formData.labor_amount}
-                onChange={(e) => setFormData((prev) => ({ ...prev, labor_amount: e.target.value }))}
+                placeholder="$0,00"
+                value={formatCurrencyInput(formData.labor_amount)}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    labor_amount: parseCurrencyInput(e.target.value),
+                  }))
+                }
               />
             </div>
           </div>
@@ -591,8 +626,8 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
               <ArrowLeft className="h-4 w-4 mr-1" /> Volver al resumen (Paso 1)
             </Button>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-              <div className="space-y-3">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
+              <div className="space-y-3 min-h-0 flex flex-col">
                 <div className="space-y-2">
                   <Label className="text-sm">Buscar producto</Label>
                   <div className="relative">
@@ -625,15 +660,24 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
 
                 {!newItemProductId && (
                   <div className="rounded-md border bg-background overflow-hidden">
-                    <div className="px-3 py-2 text-xs text-muted-foreground border-b">
-                      {loadingProducts
-                        ? "Cargando productos..."
-                        : filteredProducts.length > 0
-                        ? "Seleccioná un producto de la lista"
-                        : "Sin resultados para la búsqueda actual"}
+                    <div className="px-3 py-2 text-xs text-muted-foreground border-b space-y-0.5">
+                      {loadingProducts ? (
+                        "Cargando productos..."
+                      ) : filteredProducts.length > 0 ? (
+                        <>
+                          <span className="font-medium text-foreground">
+                            {filteredProducts.length} producto{filteredProducts.length !== 1 ? "s" : ""}
+                          </span>
+                          <span className="block">
+                            Seleccioná uno o usá la búsqueda para acotar la lista.
+                          </span>
+                        </>
+                      ) : (
+                        "Sin resultados para la búsqueda actual"
+                      )}
                     </div>
                     {filteredProducts.length > 0 && (
-                      <ul className="max-h-72 overflow-y-auto divide-y">
+                      <ul className="max-h-[min(58vh,580px)] min-h-[220px] overflow-y-auto divide-y overscroll-contain">
                         {filteredProducts.map((p) => (
                           <li key={p.id}>
                             <button
@@ -706,9 +750,12 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                       <Input
                         type="text"
                         inputMode="decimal"
-                        placeholder="0"
+                        placeholder="$0,00"
                         value={newItemUnitPrice}
-                        onChange={(e) => setNewItemUnitPrice(e.target.value)}
+                        onChange={(e) => {
+                          const v = parseCurrencyInput(e.target.value)
+                          setNewItemUnitPrice(v > 0 || e.target.value.trim() ? formatCurrencyInput(v) : "")
+                        }}
                       />
                     </div>
                   </div>
@@ -734,7 +781,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                       Aun no agregaste materiales.
                     </div>
                   ) : (
-                    <div className="max-h-72 overflow-auto">
+                    <div className="max-h-[min(42vh,420px)] overflow-auto overscroll-contain">
                       <Table>
                         <TableHeader>
                           <TableRow>

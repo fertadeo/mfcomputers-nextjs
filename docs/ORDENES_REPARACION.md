@@ -117,6 +117,8 @@ El **POST** actual del cliente envía solo cobros positivos (`CreateRepairOrderP
 
 Base path asumido: `repair-orders` (como en `getApiUrl()` + `repair-orders`).
 
+**Autenticación en el cliente (`lib/api.ts`):** todas las llamadas a `repair-orders` (incluido `POST …/payments`) usan la misma función **`getRepairOrderHeaders()`**: si el usuario tiene sesión, `Authorization: Bearer <JWT>`; si no hay JWT, `x-api-key`. Así el registro de pagos envía **los mismos headers** que el listado de reparaciones, alineado con el backend (`authenticateJWT` vs api-key).
+
 ### 5.1 Orden
 
 | Método | Ruta | Uso |

@@ -5847,13 +5847,35 @@ export interface ApiResponseRepair<T = unknown> {
   timestamp: string
 }
 
-function getRepairOrderHeaders(): HeadersInit {
-  const h: HeadersInit = { ...getAuthHeaders() }
-  if (typeof window !== 'undefined') {
-    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
-    if (apiKey) (h as Record<string, string>)['x-api-key'] = apiKey
+/**
+ * Headers para **todas** las rutas `repair-orders` (listado, detalle, POST payments, etc.).
+ * Debe ser idéntico en cada `fetch` para que el backend aplique la misma auth:
+ * - `Authorization: Bearer <JWT>` si hay token (misma lógica que el listado).
+ * - Si no hay JWT, `x-api-key` (integraciones / POS).
+ * No mezclar Bearer + x-api-key: una api-key inválida puede hacer que el servidor ignore el JWT.
+ */
+export function getRepairOrderHeaders(): HeadersInit {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
   }
-  return h
+
+  if (typeof window === 'undefined') {
+    return headers
+  }
+
+  const token =
+    (localStorage.getItem('accessToken') || localStorage.getItem('token') || '').trim()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+    return headers
+  }
+
+  const apiKey = (localStorage.getItem('posApiKey') || localStorage.getItem('apiKey') || '').trim()
+  if (apiKey) {
+    headers['x-api-key'] = apiKey
+  }
+
+  return headers
 }
 
 export async function getRepairOrders(
@@ -6157,6 +6179,7 @@ export async function createRepairOrderPayment(
   body: CreateRepairOrderPaymentBody
 ): Promise<ApiResponseRepair<RepairOrderPayment>> {
   const apiUrl = getApiUrl()
+  // Mismos headers que getRepairOrders / GET …/payments (sin opciones extra que difieran del listado)
   const res = await fetch(`${apiUrl}repair-orders/${id}/payments`, {
     method: 'POST',
     headers: getRepairOrderHeaders(),

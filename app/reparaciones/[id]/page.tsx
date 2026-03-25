@@ -38,6 +38,7 @@ import {
 import { RepairOrderAddItemModal } from "@/components/repair-order-add-item-modal"
 import { RepairOrderPaymentModal } from "@/components/repair-order-payment-modal"
 import { RepairOrderAcceptanceDocumentModal } from "@/components/repair-order-acceptance-document-modal"
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/currency-input"
 import {
   ArrowLeft,
   Wrench,
@@ -139,7 +140,7 @@ export default function RepairOrderDetailPage() {
     work_description: "",
     reception_date: "",
     delivery_date_estimated: "",
-    labor_amount: "",
+    labor_amount: 0,
     notes: "",
   })
   const [saving, setSaving] = useState(false)
@@ -157,7 +158,7 @@ export default function RepairOrderDetailPage() {
         work_description: data.work_description || "",
         reception_date: data.reception_date?.slice(0, 10) || "",
         delivery_date_estimated: data.delivery_date_estimated?.slice(0, 10) || "",
-        labor_amount: data.labor_amount || "0",
+        labor_amount: parseFloat(String(data.labor_amount || "0")) || 0,
         notes: data.notes || "",
       })
     } catch (e: unknown) {
@@ -256,7 +257,7 @@ export default function RepairOrderDetailPage() {
     if (!id || !order) return
     setSaving(true)
     try {
-      const labor = parseFloat(editForm.labor_amount.replace(",", "."))
+      const labor = typeof editForm.labor_amount === "number" ? editForm.labor_amount : parseCurrencyInput(String(editForm.labor_amount))
       await updateRepairOrder(id, {
         equipment_description: editForm.equipment_description,
         diagnosis: editForm.diagnosis || undefined,
@@ -434,9 +435,15 @@ export default function RepairOrderDetailPage() {
                     <div>
                       <Label>Mano de obra ($)</Label>
                       <Input
-                        value={editForm.labor_amount}
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="$0,00"
+                        value={formatCurrencyInput(editForm.labor_amount)}
                         onChange={(e) =>
-                          setEditForm((p) => ({ ...p, labor_amount: e.target.value }))
+                          setEditForm((p) => ({
+                            ...p,
+                            labor_amount: parseCurrencyInput(e.target.value),
+                          }))
                         }
                       />
                     </div>

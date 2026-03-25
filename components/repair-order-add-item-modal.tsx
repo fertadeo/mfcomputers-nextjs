@@ -23,6 +23,7 @@ import {
 import { getProducts } from "@/lib/api"
 import { addRepairOrderItem } from "@/lib/api"
 import type { Product } from "@/lib/api"
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/currency-input"
 import { Package, Loader2 } from "lucide-react"
 
 interface RepairOrderAddItemModalProps {
@@ -67,7 +68,8 @@ export function RepairOrderAddItemModal({
 
   useEffect(() => {
     if (selectedProduct != null) {
-      if (!unitPrice || unitPrice === "0") setUnitPrice(String(selectedProduct.price ?? 0))
+      const p = Number(selectedProduct.price ?? 0)
+      if (!unitPrice || parseCurrencyInput(unitPrice) === 0) setUnitPrice(formatCurrencyInput(p))
     }
   }, [selectedProduct?.id])
 
@@ -78,8 +80,8 @@ export function RepairOrderAddItemModal({
       return
     }
     const q = parseInt(quantity, 10)
-    const price = parseFloat(unitPrice.replace(",", "."))
-    if (isNaN(q) || q < 1 || isNaN(price) || price < 0) {
+    const price = parseCurrencyInput(unitPrice)
+    if (isNaN(q) || q < 1 || price < 0) {
       setError("Cantidad debe ser ≥ 1 y precio ≥ 0")
       return
     }
@@ -157,8 +159,12 @@ export function RepairOrderAddItemModal({
               <Input
                 type="text"
                 inputMode="decimal"
+                placeholder="$0,00"
                 value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
+                onChange={(e) => {
+                  const v = parseCurrencyInput(e.target.value)
+                  setUnitPrice(v > 0 || e.target.value.trim() ? formatCurrencyInput(v) : "")
+                }}
               />
             </div>
           </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useLayoutEffect, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { useRouter, usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,14 @@ import {
   LogOut,
 } from "lucide-react"
 
+const SIDEBAR_NAV_SCROLL_KEY = "erp-sidebar-nav-scroll"
+
+function itemMatchesPath(href: string, path: string): boolean {
+  if (path === href) return true
+  if (href !== "/" && path.startsWith(`${href}/`)) return true
+  return false
+}
+
 interface ERPSidebarProps {
   activeItem?: string
   onItemClick?: (itemId: string) => void
@@ -31,9 +39,67 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
   const { getCurrentRole, getCurrentRoleLabel } = useRole()
   const router = useRouter()
   const pathname = usePathname()
+  const navRef = useRef<HTMLElement>(null)
+  const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Filtrar grupos del menú según el rol del usuario
   const filteredGroups = filterMenuGroupsByRole(MENU_GROUPS, getCurrentRole())
+
+  /** Al cambiar de ruta, abrir el grupo que contiene la página actual (evita ítem activo colapsado). */
+  useLayoutEffect(() => {
+    setCollapsedGroups((prev) => {
+      let next: Set<string> | null = null
+      for (const g of filteredGroups) {
+        const hasActive = g.items.some((it) => itemMatchesPath(it.href, pathname))
+        if (hasActive && prev.has(g.id)) {
+          if (!next) next = new Set(prev)
+          next.delete(g.id)
+        }
+      }
+      return next ?? prev
+    })
+  }, [pathname, filteredGroups])
+
+  /** Tras pintar (y tras expandir grupos), llevar el ítem activo al área visible del scroll del nav. */
+  useEffect(() => {
+    if (isCollapsed) return
+    let cancelled = false
+    const run = () => {
+      if (cancelled) return
+      const nav = navRef.current
+      if (!nav) return
+      const active = nav.querySelector<HTMLElement>("[data-sidebar-active=\"true\"]")
+      active?.scrollIntoView({ block: "nearest", inline: "nearest" })
+      sessionStorage.setItem(SIDEBAR_NAV_SCROLL_KEY, String(nav.scrollTop))
+    }
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(run)
+    })
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(id)
+    }
+  }, [pathname, filteredGroups, isCollapsed, collapsedGroups])
+
+  /** Restaurar scroll del nav tras recarga completa (mismo valor que guardamos al navegar / hacer scroll). */
+  useLayoutEffect(() => {
+    if (isCollapsed) return
+    const nav = navRef.current
+    if (!nav) return
+    const raw = sessionStorage.getItem(SIDEBAR_NAV_SCROLL_KEY)
+    if (raw == null) return
+    const y = parseInt(raw, 10)
+    if (!Number.isNaN(y) && y > 0) nav.scrollTop = y
+  }, [isCollapsed])
+
+  const persistNavScroll = useCallback(() => {
+    const nav = navRef.current
+    if (!nav || isCollapsed) return
+    if (scrollSaveTimer.current) clearTimeout(scrollSaveTimer.current)
+    scrollSaveTimer.current = setTimeout(() => {
+      sessionStorage.setItem(SIDEBAR_NAV_SCROLL_KEY, String(nav.scrollTop))
+    }, 120)
+  }, [isCollapsed])
 
   const toggleGroup = (groupId: string) => {
     setCollapsedGroups(prev => {
@@ -130,6 +196,8 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
 
           {/* Navigation */}
           <nav
+            ref={navRef}
+            onScroll={persistNavScroll}
             className={cn(
               "flex-1 space-y-2 overflow-y-auto transition-all duration-300",
               isCollapsed
@@ -178,11 +246,12 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
                     <div className="space-y-1 ml-2">
                       {group.items.map((item) => {
                         const Icon = item.icon
-                        const isActive = pathname === item.href
+                        const isActive = itemMatchesPath(item.href, pathname)
 
                         return (
                           <Button
                             key={item.id}
+                            data-sidebar-active={isActive ? "true" : undefined}
                             variant={isActive ? "default" : "ghost"}
                             className={cn(
                               "w-full justify-start gap-3 h-9 transition-all duration-300 ease-in-out group relative overflow-hidden",

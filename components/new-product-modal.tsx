@@ -17,6 +17,12 @@ import { generateProductCodes } from "@/lib/product-codes"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { CategoryManagerPanel } from "@/components/category-manager-panel"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
+import {
+  getProductListDestination,
+  buildDestinationExplanation,
+  type ProductListTabKey,
+} from "@/lib/product-list-destination"
+import { ProductSaveConfirmDialog } from "@/components/product-save-confirm-dialog"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -65,7 +71,13 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reorderGridRef = useRef<HTMLDivElement>(null)
   const dragPreviewRef = useRef<HTMLElement | null>(null)
-  
+  const saveRunnerRef = useRef<(() => Promise<void>) | null>(null)
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false)
+  const [saveConfirmDestination, setSaveConfirmDestination] =
+    useState<ProductListTabKey>("published")
+  const [saveConfirmName, setSaveConfirmName] = useState("")
+  const [saveConfirmLines, setSaveConfirmLines] = useState<string[]>([])
+
   const [showCategoryManager, setShowCategoryManager] = useState(false)
 
   const [formData, setFormData] = useState<FormData>({
@@ -368,89 +380,116 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     e.dataTransfer.setDragImage(clone, rect.width / 2, rect.height / 2)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!validateForm()) return
 
-    setLoading(true)
-    setError(null)
+    const stock = parseInt(formData.stock) || 0
+    const allowBackorders = formData.allow_backorders === "1"
+    const isActive =
+      stock > 0
+        ? parseInt(formData.is_active) === 1
+        : allowBackorders
+          ? true
+          : parseInt(formData.is_active) === 1
 
-    try {
-      // Preparar datos para la API según los requisitos
-      // Campos requeridos: code, name, price
-      
-      // Lista final para WooCommerce: solo URLs (http/https) en el orden que ve el usuario.
-      // Incluye URLs externas y source_url de archivos subidos (POST woocommerce/media); IDs y URLs pueden convivir en sync.
-      const validImages = images.filter(
-        (img) =>
-          typeof img.url === "string" &&
-          (img.url.startsWith("http://") || img.url.startsWith("https://"))
-      )
-      const imageUrls: string[] = validImages.map((img) => img.url)
-      const woocommerceImageIds = validImages
-        .map((img) => img.woocommerceId)
-        .filter((id): id is number => id != null)
+    const destination = getProductListDestination({
+      is_active: isActive,
+      stock,
+      allow_backorders: allowBackorders,
+    })
+    const explanationLines = buildDestinationExplanation({
+      destination,
+      stock,
+      allow_backorders: allowBackorders,
+      sync_to_woocommerce: syncToWooCommerce,
+    })
 
-      const stock = parseInt(formData.stock) || 0
-      const allowBackorders = formData.allow_backorders === "1"
-      // Con stock > 0: respetar estado elegido. Con stock 0 y reserva: siempre activo para que no pase a borrador en WooCommerce
-      const isActive = stock > 0 ? parseInt(formData.is_active) === 1 : (allowBackorders ? true : parseInt(formData.is_active) === 1)
+    saveRunnerRef.current = async () => {
+      setLoading(true)
+      setError(null)
 
-      // Si no hay barcode o qr_code pero hay código, generarlos automáticamente
-      let finalBarcode = barcode
-      let finalQrCode = qrCode
-      if (formData.code.trim() && (!barcode || !qrCode)) {
-        const codes = generateProductCodes(formData.code.trim())
-        finalBarcode = codes.barcode
-        finalQrCode = codes.qr_code
+      try {
+        const validImages = images.filter(
+          (img) =>
+            typeof img.url === "string" &&
+            (img.url.startsWith("http://") || img.url.startsWith("https://"))
+        )
+        const imageUrls: string[] = validImages.map((img) => img.url)
+        const woocommerceImageIds = validImages
+          .map((img) => img.woocommerceId)
+          .filter((id): id is number => id != null)
+
+        let finalBarcode = barcode
+        let finalQrCode = qrCode
+        if (formData.code.trim() && (!barcode || !qrCode)) {
+          const codes = generateProductCodes(formData.code.trim())
+          finalBarcode = codes.barcode
+          finalQrCode = codes.qr_code
+        }
+
+        const weightVal = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+        const lengthVal = formData.length.trim() === "" ? null : parseFloat(formData.length)
+        const widthVal = formData.width.trim() === "" ? null : parseFloat(formData.width)
+        const heightVal = formData.height.trim() === "" ? null : parseFloat(formData.height)
+
+        const productData: CreateProductData = {
+          code: formData.code.trim(),
+          name: formData.name.trim(),
+          price: parseFloat(formData.price),
+          description: formData.description.trim() ? formData.description.trim() : null,
+          category_id: formData.category_id ? parseInt(formData.category_id) : null,
+          images: imageUrls.length > 0 ? imageUrls : null,
+          woocommerce_image_ids: woocommerceImageIds.length > 0 ? woocommerceImageIds : null,
+          stock: stock,
+          min_stock: parseInt(formData.min_stock) || 0,
+          max_stock: parseInt(formData.max_stock) || 1000,
+          is_active: isActive,
+          barcode: finalBarcode || null,
+          qr_code: finalQrCode || null,
+          sync_to_woocommerce: syncToWooCommerce,
+          weight: weightVal ?? undefined,
+          length: lengthVal ?? undefined,
+          width: widthVal ?? undefined,
+          height: heightVal ?? undefined,
+          allow_backorders: allowBackorders,
+        }
+
+        const responseData = await createProductNew(productData)
+        console.log("✅ [NEW PRODUCT] Producto creado exitosamente:", responseData)
+
+        setSuccess(true)
+        setTimeout(() => {
+          setSuccess(false)
+          onSuccess()
+          onClose()
+          resetForm()
+        }, 1500)
+      } catch (err) {
+        console.error("💥 [NEW PRODUCT] Error al crear producto:", err)
+        setError(err instanceof Error ? err.message : "Error desconocido al crear el producto")
+      } finally {
+        setLoading(false)
       }
-
-      const weightVal = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
-      const lengthVal = formData.length.trim() === "" ? null : parseFloat(formData.length)
-      const widthVal = formData.width.trim() === "" ? null : parseFloat(formData.width)
-      const heightVal = formData.height.trim() === "" ? null : parseFloat(formData.height)
-
-      const productData: CreateProductData = {
-        code: formData.code.trim(),
-        name: formData.name.trim(),
-        price: parseFloat(formData.price),
-        // Enviar NULL explícito para evitar undefined en el backend (SQL bind)
-        description: formData.description.trim() ? formData.description.trim() : null,
-        category_id: formData.category_id ? parseInt(formData.category_id) : null,
-        images: imageUrls.length > 0 ? imageUrls : null,
-        woocommerce_image_ids: woocommerceImageIds.length > 0 ? woocommerceImageIds : null,
-        stock: stock,
-        min_stock: parseInt(formData.min_stock) || 0,
-        max_stock: parseInt(formData.max_stock) || 1000,
-        is_active: isActive,
-        barcode: finalBarcode || null,
-        qr_code: finalQrCode || null,
-        sync_to_woocommerce: syncToWooCommerce,
-        weight: weightVal ?? undefined,
-        length: lengthVal ?? undefined,
-        width: widthVal ?? undefined,
-        height: heightVal ?? undefined,
-        allow_backorders: allowBackorders,
-      }
-
-      const responseData = await createProductNew(productData)
-      console.log('✅ [NEW PRODUCT] Producto creado exitosamente:', responseData)
-
-      setSuccess(true)
-      setTimeout(() => {
-        setSuccess(false)
-        onSuccess()
-        onClose()
-        resetForm()
-      }, 1500)
-
-    } catch (err) {
-      console.error('💥 [NEW PRODUCT] Error al crear producto:', err)
-      setError(err instanceof Error ? err.message : 'Error desconocido al crear el producto')
-    } finally {
-      setLoading(false)
     }
+
+    setSaveConfirmDestination(destination)
+    setSaveConfirmName(formData.name.trim())
+    setSaveConfirmLines(explanationLines)
+    setSaveConfirmOpen(true)
+  }
+
+  const handleConfirmSave = () => {
+    setSaveConfirmOpen(false)
+    const run = saveRunnerRef.current
+    saveRunnerRef.current = null
+    void run?.()
+  }
+
+  const handleCancelSaveConfirm = () => {
+    setSaveConfirmOpen(false)
+    saveRunnerRef.current = null
   }
 
   const resetForm = () => {
@@ -1234,6 +1273,14 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       </DialogContent>
     </Dialog>
     {confirmDialog}
+    <ProductSaveConfirmDialog
+      open={saveConfirmOpen}
+      productName={saveConfirmName}
+      destination={saveConfirmDestination}
+      explanationLines={saveConfirmLines}
+      onConfirm={handleConfirmSave}
+      onCancel={handleCancelSaveConfirm}
+    />
     </>
   )
 }

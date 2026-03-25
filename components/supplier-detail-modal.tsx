@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Separator } from "@/components/ui/separator"
 import { 
   Building2,
   ShoppingCart, 
@@ -21,11 +20,6 @@ import {
   Eye,
   CheckCircle,
   AlertCircle,
-  Clock,
-  Package,
-  Receipt,
-  ArrowRight,
-  Calendar,
   Plus,
   Wallet
 } from "lucide-react"
@@ -41,112 +35,6 @@ interface SupplierDetailModalProps {
   onEdit?: () => void
   onRefresh?: () => void
 }
-
-const mockInvoices = [
-  {
-    id: 1,
-    invoice_number: "FC-2024-001",
-    date: "2024-01-18",
-    due_date: "2024-02-18",
-    status: "paid",
-    total_amount: 150000.00,
-    purchase_id: 1,
-    purchase_number: "OC-2024-001",
-    items: [
-      { material_code: "MAT-001", description: "Motor Eléctrico 1HP", quantity: 10, unit_price: 15000.00 }
-    ]
-  },
-  {
-    id: 2,
-    invoice_number: "FC-2024-002",
-    date: "2024-01-22",
-    due_date: "2024-02-22",
-    status: "pending",
-    total_amount: 250000.00,
-    purchase_id: 2,
-    purchase_number: "OC-2024-002",
-    items: [
-      { material_code: "MAT-002", description: "Aspas Premium", quantity: 50, unit_price: 5000.00 }
-    ]
-  }
-]
-
-const mockDeliveryNotes = [
-  {
-    id: 1,
-    delivery_number: "REM-2024-001",
-    date: "2024-01-19",
-    purchase_id: 1,
-    purchase_number: "OC-2024-001",
-    invoice_id: 1,
-    invoice_number: "FC-2024-001",
-    status: "validated",
-    items_count: 5
-  },
-  {
-    id: 2,
-    delivery_number: "REM-2024-002",
-    date: "2024-01-23",
-    purchase_id: 2,
-    purchase_number: "OC-2024-002",
-    invoice_id: null,
-    invoice_number: null,
-    status: "pending",
-    items_count: 8
-  }
-]
-
-const mockAccountMovements = [
-  {
-    id: 1,
-    date: "2024-01-15",
-    type: "commitment",
-    description: "OC-2024-001 - Compromiso",
-    amount: 150000.00,
-    balance_after: 150000.00
-  },
-  {
-    id: 2,
-    date: "2024-01-18",
-    type: "debt",
-    description: "FC-2024-001 - Factura recibida",
-    amount: 150000.00,
-    balance_after: 300000.00
-  },
-  {
-    id: 3,
-    date: "2024-01-20",
-    type: "debt",
-    description: "OC-2024-002 - Deuda directa",
-    amount: 250000.00,
-    balance_after: 550000.00
-  },
-  {
-    id: 4,
-    date: "2024-01-25",
-    type: "payment",
-    description: "Pago FC-2024-001",
-    amount: -150000.00,
-    balance_after: 400000.00
-  }
-]
-
-const mockTraceability = [
-  {
-    oc: { number: "OC-2024-001", date: "2024-01-15", amount: 150000.00 },
-    invoice: { number: "FC-2024-001", date: "2024-01-18", amount: 150000.00 },
-    delivery_note: { number: "REM-2024-001", date: "2024-01-19" },
-    payment: { date: "2024-01-25", amount: 150000.00, status: "paid" },
-    status: "complete"
-  },
-  {
-    oc: { number: "OC-2024-002", date: "2024-01-20", amount: 250000.00 },
-    invoice: { number: "FC-2024-002", date: "2024-01-22", amount: 250000.00 },
-    delivery_note: { number: "REM-2024-002", date: "2024-01-23" },
-    payment: null,
-    status: "pending_payment"
-  }
-]
 
 export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefresh }: SupplierDetailModalProps) {
   const [activeTab, setActiveTab] = useState<string>("resumen")
@@ -246,17 +134,11 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
     return <Badge variant="outline">{debtType}</Badge>
   }
 
-  // Calcular resumen de cuenta corriente
-  const totalCommitment = mockAccountMovements
-    .filter(m => m.type === "commitment")
-    .reduce((sum, m) => sum + m.amount, 0)
-  const totalDebt = mockAccountMovements
-    .filter(m => m.type === "debt")
-    .reduce((sum, m) => sum + m.amount, 0)
-  const totalPayments = Math.abs(mockAccountMovements
-    .filter(m => m.type === "payment")
-    .reduce((sum, m) => sum + m.amount, 0))
-  const currentBalance = mockAccountMovements[mockAccountMovements.length - 1]?.balance_after || 0
+  // Resumen cuenta corriente: alineado a órdenes de compra reales; pagos/movimientos detallados pendientes de API
+  const totalCommitment = ocStats.commitment
+  const totalDebt = ocStats.debt
+  const totalPayments = 0
+  const currentBalance = ocStats.total
 
   return (
     <>
@@ -545,36 +427,12 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockInvoices.map((invoice) => (
-                        <TableRow key={invoice.id}>
-                          <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                          <TableCell>{formatDate(invoice.date)}</TableCell>
-                          <TableCell>{formatDate(invoice.due_date)}</TableCell>
-                          <TableCell>
-                            {invoice.purchase_number ? (
-                              <Badge variant="outline">{invoice.purchase_number}</Badge>
-                            ) : (
-                              isNoProductivo ? (
-                                <Badge variant="secondary" className="text-xs">Sin OC</Badge>
-                              ) : '-'
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              {invoice.items.map((item, idx) => (
-                                <div key={idx} className="text-sm">
-                                  <Badge variant="secondary" className="mr-1">{item.material_code}</Badge>
-                                  <span className="text-muted-foreground">{item.description}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            {formatCurrency(invoice.total_amount)}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                        </TableRow>
-                      ))}
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
+                          Sin facturas cargadas. Los datos provendrán del backend al integrar el listado de facturas del
+                          proveedor.
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </CardContent>
@@ -603,37 +461,11 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockDeliveryNotes.map((remito) => (
-                        <TableRow key={remito.id}>
-                          <TableCell className="font-medium">{remito.delivery_number}</TableCell>
-                          <TableCell>{formatDate(remito.date)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{remito.purchase_number}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            {remito.invoice_number ? (
-                              <Badge variant="outline">{remito.invoice_number}</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">Sin factura</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {remito.status === "validated" ? (
-                              <Badge className="bg-green-500">
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Coincide
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary">
-                                <Clock className="h-3 w-3 mr-1" />
-                                Pendiente
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{remito.items_count} items</TableCell>
-                          <TableCell>{getStatusBadge(remito.status)}</TableCell>
-                        </TableRow>
-                      ))}
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
+                          Sin remitos. Integrar remitos de entrega vinculados a este proveedor desde el backend.
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </CardContent>
@@ -662,59 +494,10 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {[
-                        {
-                          id: 1,
-                          concept: "Seguro de Responsabilidad Civil",
-                          category: "seguro",
-                          amount: 45000.00,
-                          accrual_date: "2024-01-01",
-                          due_date: "2024-12-31",
-                          status: "pending"
-                        },
-                        {
-                          id: 2,
-                          concept: "Alquiler Mensual - Enero",
-                          category: "alquiler",
-                          amount: 120000.00,
-                          accrual_date: "2024-01-01",
-                          due_date: "2024-01-31",
-                          status: "paid"
-                        }
-                      ].map((egreso) => (
-                        <Card key={egreso.id} className="border-l-4 border-l-blue-500">
-                          <CardContent className="pt-4">
-                            <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                                  <h4 className="font-semibold">{egreso.concept}</h4>
-                                  <Badge variant="outline">{egreso.category}</Badge>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">Devengamiento:</span>
-                                    <p className="font-medium">{formatDate(egreso.accrual_date)}</p>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Vencimiento:</span>
-                                    <p className="font-medium">{formatDate(egreso.due_date)}</p>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-2xl font-bold">{formatCurrency(egreso.amount)}</p>
-                                {egreso.status === "pending" ? (
-                                  <Badge variant="secondary" className="mt-2">Pendiente</Badge>
-                                ) : (
-                                  <Badge className="mt-2 bg-green-500">Pagado</Badge>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                    <p className="text-sm text-muted-foreground py-8 text-center">
+                      Sin egresos devengados registrados. Usá &quot;Nuevo Egreso&quot; o integrá el listado desde el
+                      backend.
+                    </p>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -754,57 +537,11 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {[
-                          {
-                            id: 1,
-                            liability_type: "impuesto",
-                            description: "IVA Mensual - Enero 2024",
-                            accrual_date: "2024-01-01",
-                            due_date: "2024-02-10",
-                            amount: 85000.00,
-                            status: "pending",
-                            treasury_account: "Caja General"
-                          },
-                          {
-                            id: 2,
-                            liability_type: "seguro",
-                            description: "Seguro de Incendio - Anual",
-                            accrual_date: "2024-01-01",
-                            due_date: "2024-12-31",
-                            amount: 125000.00,
-                            status: "partial",
-                            treasury_account: "Banco Nación"
-                          }
-                        ].map((pasivo) => (
-                          <TableRow key={pasivo.id}>
-                            <TableCell>
-                              <Badge variant="outline">{pasivo.liability_type}</Badge>
-                            </TableCell>
-                            <TableCell className="font-medium">{pasivo.description}</TableCell>
-                            <TableCell>{formatDate(pasivo.accrual_date)}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {formatDate(pasivo.due_date)}
-                                {new Date(pasivo.due_date) < new Date() && (
-                                  <Badge variant="destructive" className="text-xs">Vencido</Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-semibold">{formatCurrency(pasivo.amount)}</TableCell>
-                            <TableCell>
-                              {pasivo.status === "pending" ? (
-                                <Badge variant="secondary">Pendiente</Badge>
-                              ) : pasivo.status === "partial" ? (
-                                <Badge className="bg-yellow-500">Parcial</Badge>
-                              ) : (
-                                <Badge className="bg-green-500">Pagado</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{pasivo.treasury_account}</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
+                            Sin pasivos devengados. Usá &quot;Nuevo Pasivo&quot; o cargá los datos desde el backend.
+                          </TableCell>
+                        </TableRow>
                       </TableBody>
                     </Table>
                   </CardContent>
@@ -851,20 +588,22 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                     <div className="text-2xl font-bold text-green-600">
                       {formatCurrency(totalPayments)}
                     </div>
-                    <p className="text-xs text-muted-foreground">Total pagado</p>
+                    <p className="text-xs text-muted-foreground">
+                      Sin registro de pagos en esta vista (conectar API de pagos al proveedor)
+                    </p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Balance Total</CardTitle>
+                    <CardTitle className="text-sm font-medium">Total órdenes</CardTitle>
                     <CreditCard className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
                       {formatCurrency(currentBalance)}
                     </div>
-                    <p className="text-xs text-muted-foreground">Saldo actual</p>
+                    <p className="text-xs text-muted-foreground">Suma de totales de órdenes de compra</p>
                 </CardContent>
               </Card>
             </div>
@@ -887,29 +626,12 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                      {mockAccountMovements.map((movement) => (
-                        <TableRow key={movement.id}>
-                          <TableCell>{formatDate(movement.date)}</TableCell>
-                        <TableCell>
-                            {movement.type === "commitment" && (
-                              <Badge className="bg-blue-500">Compromiso</Badge>
-                            )}
-                            {movement.type === "debt" && (
-                              <Badge className="bg-orange-500">Deuda</Badge>
-                            )}
-                            {movement.type === "payment" && (
-                              <Badge className="bg-green-500">Pago</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>{movement.description}</TableCell>
-                          <TableCell className={movement.amount < 0 ? "text-green-600" : "text-red-600"}>
-                            {movement.amount < 0 ? "" : "+"}{formatCurrency(movement.amount)}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {formatCurrency(movement.balance_after)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
+                        Sin movimientos de cuenta corriente detallados. El resumen superior refleja montos de órdenes de
+                        compra; el historial completo requiere API de movimientos.
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </CardContent>
@@ -924,86 +646,10 @@ export function SupplierDetailModal({ supplier, isOpen, onClose, onEdit, onRefre
                   <CardDescription>Vista de flujo OC → Factura → Remito → Pago</CardDescription>
               </CardHeader>
               <CardContent>
-                  <div className="space-y-6">
-                    {mockTraceability.map((trace, idx) => (
-                      <Card key={idx} className="border-l-4 border-l-primary">
-                        <CardContent className="pt-6">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            {/* OC */}
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <ShoppingCart className="h-4 w-4 text-blue-500" />
-                                <span className="text-sm font-medium">Orden de Compra</span>
-                              </div>
-                              <p className="font-semibold">{trace.oc.number}</p>
-                              <p className="text-xs text-muted-foreground">{formatDate(trace.oc.date)}</p>
-                              <p className="text-sm font-medium">{formatCurrency(trace.oc.amount)}</p>
-                            </div>
-
-                            <div className="flex items-center justify-center">
-                              <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                            </div>
-
-                            {/* Factura */}
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-green-500" />
-                                <span className="text-sm font-medium">Factura</span>
-                              </div>
-                              <p className="font-semibold">{trace.invoice.number}</p>
-                              <p className="text-xs text-muted-foreground">{formatDate(trace.invoice.date)}</p>
-                              <p className="text-sm font-medium">{formatCurrency(trace.invoice.amount)}</p>
-                            </div>
-
-                            <div className="flex items-center justify-center">
-                              <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                            </div>
-
-                            {/* Remito */}
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <Truck className="h-4 w-4 text-purple-500" />
-                                <span className="text-sm font-medium">Remito</span>
-                              </div>
-                              <p className="font-semibold">{trace.delivery_note.number}</p>
-                              <p className="text-xs text-muted-foreground">{formatDate(trace.delivery_note.date)}</p>
-                            </div>
-
-                            {trace.payment && (
-                              <>
-                                <div className="flex items-center justify-center">
-                                  <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <Receipt className="h-4 w-4 text-orange-500" />
-                                    <span className="text-sm font-medium">Pago</span>
-                        </div>
-                                  <p className="text-xs text-muted-foreground">{formatDate(trace.payment.date)}</p>
-                                  <p className="text-sm font-medium">{formatCurrency(trace.payment.amount)}</p>
-                                  <Badge className={trace.payment.status === "paid" ? "bg-green-500" : "bg-yellow-500"}>
-                                    {trace.payment.status === "paid" ? "Pagado" : "Pendiente"}
-                                  </Badge>
-                      </div>
-                              </>
-                            )}
-                      </div>
-
-                          <Separator className="my-4" />
-
-                          <div className="flex items-center justify-between">
-                            <Badge variant={trace.status === "complete" ? "default" : "secondary"}>
-                              {trace.status === "complete" ? "Completo" : "Pago Pendiente"}
-                            </Badge>
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4 mr-2" />
-                              Ver Detalle
-                            </Button>
-                    </div>
-                        </CardContent>
-                      </Card>
-                  ))}
-                </div>
+                <p className="text-sm text-muted-foreground py-10 text-center">
+                  Sin cadena de trazabilidad (OC → factura → remito → pago). Mostrar aquí cuando el backend exponga el
+                  vínculo entre documentos.
+                </p>
               </CardContent>
             </Card>
             </TabsContent>
