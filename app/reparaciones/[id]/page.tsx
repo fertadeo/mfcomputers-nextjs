@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dialog"
 import {
   getRepairOrder,
+  getClienteById,
+  getProductById,
   updateRepairOrder,
   sendRepairOrderBudget,
   acceptRepairOrder,
@@ -32,6 +34,7 @@ import {
   deleteRepairOrderItem,
   REPAIR_ORDER_STATUS_LABELS,
   type RepairOrder,
+  type RepairOrderItem,
   type RepairOrderStatus,
   type RepairOrderPayment,
 } from "@/lib/api"
@@ -120,6 +123,55 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   transferencia: "Transferencia",
 }
 
+/** Completa cliente e ítems cuando la API solo envía IDs. */
+async function enrichRepairOrderForDisplay(data: RepairOrder): Promise<RepairOrder> {
+  let next: RepairOrder = { ...data }
+  try {
+    if (next.client_id && !next.client?.name) {
+      const c = await getClienteById(next.client_id)
+      next = {
+        ...next,
+        client: {
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          email: c.email,
+        },
+      }
+    }
+  } catch {
+    /* mantener datos sin nombre */
+  }
+  if (!next.items?.length) return next
+  const needProduct = next.items.some((i) => !i.product?.name)
+  if (!needProduct) return next
+  const pids = [...new Set(next.items.filter((i) => !i.product?.name).map((i) => i.product_id))]
+  const productMap: Record<number, NonNullable<RepairOrderItem["product"]>> = {}
+  await Promise.all(
+    pids.map(async (pid) => {
+      try {
+        const p = await getProductById(pid)
+        productMap[pid] = {
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          stock: p.stock,
+        }
+      } catch {
+        /* ignorar */
+      }
+    })
+  )
+  return {
+    ...next,
+    items: next.items.map((item) => {
+      if (item.product?.name) return item
+      const p = productMap[item.product_id]
+      return p ? { ...item, product: p } : item
+    }),
+  }
+}
+
 export default function RepairOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -151,15 +203,16 @@ export default function RepairOrderDetailPage() {
     try {
       const res = await getRepairOrder(id)
       const data = res.data as RepairOrder
-      setOrder(data)
+      const enriched = await enrichRepairOrderForDisplay(data)
+      setOrder(enriched)
       setEditForm({
-        equipment_description: data.equipment_description || "",
-        diagnosis: data.diagnosis || "",
-        work_description: data.work_description || "",
-        reception_date: data.reception_date?.slice(0, 10) || "",
-        delivery_date_estimated: data.delivery_date_estimated?.slice(0, 10) || "",
-        labor_amount: parseFloat(String(data.labor_amount || "0")) || 0,
-        notes: data.notes || "",
+        equipment_description: enriched.equipment_description || "",
+        diagnosis: enriched.diagnosis || "",
+        work_description: enriched.work_description || "",
+        reception_date: enriched.reception_date?.slice(0, 10) || "",
+        delivery_date_estimated: enriched.delivery_date_estimated?.slice(0, 10) || "",
+        labor_amount: parseFloat(String(enriched.labor_amount || "0")) || 0,
+        notes: enriched.notes || "",
       })
     } catch (e: unknown) {
       const err = e as { status?: number }

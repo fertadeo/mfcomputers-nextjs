@@ -13,8 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   getRepairOrders,
-  getRepairOrder,
   getRepairOrderStats,
+  getClienteById,
   REPAIR_ORDER_STATUS_LABELS,
   type RepairOrder,
   type RepairOrderStatus,
@@ -214,27 +214,32 @@ export default function ReparacionesPage() {
   }, [])
 
   useEffect(() => {
-    const missingClientOrderIds = orders
-      .filter(
-        (order) =>
-          (!order.client?.name && !clientNameById[order.client_id]) ||
-          (!order.client?.phone && !clientPhoneById[order.client_id])
-      )
-      .map((order) => order.id)
-    if (missingClientOrderIds.length === 0) return
+    const missingIds = [
+      ...new Set(
+        orders
+          .filter((o) => {
+            if (!o.client_id) return false
+            const needName = !o.client?.name && !clientNameById[o.client_id]
+            const needPhone = !o.client?.phone && !clientPhoneById[o.client_id]
+            return needName || needPhone
+          })
+          .map((o) => o.client_id)
+      ),
+    ]
+    if (missingIds.length === 0) return
 
     let active = true
-    Promise.allSettled(missingClientOrderIds.map((orderId) => getRepairOrder(orderId)))
+    Promise.allSettled(missingIds.map((cid) => getClienteById(cid)))
       .then((results) => {
         if (!active) return
         const nextNames: Record<number, string> = {}
         const nextPhones: Record<number, string> = {}
-        results.forEach((result) => {
+        results.forEach((result, i) => {
           if (result.status !== "fulfilled") return
-          const order = result.value?.data
-          if (!order?.client_id) return
-          if (order.client?.name) nextNames[order.client_id] = order.client.name
-          if (order.client?.phone) nextPhones[order.client_id] = order.client.phone
+          const c = result.value
+          const id = missingIds[i]
+          nextNames[id] = c.name
+          if (c.phone) nextPhones[id] = c.phone
         })
         if (Object.keys(nextNames).length > 0) {
           setClientNameById((prev) => ({ ...prev, ...nextNames }))
@@ -261,6 +266,7 @@ export default function ReparacionesPage() {
     const searchable = [
       order.repair_number,
       order.client?.name,
+      clientNameById[order.client_id],
       order.equipment_description,
       REPAIR_ORDER_STATUS_LABELS[order.status],
     ]

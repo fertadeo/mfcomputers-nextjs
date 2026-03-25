@@ -179,6 +179,35 @@ export async function getClientes(
   }
 }
 
+/**
+ * Obtiene un cliente por ID (GET /clients/:id).
+ */
+export async function getClienteById(id: number): Promise<Cliente> {
+  const apiUrl = getApiUrl()
+  const response = await fetch(`${apiUrl}clients/${id}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    let message = `Error al obtener cliente: ${response.status}`
+    try {
+      const parsed = JSON.parse(errorText) as { message?: string }
+      if (parsed?.message) message = parsed.message
+    } catch {
+      if (errorText && errorText.length < 200) message = errorText
+    }
+    throw new Error(message)
+  }
+
+  const json = (await response.json()) as ApiResponse<Cliente> | Cliente
+  if (typeof json === "object" && json !== null && "data" in json && json.data) {
+    return json.data as Cliente
+  }
+  return json as Cliente
+}
+
 // Función para obtener estadísticas de clientes
 export async function getClienteStats(): Promise<ClienteStats> {
   const apiUrl = getApiUrl();
