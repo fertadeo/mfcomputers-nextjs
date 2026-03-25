@@ -23,7 +23,7 @@ import {
 import { getProducts } from "@/lib/api"
 import { addRepairOrderItem } from "@/lib/api"
 import type { Product } from "@/lib/api"
-import { formatCurrencyInput, parseCurrencyInput } from "@/lib/currency-input"
+import { CurrencyFieldInput } from "@/components/currency-field-input"
 import { Package, Loader2 } from "lucide-react"
 
 interface RepairOrderAddItemModalProps {
@@ -43,7 +43,7 @@ export function RepairOrderAddItemModal({
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [productId, setProductId] = useState<number | "">("")
   const [quantity, setQuantity] = useState("1")
-  const [unitPrice, setUnitPrice] = useState("")
+  const [unitPrice, setUnitPrice] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,7 +69,7 @@ export function RepairOrderAddItemModal({
   useEffect(() => {
     if (selectedProduct != null) {
       const p = Number(selectedProduct.price ?? 0)
-      if (!unitPrice || parseCurrencyInput(unitPrice) === 0) setUnitPrice(formatCurrencyInput(p))
+      if (!unitPrice || unitPrice === 0) setUnitPrice(p)
     }
   }, [selectedProduct?.id])
 
@@ -80,7 +80,7 @@ export function RepairOrderAddItemModal({
       return
     }
     const q = parseInt(quantity, 10)
-    const price = parseCurrencyInput(unitPrice)
+    const price = unitPrice
     if (isNaN(q) || q < 1 || price < 0) {
       setError("Cantidad debe ser ≥ 1 y precio ≥ 0")
       return
@@ -97,7 +97,7 @@ export function RepairOrderAddItemModal({
       onClose()
       setProductId("")
       setQuantity("1")
-      setUnitPrice("")
+      setUnitPrice(0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error al agregar ítem")
     } finally {
@@ -156,15 +156,10 @@ export function RepairOrderAddItemModal({
             </div>
             <div className="space-y-2">
               <Label>Precio unitario ($)</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
+              <CurrencyFieldInput
                 placeholder="$0,00"
                 value={unitPrice}
-                onChange={(e) => {
-                  const v = parseCurrencyInput(e.target.value)
-                  setUnitPrice(v > 0 || e.target.value.trim() ? formatCurrencyInput(v) : "")
-                }}
+                onValueChange={setUnitPrice}
               />
             </div>
           </div>

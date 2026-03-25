@@ -27,7 +27,7 @@ import { Wrench, Loader2, Search, UserPlus, Package, Plus, Trash2, ArrowLeft } f
 import Image from "next/image"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { NewClientModal } from "@/components/new-client-modal"
-import { formatCurrencyInput, parseCurrencyInput } from "@/lib/currency-input"
+import { CurrencyFieldInput } from "@/components/currency-field-input"
 import { cn } from "@/lib/utils"
 
 interface NewRepairOrderModalProps {
@@ -78,7 +78,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const [productSearchQuery, setProductSearchQuery] = useState("")
   const [newItemProductId, setNewItemProductId] = useState<number | "">("")
   const [newItemQuantity, setNewItemQuantity] = useState("1")
-  const [newItemUnitPrice, setNewItemUnitPrice] = useState("") // valor formateado para display
+  const [newItemUnitPrice, setNewItemUnitPrice] = useState(0)
   const [step, setStep] = useState<1 | 2>(1)
   const pendingItemsTotal = useMemo(
     () => pendingItems.reduce((acc, item) => acc + item.quantity * item.unit_price, 0),
@@ -193,7 +193,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     setProductSearchQuery("")
     setNewItemProductId("")
     setNewItemQuantity("1")
-    setNewItemUnitPrice("")
+    setNewItemUnitPrice(0)
     setStep(1)
   }, [isOpen])
 
@@ -218,7 +218,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const addPendingItem = () => {
     if (!selectedProduct || !newItemQuantity || !newItemUnitPrice) return
     const q = parseInt(newItemQuantity, 10)
-    const price = parseCurrencyInput(newItemUnitPrice)
+    const price = newItemUnitPrice
     if (isNaN(q) || q < 1 || price < 0) return
     setPendingItems((prev) => [
       ...prev,
@@ -232,19 +232,20 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     setProductSearchQuery("")
     setNewItemProductId("")
     setNewItemQuantity("1")
-    setNewItemUnitPrice("")
+    setNewItemUnitPrice(0)
   }
 
   const selectProductForItem = (p: Product) => {
     setNewItemProductId(p.id)
     setProductSearchQuery(p.name)
-    if (!newItemUnitPrice || parseCurrencyInput(newItemUnitPrice) === 0) setNewItemUnitPrice(formatCurrencyInput(Number(p.price ?? 0)))
+    if (!newItemUnitPrice || newItemUnitPrice === 0)
+      setNewItemUnitPrice(Number(p.price ?? 0))
   }
 
   const clearProductSelection = () => {
     setNewItemProductId("")
     setProductSearchQuery("")
-    setNewItemUnitPrice("")
+    setNewItemUnitPrice(0)
   }
 
   const removePendingItem = (index: number) => {
@@ -291,7 +292,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       if (formData.diagnosis.trim()) body.diagnosis = formData.diagnosis.trim()
       if (formData.work_description.trim()) body.work_description = formData.work_description.trim()
       if (formData.delivery_date_estimated.trim()) body.delivery_date_estimated = formData.delivery_date_estimated
-      const labor = typeof formData.labor_amount === "number" ? formData.labor_amount : parseCurrencyInput(String(formData.labor_amount))
+      const labor = formData.labor_amount
       if (!Number.isNaN(labor) && labor > 0) body.labor_amount = labor
       if (formData.notes.trim()) body.notes = formData.notes.trim()
 
@@ -555,17 +556,12 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
             </div>
             <div className="space-y-2">
               <Label htmlFor="labor_amount">Mano de obra ($)</Label>
-              <Input
+              <CurrencyFieldInput
                 id="labor_amount"
-                type="text"
-                inputMode="decimal"
                 placeholder="$0,00"
-                value={formatCurrencyInput(formData.labor_amount)}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    labor_amount: parseCurrencyInput(e.target.value),
-                  }))
+                value={formData.labor_amount}
+                onValueChange={(n) =>
+                  setFormData((prev) => ({ ...prev, labor_amount: n }))
                 }
               />
             </div>
@@ -747,15 +743,10 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Precio unitario ($)</Label>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
+                      <CurrencyFieldInput
                         placeholder="$0,00"
                         value={newItemUnitPrice}
-                        onChange={(e) => {
-                          const v = parseCurrencyInput(e.target.value)
-                          setNewItemUnitPrice(v > 0 || e.target.value.trim() ? formatCurrencyInput(v) : "")
-                        }}
+                        onValueChange={setNewItemUnitPrice}
                       />
                     </div>
                   </div>

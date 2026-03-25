@@ -38,7 +38,7 @@ import {
 import { RepairOrderAddItemModal } from "@/components/repair-order-add-item-modal"
 import { RepairOrderPaymentModal } from "@/components/repair-order-payment-modal"
 import { RepairOrderAcceptanceDocumentModal } from "@/components/repair-order-acceptance-document-modal"
-import { formatCurrencyInput, parseCurrencyInput } from "@/lib/currency-input"
+import { CurrencyFieldInput } from "@/components/currency-field-input"
 import {
   ArrowLeft,
   Wrench,
@@ -257,7 +257,7 @@ export default function RepairOrderDetailPage() {
     if (!id || !order) return
     setSaving(true)
     try {
-      const labor = typeof editForm.labor_amount === "number" ? editForm.labor_amount : parseCurrencyInput(String(editForm.labor_amount))
+      const labor = editForm.labor_amount
       await updateRepairOrder(id, {
         equipment_description: editForm.equipment_description,
         diagnosis: editForm.diagnosis || undefined,
@@ -434,16 +434,11 @@ export default function RepairOrderDetailPage() {
                     </div>
                     <div>
                       <Label>Mano de obra ($)</Label>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
+                      <CurrencyFieldInput
                         placeholder="$0,00"
-                        value={formatCurrencyInput(editForm.labor_amount)}
-                        onChange={(e) =>
-                          setEditForm((p) => ({
-                            ...p,
-                            labor_amount: parseCurrencyInput(e.target.value),
-                          }))
+                        value={editForm.labor_amount}
+                        onValueChange={(n) =>
+                          setEditForm((p) => ({ ...p, labor_amount: n }))
                         }
                       />
                     </div>

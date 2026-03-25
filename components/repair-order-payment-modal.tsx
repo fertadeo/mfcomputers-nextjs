@@ -21,10 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { createRepairOrderPayment, type CreateRepairOrderPaymentBody } from "@/lib/api"
-import {
-  formatCurrencyIntegerInput,
-  parseCurrencyIntegerDigits,
-} from "@/lib/currency-input"
+import { IntegerCurrencyFieldInput } from "@/components/integer-currency-field-input"
 import { DollarSign, Loader2 } from "lucide-react"
 
 interface RepairOrderPaymentModalProps {
@@ -48,7 +45,7 @@ export function RepairOrderPaymentModal({
   onClose,
   onSuccess,
 }: RepairOrderPaymentModalProps) {
-  const [amount, setAmount] = useState("")
+  const [amount, setAmount] = useState(0)
   const [method, setMethod] = useState<CreateRepairOrderPaymentBody["method"]>("efectivo")
   const [paymentDate, setPaymentDate] = useState(() =>
     new Date().toISOString().slice(0, 16)
@@ -58,7 +55,7 @@ export function RepairOrderPaymentModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const num = parseCurrencyIntegerDigits(amount)
+    const num = amount
     if (num <= 0) {
       setError("Ingresá un monto mayor a 0")
       return
@@ -73,7 +70,7 @@ export function RepairOrderPaymentModal({
       })
       onSuccess()
       onClose()
-      setAmount("")
+      setAmount(0)
       setMethod("efectivo")
       setPaymentDate(new Date().toISOString().slice(0, 16))
     } catch (e: unknown) {
@@ -105,15 +102,10 @@ export function RepairOrderPaymentModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Monto ($)</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
+            <IntegerCurrencyFieldInput
               placeholder="Ej: 150000"
               value={amount}
-              onChange={(e) => {
-                const n = parseCurrencyIntegerDigits(e.target.value)
-                setAmount(n > 0 ? formatCurrencyIntegerInput(n) : "")
-              }}
+              onValueChange={setAmount}
             />
           </div>
           <div className="space-y-2">
