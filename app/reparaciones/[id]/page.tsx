@@ -686,19 +686,20 @@ export default function RepairOrderDetailPage() {
         />
 
         <Dialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Aceptar presupuesto</DialogTitle>
               <DialogDescription>
                 Al aceptar, se descontará el stock de los materiales. Podés indicar los días para retiro (aviso al cliente).
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <Label>Días para retiro (aviso)</Label>
                 <Input
                   type="number"
                   min={1}
+                  className="w-full max-w-[7rem]"
                   value={daysToClaim}
                   onChange={(e) => setDaysToClaim(e.target.value)}
                 />
