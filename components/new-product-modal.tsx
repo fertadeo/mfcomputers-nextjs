@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef } from "react"
+import React, { useState, useRef, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,13 +16,13 @@ import { createProductNew, getCategories, Category, CreateProductData } from "@/
 import { generateProductCodes } from "@/lib/product-codes"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { CategoryManagerPanel } from "@/components/category-manager-panel"
-import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import {
   getProductListDestination,
   buildDestinationExplanation,
   type ProductListTabKey,
 } from "@/lib/product-list-destination"
 import { ProductSaveConfirmDialog } from "@/components/product-save-confirm-dialog"
+import { ProductModalCloseDialog } from "@/components/product-modal-close-dialog"
 import { nextIsActiveAfterStockChange } from "@/lib/product-stock-is-active"
 
 interface NewProductModalProps {
@@ -78,6 +78,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     useState<ProductListTabKey>("published")
   const [saveConfirmName, setSaveConfirmName] = useState("")
   const [saveConfirmLines, setSaveConfirmLines] = useState<string[]>([])
+  const [closePromptOpen, setClosePromptOpen] = useState(false)
+  const [draftCloseLoading, setDraftCloseLoading] = useState(false)
 
   const [showCategoryManager, setShowCategoryManager] = useState(false)
 
@@ -121,6 +123,27 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
       loadCategories()
     }
   }, [isOpen])
+
+  const isFormDirty = useMemo(() => {
+    if (images.length > 0) return true
+    if (barcode.trim() !== "" || qrCode.trim() !== "") return true
+    if (syncToWooCommerce === false) return true
+    if (formData.code.trim() !== "") return true
+    if (formData.name.trim() !== "") return true
+    if (formData.description.trim() !== "") return true
+    if (formData.category_id !== "") return true
+    if (formData.price.trim() !== "") return true
+    if (formData.stock !== "0") return true
+    if (formData.min_stock !== "0") return true
+    if (formData.max_stock !== "1000") return true
+    if (formData.is_active !== "1") return true
+    if (formData.allow_backorders !== "0") return true
+    if (formData.weight.trim() !== "") return true
+    if (formData.length.trim() !== "") return true
+    if (formData.width.trim() !== "") return true
+    if (formData.height.trim() !== "") return true
+    return false
+  }, [formData, images.length, barcode, qrCode, syncToWooCommerce])
 
   const validateForm = () => {
     // Validar código (requerido, máximo 20 caracteres)
@@ -507,7 +530,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     })
     setBarcode("")
     setQrCode("")
-    setSyncToWooCommerce(false)
+    setSyncToWooCommerce(true)
     setImages([])
     setImageUrlInput("")
     setError(null)
@@ -519,13 +542,124 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   }
 
   const handleClose = () => {
-    if (!loading) {
+    if (!loading && !draftCloseLoading) {
       setError(null)
       setSuccess(false)
+      setClosePromptOpen(false)
       resetForm()
       onClose()
     }
   }
+
+  const requestClose = () => {
+    if (loading || draftCloseLoading) return
+    if (!isFormDirty) {
+      handleClose()
+      return
+    }
+    setClosePromptOpen(true)
+  }
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open) return
+    if (loading || draftCloseLoading) return
+    if (!isFormDirty) {
+      handleClose()
+      return
+    }
+    setClosePromptOpen(true)
+  }
+
+  const saveDraftAndClose = useCallback(async () => {
+    const name = formData.name.trim()
+    if (!name) {
+      setClosePromptOpen(false)
+      setError("Agregá un nombre al producto para guardarlo como borrador.")
+      return
+    }
+    setDraftCloseLoading(true)
+    setError(null)
+    try {
+      let code = formData.code.trim()
+      if (!code) {
+        const ts = Date.now().toString().slice(-6)
+        const random = Math.random().toString(36).substring(2, 5).toUpperCase()
+        code = `PROD-${ts}-${random}`
+      }
+      if (code.length > 20) code = code.slice(0, 20)
+
+      let price = parseFloat(formData.price)
+      if (isNaN(price) || price <= 0) price = 0.01
+
+      const validImages = images.filter(
+        (img) =>
+          typeof img.url === "string" &&
+          (img.url.startsWith("http://") || img.url.startsWith("https://"))
+      )
+      const imageUrls: string[] = validImages.map((img) => img.url)
+      const wcIds = validImages
+        .map((img) => img.woocommerceId)
+        .filter((id): id is number => id != null)
+
+      let finalBarcode = barcode
+      let finalQrCode = qrCode
+      if (code && (!barcode || !qrCode)) {
+        const codes = generateProductCodes(code)
+        finalBarcode = codes.barcode
+        finalQrCode = codes.qr_code
+      }
+
+      const weightVal = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+      const lengthVal = formData.length.trim() === "" ? null : parseFloat(formData.length)
+      const widthVal = formData.width.trim() === "" ? null : parseFloat(formData.width)
+      const heightVal = formData.height.trim() === "" ? null : parseFloat(formData.height)
+
+      const productData: CreateProductData = {
+        code,
+        name,
+        price,
+        description: formData.description.trim() ? formData.description.trim() : null,
+        category_id: formData.category_id ? parseInt(formData.category_id) : null,
+        images: imageUrls.length > 0 ? imageUrls : null,
+        woocommerce_image_ids: wcIds.length > 0 ? wcIds : null,
+        stock: 0,
+        min_stock: parseInt(formData.min_stock) || 0,
+        max_stock: parseInt(formData.max_stock) || 1000,
+        is_active: true,
+        barcode: finalBarcode || null,
+        qr_code: finalQrCode || null,
+        sync_to_woocommerce: false,
+        weight: weightVal ?? undefined,
+        length: lengthVal ?? undefined,
+        width: widthVal ?? undefined,
+        height: heightVal ?? undefined,
+        allow_backorders: false,
+      }
+
+      await createProductNew(productData)
+      setClosePromptOpen(false)
+      setSuccess(true)
+      setTimeout(() => {
+        setSuccess(false)
+        onSuccess()
+        onClose()
+        resetForm()
+      }, 1500)
+    } catch (err) {
+      console.error("[NEW PRODUCT] Borrador:", err)
+      setError(err instanceof Error ? err.message : "No se pudo guardar el borrador")
+      setClosePromptOpen(false)
+    } finally {
+      setDraftCloseLoading(false)
+    }
+  }, [
+    formData,
+    images,
+    barcode,
+    qrCode,
+    onSuccess,
+    onClose,
+  ])
 
   const generateCode = () => {
     const timestamp = Date.now().toString().slice(-6)
@@ -554,13 +688,9 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     }
   }
 
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) handleClose()
-  })
-
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-slate-900">
         <DialogHeader className="pb-6">
           <DialogTitle className="text-2xl font-bold flex items-center gap-3 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -1241,15 +1371,15 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
             <Button 
               type="button" 
               variant="outline" 
-              onClick={handleClose} 
-              disabled={loading}
+              onClick={requestClose} 
+              disabled={loading || draftCloseLoading}
               className="h-12 px-8 border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
             >
               Cancelar
             </Button>
             <Button 
               type="submit" 
-              disabled={loading}
+              disabled={loading || draftCloseLoading}
               className="h-12 px-8 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
             >
               {loading ? (
@@ -1268,7 +1398,13 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         </form>
       </DialogContent>
     </Dialog>
-    {confirmDialog}
+    <ProductModalCloseDialog
+      open={closePromptOpen}
+      onStay={() => setClosePromptOpen(false)}
+      onDiscard={handleClose}
+      onSaveDraft={saveDraftAndClose}
+      draftLoading={draftCloseLoading}
+    />
     <ProductSaveConfirmDialog
       open={saveConfirmOpen}
       productName={saveConfirmName}

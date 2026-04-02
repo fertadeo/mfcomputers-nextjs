@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,13 +20,13 @@ import {
 import { getAllProductImages } from "@/lib/product-image-utils"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { useToast } from "@/contexts/ToastContext"
-import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import {
   getProductListDestination,
   buildDestinationExplanation,
   type ProductListTabKey,
 } from "@/lib/product-list-destination"
 import { ProductSaveConfirmDialog } from "@/components/product-save-confirm-dialog"
+import { ProductModalCloseDialog } from "@/components/product-modal-close-dialog"
 import { nextIsActiveAfterStockChange } from "@/lib/product-stock-is-active"
 
 interface EditProductModalProps {
@@ -34,6 +34,22 @@ interface EditProductModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: (updated?: Product) => void
+}
+
+function editBaselineImageUrls(product: Product): string[] {
+  if (product.images !== null && product.images !== undefined) {
+    return [...product.images]
+  }
+  if (product.image_url) return [product.image_url]
+  const all = getAllProductImages(product)
+  return all.length > 0 ? all : []
+}
+
+function dimensionMatchesForm(form: string, stored: number | null | undefined): boolean {
+  const t = form.trim()
+  if (t === "") return stored == null || stored === undefined
+  if (stored == null || stored === undefined) return false
+  return Math.abs(parseFloat(t) - Number(stored)) < 1e-9
 }
 
 interface FormData {
@@ -78,6 +94,8 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     useState<ProductListTabKey>("published")
   const [saveConfirmName, setSaveConfirmName] = useState("")
   const [saveConfirmLines, setSaveConfirmLines] = useState<string[]>([])
+  const [closePromptOpen, setClosePromptOpen] = useState(false)
+  const [draftCloseLoading, setDraftCloseLoading] = useState(false)
 
   const [formData, setFormData] = useState<FormData>({
     code: "",
@@ -166,6 +184,33 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
       setWoocommerceImageIds(ids)
     }
   }, [isOpen, product])
+
+  const isEditDirty = useMemo(() => {
+    if (!product) return false
+    const pStock = product.stock ?? 0
+    const pAllow = !!product.allow_backorders
+    const expectedIsActive =
+      pStock > 0 ? "1" : pAllow && product.is_active ? "1" : "0"
+    if (formData.code.trim() !== (product.code ?? "").trim()) return true
+    if (formData.name.trim() !== (product.name ?? "").trim()) return true
+    if (formData.description.trim() !== (product.description ?? "").trim()) return true
+    const fc = formData.category_id ? parseInt(formData.category_id, 10) : null
+    if (fc !== (product.category_id ?? null)) return true
+    if (parsePrecioFormato(formData.price) !== Number(product.price ?? 0)) return true
+    if ((parseInt(formData.stock, 10) || 0) !== pStock) return true
+    if ((parseInt(formData.min_stock, 10) || 0) !== (product.min_stock ?? 0)) return true
+    if ((parseInt(formData.max_stock, 10) || 1000) !== (product.max_stock ?? 1000)) return true
+    if (formData.is_active !== expectedIsActive) return true
+    if ((formData.allow_backorders === "1") !== pAllow) return true
+    if (!dimensionMatchesForm(formData.weight, product.weight ?? null)) return true
+    if (!dimensionMatchesForm(formData.length, product.length ?? null)) return true
+    if (!dimensionMatchesForm(formData.width, product.width ?? null)) return true
+    if (!dimensionMatchesForm(formData.height, product.height ?? null)) return true
+    const baseUrls = editBaselineImageUrls(product)
+    if (JSON.stringify(imageUrls) !== JSON.stringify(baseUrls)) return true
+    if (syncToWooCommerce !== true) return true
+    return false
+  }, [product, formData, imageUrls, syncToWooCommerce])
 
   useEffect(() => {
     if (!isOpen || !loading || !submitStep) return
@@ -573,12 +618,93 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   }
 
   const handleClose = () => {
-    if (!loading) onClose()
+    if (!loading && !draftCloseLoading) {
+      setClosePromptOpen(false)
+      onClose()
+    }
   }
 
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) handleClose()
-  })
+  const requestClose = () => {
+    if (loading || draftCloseLoading) return
+    if (!isEditDirty) handleClose()
+    else setClosePromptOpen(true)
+  }
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open) return
+    if (loading || draftCloseLoading) return
+    if (!isEditDirty) handleClose()
+    else setClosePromptOpen(true)
+  }
+
+  const saveDraftAndClose = useCallback(async () => {
+    if (!product) return
+    const validationError = validateForm()
+    if (validationError) {
+      showToast({ message: validationError, type: "error" })
+      setClosePromptOpen(false)
+      return
+    }
+
+    setDraftCloseLoading(true)
+    try {
+      const nextPrice = parsePrecioFormato(formData.price)
+      const nextMinStock = parseInt(formData.min_stock, 10) || 0
+      const nextMaxStock = parseInt(formData.max_stock, 10) || 1000
+      const nextCategoryId = formData.category_id ? parseInt(formData.category_id, 10) : null
+      const nextCode = formData.code.trim()
+      const nextName = formData.name.trim()
+      const nextDescription = formData.description.trim()
+
+      const validImageUrls = imageUrls.filter(
+        (url) =>
+          typeof url === "string" &&
+          (url.startsWith("http://") || url.startsWith("https://"))
+      )
+
+      const weightVal = formData.weight.trim() === "" ? null : parseFloat(formData.weight)
+      const lengthVal = formData.length.trim() === "" ? null : parseFloat(formData.length)
+      const widthVal = formData.width.trim() === "" ? null : parseFloat(formData.width)
+      const heightVal = formData.height.trim() === "" ? null : parseFloat(formData.height)
+
+      const payload: UpdateProductData = {
+        code: nextCode,
+        name: nextName,
+        description: nextDescription || null,
+        category_id: nextCategoryId,
+        price: nextPrice,
+        stock: 0,
+        min_stock: nextMinStock,
+        max_stock: nextMaxStock,
+        is_active: true,
+        images: validImageUrls,
+        sync_to_woocommerce: false,
+        weight: weightVal ?? undefined,
+        length: lengthVal ?? undefined,
+        width: widthVal ?? undefined,
+        height: heightVal ?? undefined,
+        allow_backorders: false,
+      }
+
+      const updated = await updateProduct(product.id, payload)
+      showToast({
+        message: "Cambios guardados en Borrador (stock 0, sin venta por encargo).",
+        type: "success",
+      })
+      setClosePromptOpen(false)
+      onSuccess(updated)
+      onClose()
+    } catch (err) {
+      console.error("Borrador edición:", err)
+      showToast({
+        message: err instanceof Error ? err.message : "No se pudo guardar el borrador",
+        type: "error",
+      })
+      setClosePromptOpen(false)
+    } finally {
+      setDraftCloseLoading(false)
+    }
+  }, [product, formData, imageUrls, showToast, onSuccess, onClose])
 
   if (!product) return null
 
@@ -588,7 +714,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -1110,10 +1236,10 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+            <Button type="button" variant="outline" onClick={requestClose} disabled={loading || draftCloseLoading}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || draftCloseLoading}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1128,7 +1254,13 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         </form>
       </DialogContent>
     </Dialog>
-    {confirmDialog}
+    <ProductModalCloseDialog
+      open={closePromptOpen}
+      onStay={() => setClosePromptOpen(false)}
+      onDiscard={handleClose}
+      onSaveDraft={saveDraftAndClose}
+      draftLoading={draftCloseLoading}
+    />
     <ProductSaveConfirmDialog
       open={saveConfirmOpen}
       productName={saveConfirmName}
