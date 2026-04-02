@@ -196,7 +196,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     doc.setFont("helvetica", "normal")
     doc.setFontSize(9)
     doc.setTextColor(...TEXT_BODY)
-    ty = y + 30
+    let ty = y + 30
     if (parsed.legacy) {
       drawWrapped(doc, parsed.brandModel, mx + 10, ty, innerW, 11, 8)
     } else {
