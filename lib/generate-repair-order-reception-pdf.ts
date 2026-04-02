@@ -1,6 +1,6 @@
 /**
  * PDF de recepción de orden de reparación para entregar al cliente (solo cliente / window).
- * Estética tipo factura con acentos en morado y logo MFComputers.
+ * Acentos en azul de marca (alineado al logo Recurso-8).
  */
 import jsPDF from "jspdf"
 import {
@@ -10,11 +10,12 @@ import {
 
 const LOGO_PATH = "/images/Recurso-8@3x.png"
 
-/** Morado principal (~#5D3FD3) */
-const PURPLE: [number, number, number] = [93, 63, 211]
-const PURPLE_DARK: [number, number, number] = [62, 42, 158]
-const PURPLE_LIGHT: [number, number, number] = [245, 242, 255]
-const PURPLE_ROW_BG: [number, number, number] = [93, 63, 211]
+/** Azul corporativo del logo (~#1d4e9e) */
+const BRAND_BLUE: [number, number, number] = [29, 78, 158]
+/** Azul más oscuro para títulos sobre fondo claro */
+const BRAND_BLUE_DARK: [number, number, number] = [18, 52, 112]
+/** Fondo suave tintado a la marca */
+const BRAND_BLUE_LIGHT: [number, number, number] = [232, 239, 250]
 const GRAY_LINE: [number, number, number] = [226, 232, 240]
 const TEXT_MUTED: [number, number, number] = [100, 116, 139]
 const TEXT_BODY: [number, number, number] = [30, 41, 59]
@@ -103,7 +104,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
 
     doc.setFont("helvetica", "bold")
     doc.setFontSize(20)
-    doc.setTextColor(...PURPLE)
+    doc.setTextColor(...BRAND_BLUE)
     doc.text("ORDEN DE REPARACIÓN", pageW - mx, y + (logoH > 0 ? 8 : 4), { align: "right" })
 
     doc.setFontSize(10)
@@ -129,7 +130,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
 
     doc.setFont("helvetica", "bold")
     doc.setFontSize(9)
-    doc.setTextColor(...PURPLE)
+    doc.setTextColor(...BRAND_BLUE)
     doc.text("DATOS DEL LOCAL", mx, y)
 
     doc.text("CLIENTE", mx + colW + colGap, y)
@@ -183,14 +184,14 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
       bodyLineCount = Math.min(Math.max(lines.length, 1), 8)
     }
     const equipBoxH = Math.max(72, 30 + bodyLineCount * 11 + 14)
-    doc.setFillColor(...PURPLE_LIGHT)
-    doc.setDrawColor(...PURPLE)
+    doc.setFillColor(...BRAND_BLUE_LIGHT)
+    doc.setDrawColor(...BRAND_BLUE)
     doc.setLineWidth(0.3)
     doc.roundedRect(mx, y, contentW, equipBoxH, 3, 3, "FD")
 
     doc.setFont("helvetica", "bold")
     doc.setFontSize(10)
-    doc.setTextColor(...PURPLE_DARK)
+    doc.setTextColor(...BRAND_BLUE_DARK)
     doc.text("Equipo recibido", mx + 10, equipTitleY)
 
     doc.setFont("helvetica", "normal")
@@ -265,7 +266,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     doc.setFont("helvetica", "bold")
     doc.setFontSize(10)
     doc.setTextColor(255, 255, 255)
-    doc.setFillColor(...PURPLE_ROW_BG)
+    doc.setFillColor(...BRAND_BLUE)
     const headH = 22
     doc.rect(mx, y, contentW, headH, "F")
     const colDesc = mx + 8
@@ -338,7 +339,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     y += 18
 
     const totalBoxH = 28
-    doc.setFillColor(...PURPLE_ROW_BG)
+    doc.setFillColor(...BRAND_BLUE)
     doc.rect(sumX - 20, y - 4, pageW - mx - (sumX - 20) + 4, totalBoxH, "F")
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
@@ -350,7 +351,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
 
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
-    doc.setTextColor(...PURPLE)
+    doc.setTextColor(...BRAND_BLUE)
     doc.text("Gracias por confiar en nosotros", mx, y)
     y += 22
 
@@ -372,7 +373,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     const third = contentW / 3
     let c1 = y
     doc.setFont("helvetica", "bold")
-    doc.setTextColor(...PURPLE)
+    doc.setTextColor(...BRAND_BLUE)
     doc.text("Consultas", mx, c1)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(...TEXT_MUTED)
@@ -391,7 +392,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
 
     let c2 = y
     doc.setFont("helvetica", "bold")
-    doc.setTextColor(...PURPLE)
+    doc.setTextColor(...BRAND_BLUE)
     doc.text("Información de pago", mx + third, c2)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(...TEXT_MUTED)
@@ -402,7 +403,7 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
 
     let c3 = y
     doc.setFont("helvetica", "bold")
-    doc.setTextColor(...PURPLE)
+    doc.setTextColor(...BRAND_BLUE)
     doc.text("Términos", mx + third * 2, c3)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(...TEXT_MUTED)
