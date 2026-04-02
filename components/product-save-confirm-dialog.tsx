@@ -1,5 +1,6 @@
 "use client"
 
+import React, { Fragment } from "react"
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,42 @@ import {
 import { Button } from "@/components/ui/button"
 import { Package } from "lucide-react"
 import type { ProductListTabKey } from "@/lib/product-list-destination"
-import { destinationTabLabel } from "@/lib/product-list-destination"
+import {
+  destinationTabLabel,
+  PRODUCT_TAB_HIGHLIGHT_CLASS,
+  PRODUCT_INACTIVE_HIGHLIGHT_CLASS,
+} from "@/lib/product-list-destination"
+
+/**
+ * Resalta «Publicados», «Borrador», «Eliminados», «Inactivo» y las mismas palabras
+ * sueltas cuando actúan como nombre de pestaña (textos de buildDestinationExplanation).
+ */
+function highlightTabsInExplanation(line: string): React.ReactNode {
+  const pattern =
+    /(«Publicados»|«Borrador»|«Eliminados»|«Inactivo»|\bPublicados\b|\bBorrador\b|\bEliminados\b)/g
+  const parts = line.split(pattern)
+  return parts.map((part, i) => {
+    if (!part) return null
+    let className: string | null = null
+    if (part === "«Publicados»" || part === "Publicados") {
+      className = PRODUCT_TAB_HIGHLIGHT_CLASS.published
+    } else if (part === "«Borrador»" || part === "Borrador") {
+      className = PRODUCT_TAB_HIGHLIGHT_CLASS.draft
+    } else if (part === "«Eliminados»" || part === "Eliminados") {
+      className = PRODUCT_TAB_HIGHLIGHT_CLASS.deleted
+    } else if (part === "«Inactivo»") {
+      className = PRODUCT_INACTIVE_HIGHLIGHT_CLASS
+    }
+    if (className) {
+      return (
+        <span key={i} className={className}>
+          {part}
+        </span>
+      )
+    }
+    return <Fragment key={i}>{part}</Fragment>
+  })
+}
 
 export interface ProductSaveConfirmDialogProps {
   open: boolean
@@ -31,6 +67,7 @@ export function ProductSaveConfirmDialog({
   onCancel,
 }: ProductSaveConfirmDialogProps) {
   const tab = destinationTabLabel(destination)
+  const tabClass = PRODUCT_TAB_HIGHLIGHT_CLASS[destination]
 
   return (
     <Dialog
@@ -49,21 +86,50 @@ export function ProductSaveConfirmDialog({
             <div className="space-y-3 pt-1 text-left text-sm text-foreground">
               <p>
                 Tu producto{" "}
-                <span className="font-semibold">
+                <span className="font-semibold text-foreground">
                   {productName.trim() || "sin nombre"}
                 </span>{" "}
                 se guardará y lo verás en la pestaña{" "}
-                <span className="font-semibold">«{tab}»</span>
-                {destination === "published"
-                  ? " (producto publicado / activo en el listado de publicados)"
-                  : destination === "draft"
-                    ? " (borrador: activo pero sin stock vendible sin encargo)"
-                    : " (eliminados: producto inactivo)"}
+                <span className={tabClass}>«{tab}»</span>
+                {destination === "published" ? (
+                  <>
+                    {" "}
+                    <span className="text-muted-foreground">
+                      (
+                      <span className={PRODUCT_TAB_HIGHLIGHT_CLASS.published}>
+                        publicado / activo
+                      </span>{" "}
+                      en el listado de publicados)
+                    </span>
+                  </>
+                ) : destination === "draft" ? (
+                  <>
+                    {" "}
+                    <span className="text-muted-foreground">
+                      (
+                      <span className={PRODUCT_TAB_HIGHLIGHT_CLASS.draft}>
+                        borrador
+                      </span>
+                      : activo pero sin stock vendible sin encargo)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {" "}
+                    <span className="text-muted-foreground">
+                      (
+                      <span className={PRODUCT_TAB_HIGHLIGHT_CLASS.deleted}>
+                        eliminados
+                      </span>
+                      : producto inactivo)
+                    </span>
+                  </>
+                )}
                 .
               </p>
               <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
                 {explanationLines.map((line, i) => (
-                  <li key={i}>{line}</li>
+                  <li key={i}>{highlightTabsInExplanation(line)}</li>
                 ))}
               </ul>
               <p className="font-medium text-foreground">¿Deseas continuar?</p>

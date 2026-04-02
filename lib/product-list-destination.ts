@@ -31,6 +31,18 @@ export function destinationTabLabel(key: ProductListTabKey): string {
   }
 }
 
+/** Clases para resaltar nombres de pestaña en avisos (crear/editar producto). */
+export const PRODUCT_TAB_HIGHLIGHT_CLASS: Record<ProductListTabKey, string> = {
+  published:
+    "rounded px-0.5 font-semibold text-emerald-600 dark:text-emerald-400",
+  draft: "rounded px-0.5 font-semibold text-amber-600 dark:text-amber-400",
+  deleted: "rounded px-0.5 font-semibold text-red-600 dark:text-red-400",
+}
+
+/** Estado manual «Inactivo» en textos de confirmación (alineado con Eliminados). */
+export const PRODUCT_INACTIVE_HIGHLIGHT_CLASS =
+  "rounded px-0.5 font-semibold text-rose-700 dark:text-rose-400"
+
 export function buildDestinationExplanation(args: {
   destination: ProductListTabKey
   stock: number
