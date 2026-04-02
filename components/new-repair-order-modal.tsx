@@ -16,18 +16,27 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   getClientes,
+  getClienteById,
   getProducts,
   createRepairOrder,
   addRepairOrderItem,
   type CreateRepairOrderBody,
   type Product,
 } from "@/lib/api"
+import { generateRepairOrderReceptionPdf } from "@/lib/generate-repair-order-reception-pdf"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Wrench, Loader2, Search, UserPlus, Package, Plus, Trash2, ArrowLeft } from "lucide-react"
 import Image from "next/image"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { NewClientModal } from "@/components/new-client-modal"
 import { CurrencyFieldInput } from "@/components/currency-field-input"
+import { RepairOrderEquipmentFields } from "@/components/repair-order-equipment-fields"
+import {
+  emptyRepairEquipmentForm,
+  buildEquipmentDescriptionString,
+  validateRepairEquipmentFields,
+  type RepairEquipmentFormValues,
+} from "@/lib/repair-order-equipment"
 import { cn } from "@/lib/utils"
 
 interface NewRepairOrderModalProps {
@@ -57,9 +66,10 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const clientSearchSeq = useRef(0)
   const [newClientModalOpen, setNewClientModalOpen] = useState(false)
   const today = () => new Date().toISOString().slice(0, 10)
+  const [equipment, setEquipment] = useState<RepairEquipmentFormValues>(() => emptyRepairEquipmentForm())
   const [formData, setFormData] = useState({
     client_id: 0,
-    equipment_description: "",
+    customer_declared_fault: "",
     diagnosis: "",
     work_description: "",
     reception_date: today(),
@@ -174,10 +184,11 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   // Al abrir el modal, resetear formulario y búsqueda (fecha de recepción = hoy)
   useEffect(() => {
     if (!isOpen) return
+    setEquipment(emptyRepairEquipmentForm())
     setFormData((prev) => ({
       ...prev,
       client_id: 0,
-      equipment_description: "",
+      customer_declared_fault: "",
       diagnosis: "",
       work_description: "",
       reception_date: today(),
@@ -267,7 +278,10 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   const validate = (): boolean => {
     const err: Record<string, string> = {}
     if (!formData.client_id) err.client_id = "Seleccioná o buscá un cliente. Si no existe, crealo."
-    if (!formData.equipment_description.trim()) err.equipment_description = "Descripción del equipo obligatoria"
+    Object.assign(err, validateRepairEquipmentFields(equipment))
+    if (!formData.customer_declared_fault.trim()) {
+      err.customer_declared_fault = "Indicá la falla que declara el cliente"
+    }
     if (!formData.reception_date) err.reception_date = "Fecha de recepción obligatoria"
     if (formData.delivery_date_estimated && formData.reception_date) {
       if (new Date(formData.delivery_date_estimated) < new Date(formData.reception_date)) {
@@ -286,7 +300,8 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     try {
       const body: CreateRepairOrderBody = {
         client_id: formData.client_id,
-        equipment_description: formData.equipment_description.trim(),
+        equipment_description: buildEquipmentDescriptionString(equipment),
+        customer_declared_fault: formData.customer_declared_fault.trim(),
         reception_date: formData.reception_date,
       }
       if (formData.diagnosis.trim()) body.diagnosis = formData.diagnosis.trim()
@@ -308,12 +323,51 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
           })
         }
       }
+
+      if (order?.repair_number) {
+        let clientPhone = ""
+        let clientEmail = ""
+        const clientAddressLines: string[] = []
+        try {
+          const c = await getClienteById(formData.client_id)
+          if (c.phone?.trim()) clientPhone = c.phone.trim()
+          if (c.email?.trim()) clientEmail = c.email.trim()
+          if (c.address?.trim()) clientAddressLines.push(c.address.trim())
+          if (c.city?.trim()) clientAddressLines.push(c.city.trim())
+        } catch {
+          /* PDF sin datos extra del cliente */
+        }
+        const clientName =
+          order.client?.name ?? selectedClientPreview?.name ?? "Cliente"
+        generateRepairOrderReceptionPdf({
+          repair_number: order.repair_number,
+          reception_date: String(order.reception_date || formData.reception_date),
+          clientName,
+          clientPhone: clientPhone || undefined,
+          clientEmail: clientEmail || undefined,
+          clientAddressLines: clientAddressLines.length ? clientAddressLines : undefined,
+          equipment_description:
+            order.equipment_description || buildEquipmentDescriptionString(equipment),
+          customer_declared_fault: formData.customer_declared_fault.trim(),
+          diagnosis: formData.diagnosis.trim() || undefined,
+          work_description: formData.work_description.trim() || undefined,
+          delivery_date_estimated: formData.delivery_date_estimated.trim() || undefined,
+          lineItems: pendingItems.map((i) => ({
+            product_name: i.product_name,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+          })),
+          labor_amount: formData.labor_amount,
+        })
+      }
+
       onSuccess(orderId)
       onClose()
+      setEquipment(emptyRepairEquipmentForm())
       setFormData((prev) => ({
         ...prev,
         client_id: 0,
-        equipment_description: "",
+        customer_declared_fault: "",
         diagnosis: "",
         work_description: "",
         reception_date: "",
@@ -502,25 +556,43 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
             </div>
           </div>
 
+          <div className="rounded-lg border p-4 space-y-1">
+            <p className="text-sm font-medium">Equipo</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Marca/modelo, tipo y número de serie se guardan en la orden para identificar el equipo.
+            </p>
+            <RepairOrderEquipmentFields
+              idPrefix="new_ro"
+              value={equipment}
+              onChange={setEquipment}
+              errors={fieldErrors}
+            />
+          </div>
+
           <div className="space-y-2">
-            <Label htmlFor="equipment_description">Descripción del equipo *</Label>
+            <Label htmlFor="customer_declared_fault">Falla declarada por el cliente *</Label>
             <Textarea
-              id="equipment_description"
-              placeholder="Marca, modelo, falla aparente…"
-              value={formData.equipment_description}
-              onChange={(e) => setFormData((prev) => ({ ...prev, equipment_description: e.target.value }))}
+              id="customer_declared_fault"
+              placeholder="Qué cuenta el cliente que le pasa al equipo…"
+              value={formData.customer_declared_fault}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, customer_declared_fault: e.target.value }))
+              }
               rows={2}
             />
-            {fieldErrors.equipment_description && (
-              <p className="text-sm text-destructive">{fieldErrors.equipment_description}</p>
+            <p className="text-xs text-muted-foreground">
+              No es el diagnóstico técnico: eso va en el campo siguiente, cuando el técnico evalúe el equipo.
+            </p>
+            {fieldErrors.customer_declared_fault && (
+              <p className="text-sm text-destructive">{fieldErrors.customer_declared_fault}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="diagnosis">Diagnóstico (presupuesto)</Label>
+            <Label htmlFor="diagnosis">Diagnóstico técnico (presupuesto)</Label>
             <Textarea
               id="diagnosis"
-              placeholder="Diagnóstico del problema"
+              placeholder="Evaluación del técnico / presupuesto"
               value={formData.diagnosis}
               onChange={(e) => setFormData((prev) => ({ ...prev, diagnosis: e.target.value }))}
               rows={2}

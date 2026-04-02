@@ -20,6 +20,7 @@ import {
   type RepairOrderStatus,
   type RepairOrderStats,
 } from "@/lib/api"
+import { getEquipmentListSummary } from "@/lib/repair-order-equipment"
 import { NewRepairOrderModal } from "@/components/new-repair-order-modal"
 import { Wrench, Plus, Search, RefreshCw, Eye, Calendar } from "lucide-react"
 import { toast } from "sonner"
@@ -268,6 +269,7 @@ export default function ReparacionesPage() {
       order.client?.name,
       clientNameById[order.client_id],
       order.equipment_description,
+      order.customer_declared_fault,
       REPAIR_ORDER_STATUS_LABELS[order.status],
     ]
       .filter(Boolean)
@@ -468,8 +470,8 @@ export default function ReparacionesPage() {
                             <TableCell>
                               {order.client?.name ?? clientNameById[order.client_id] ?? `Cliente #${order.client_id}`}
                             </TableCell>
-                            <TableCell className="max-w-[200px] truncate">
-                              {order.equipment_description || "—"}
+                            <TableCell className="max-w-[200px] truncate" title={order.equipment_description || undefined}>
+                              {getEquipmentListSummary(order.equipment_description || "")}
                             </TableCell>
                             <TableCell>
                               <Badge

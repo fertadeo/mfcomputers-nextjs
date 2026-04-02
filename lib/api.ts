@@ -5814,6 +5814,8 @@ export interface RepairOrder {
   repair_number: string
   client_id: number
   equipment_description: string
+  /** Lo que indica el cliente al ingresar el equipo (distinto del diagnóstico técnico). */
+  customer_declared_fault?: string | null
   diagnosis: string | null
   work_description: string | null
   reception_date: string
@@ -5956,6 +5958,8 @@ export async function getRepairOrder(id: number | string): Promise<ApiResponseRe
 export interface CreateRepairOrderBody {
   client_id: number
   equipment_description: string
+  /** Falla o síntoma que declara el cliente en recepción (no es el diagnóstico del técnico). */
+  customer_declared_fault?: string
   diagnosis?: string
   work_description?: string
   reception_date: string
@@ -6150,6 +6154,7 @@ export interface RepairOrderAcceptanceDocument {
   repair_number: string
   client_name: string
   equipment_description: string
+  customer_declared_fault?: string | null
   work_description: string | null
   reception_date: string
   delivery_date_estimated: string | null

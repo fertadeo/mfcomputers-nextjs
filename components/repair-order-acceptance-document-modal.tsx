@@ -10,6 +10,7 @@ import {
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { getRepairOrderAcceptanceDocument } from "@/lib/api"
+import { RepairOrderEquipmentReadOnly } from "@/components/repair-order-equipment-fields"
 import { FileText, Loader2 } from "lucide-react"
 
 interface RepairOrderAcceptanceDocumentModalProps {
@@ -92,7 +93,15 @@ export function RepairOrderAcceptanceDocumentModal({
             <div className="border rounded-lg p-6 space-y-4 bg-background">
               <h2 className="text-lg font-semibold">Orden de reparación {doc.repair_number}</h2>
               <p><strong>Cliente:</strong> {doc.client_name}</p>
-              <p><strong>Equipo:</strong> {doc.equipment_description}</p>
+              <div>
+                <p className="font-semibold mb-1">Equipo</p>
+                <RepairOrderEquipmentReadOnly equipmentDescription={doc.equipment_description} />
+              </div>
+              {doc.customer_declared_fault?.trim() && (
+                <p>
+                  <strong>Falla declarada por el cliente:</strong> {doc.customer_declared_fault}
+                </p>
+              )}
               {doc.work_description && (
                 <p><strong>Trabajo a realizar:</strong> {doc.work_description}</p>
               )}

@@ -41,7 +41,19 @@ import {
 import { RepairOrderAddItemModal } from "@/components/repair-order-add-item-modal"
 import { RepairOrderPaymentModal } from "@/components/repair-order-payment-modal"
 import { RepairOrderAcceptanceDocumentModal } from "@/components/repair-order-acceptance-document-modal"
+import {
+  RepairOrderEquipmentFields,
+  RepairOrderEquipmentReadOnly,
+} from "@/components/repair-order-equipment-fields"
 import { CurrencyFieldInput } from "@/components/currency-field-input"
+import {
+  emptyRepairEquipmentForm,
+  buildEquipmentDescriptionString,
+  validateRepairEquipmentFields,
+  parseEquipmentDescriptionString,
+  type RepairEquipmentFormValues,
+} from "@/lib/repair-order-equipment"
+import { generateRepairOrderReceptionPdf } from "@/lib/generate-repair-order-reception-pdf"
 import {
   ArrowLeft,
   Wrench,
@@ -52,6 +64,7 @@ import {
   Package,
   DollarSign,
   FileText,
+  FileDown,
   Edit2,
   Trash2,
   Plus,
@@ -186,8 +199,11 @@ export default function RepairOrderDetailPage() {
   const [daysToClaim, setDaysToClaim] = useState("30")
   const [accepting, setAccepting] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [equipmentFields, setEquipmentFields] = useState<RepairEquipmentFormValues>(() =>
+    emptyRepairEquipmentForm()
+  )
   const [editForm, setEditForm] = useState({
-    equipment_description: "",
+    customer_declared_fault: "",
     diagnosis: "",
     work_description: "",
     reception_date: "",
@@ -205,8 +221,15 @@ export default function RepairOrderDetailPage() {
       const data = res.data as RepairOrder
       const enriched = await enrichRepairOrderForDisplay(data)
       setOrder(enriched)
+      const eq = parseEquipmentDescriptionString(enriched.equipment_description || "")
+      setEquipmentFields({
+        brandModel: eq.brandModel,
+        equipmentType: eq.equipmentType,
+        equipmentTypeOther: eq.equipmentTypeOther,
+        serialNumber: eq.serialNumber,
+      })
       setEditForm({
-        equipment_description: enriched.equipment_description || "",
+        customer_declared_fault: enriched.customer_declared_fault || "",
         diagnosis: enriched.diagnosis || "",
         work_description: enriched.work_description || "",
         reception_date: enriched.reception_date?.slice(0, 10) || "",
@@ -308,11 +331,22 @@ export default function RepairOrderDetailPage() {
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!id || !order) return
+    const eqErr = validateRepairEquipmentFields(equipmentFields)
+    const eqMsg = Object.values(eqErr)[0]
+    if (eqMsg) {
+      toast.error(eqMsg)
+      return
+    }
+    if (!editForm.customer_declared_fault.trim()) {
+      toast.error("Indicá la falla declarada por el cliente")
+      return
+    }
     setSaving(true)
     try {
       const labor = editForm.labor_amount
       await updateRepairOrder(id, {
-        equipment_description: editForm.equipment_description,
+        equipment_description: buildEquipmentDescriptionString(equipmentFields),
+        customer_declared_fault: editForm.customer_declared_fault.trim(),
         diagnosis: editForm.diagnosis || undefined,
         work_description: editForm.work_description || undefined,
         reception_date: editForm.reception_date,
@@ -328,6 +362,41 @@ export default function RepairOrderDetailPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleDownloadReceptionPdf = async () => {
+    if (!order) return
+    let clientPhone = ""
+    let clientEmail = ""
+    const clientAddressLines: string[] = []
+    try {
+      const c = await getClienteById(order.client_id)
+      if (c.phone?.trim()) clientPhone = c.phone.trim()
+      if (c.email?.trim()) clientEmail = c.email.trim()
+      if (c.address?.trim()) clientAddressLines.push(c.address.trim())
+      if (c.city?.trim()) clientAddressLines.push(c.city.trim())
+    } catch {
+      /* PDF sin domicilio/teléfono del cliente */
+    }
+    generateRepairOrderReceptionPdf({
+      repair_number: order.repair_number,
+      reception_date: order.reception_date,
+      clientName: order.client?.name ?? `Cliente #${order.client_id}`,
+      clientPhone: clientPhone || undefined,
+      clientEmail: clientEmail || undefined,
+      clientAddressLines: clientAddressLines.length ? clientAddressLines : undefined,
+      equipment_description: order.equipment_description || "",
+      customer_declared_fault: order.customer_declared_fault?.trim() || "—",
+      diagnosis: order.diagnosis?.trim() || undefined,
+      work_description: order.work_description?.trim() || undefined,
+      delivery_date_estimated: order.delivery_date_estimated?.slice(0, 10) || undefined,
+      lineItems: (order.items ?? []).map((i) => ({
+        product_name: i.product?.name ?? `Producto #${i.product_id}`,
+        quantity: i.quantity,
+        unit_price: parseFloat(String(i.unit_price)) || 0,
+      })),
+      labor_amount: parseFloat(String(order.labor_amount || "0")) || 0,
+    })
   }
 
   const handleDeleteItem = async (itemId: number) => {
@@ -410,13 +479,27 @@ export default function RepairOrderDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Datos de la orden</CardTitle>
-                <CardDescription>Equipo, diagnóstico y fechas</CardDescription>
+                <CardDescription>Equipo, falla del cliente, diagnóstico técnico y fechas</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {!editMode ? (
                   <>
-                    <p><strong>Equipo:</strong> {order.equipment_description}</p>
-                    {order.diagnosis && <p><strong>Diagnóstico:</strong> {order.diagnosis}</p>}
+                    <RepairOrderEquipmentReadOnly equipmentDescription={order.equipment_description} />
+                    {(order.customer_declared_fault?.trim() || order.diagnosis) && (
+                      <div className="space-y-2 border-t pt-3">
+                        {order.customer_declared_fault?.trim() && (
+                          <p>
+                            <strong>Falla declarada por el cliente:</strong>{" "}
+                            {order.customer_declared_fault}
+                          </p>
+                        )}
+                        {order.diagnosis && (
+                          <p>
+                            <strong>Diagnóstico técnico:</strong> {order.diagnosis}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {order.work_description && (
                       <p><strong>Trabajo a realizar:</strong> {order.work_description}</p>
                     )}
@@ -427,26 +510,42 @@ export default function RepairOrderDetailPage() {
                     )}
                     <p><strong>Mano de obra:</strong> {formatMoney(order.labor_amount)}</p>
                     {order.notes && <p><strong>Notas:</strong> {order.notes}</p>}
-                    {canEdit && (
-                      <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
-                        <Edit2 className="h-4 w-4 mr-1" /> Editar
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button variant="outline" size="sm" onClick={handleDownloadReceptionPdf}>
+                        <FileDown className="h-4 w-4 mr-1" /> PDF recepción
                       </Button>
-                    )}
+                      {canEdit && (
+                        <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
+                          <Edit2 className="h-4 w-4 mr-1" /> Editar
+                        </Button>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <form onSubmit={handleSaveEdit} className="space-y-4">
-                    <div>
-                      <Label>Descripción del equipo</Label>
-                      <Textarea
-                        value={editForm.equipment_description}
-                        onChange={(e) =>
-                          setEditForm((p) => ({ ...p, equipment_description: e.target.value }))
-                        }
-                        rows={2}
+                    <div className="rounded-lg border p-3 space-y-2">
+                      <Label>Equipo</Label>
+                      <RepairOrderEquipmentFields
+                        idPrefix="edit_ro"
+                        value={equipmentFields}
+                        onChange={setEquipmentFields}
                       />
                     </div>
                     <div>
-                      <Label>Diagnóstico</Label>
+                      <Label>Falla declarada por el cliente *</Label>
+                      <Textarea
+                        value={editForm.customer_declared_fault}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, customer_declared_fault: e.target.value }))
+                        }
+                        rows={2}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Lo que indica el cliente al dejar el equipo; distinto del diagnóstico del técnico.
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Diagnóstico técnico</Label>
                       <Textarea
                         value={editForm.diagnosis}
                         onChange={(e) => setEditForm((p) => ({ ...p, diagnosis: e.target.value }))}
@@ -510,7 +609,27 @@ export default function RepairOrderDetailPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => setEditMode(false)}
+                        onClick={() => {
+                          if (order) {
+                            const eq = parseEquipmentDescriptionString(order.equipment_description || "")
+                            setEquipmentFields({
+                              brandModel: eq.brandModel,
+                              equipmentType: eq.equipmentType,
+                              equipmentTypeOther: eq.equipmentTypeOther,
+                              serialNumber: eq.serialNumber,
+                            })
+                            setEditForm({
+                              customer_declared_fault: order.customer_declared_fault || "",
+                              diagnosis: order.diagnosis || "",
+                              work_description: order.work_description || "",
+                              reception_date: order.reception_date?.slice(0, 10) || "",
+                              delivery_date_estimated: order.delivery_date_estimated?.slice(0, 10) || "",
+                              labor_amount: parseFloat(String(order.labor_amount || "0")) || 0,
+                              notes: order.notes || "",
+                            })
+                          }
+                          setEditMode(false)
+                        }}
                         disabled={saving}
                       >
                         Cancelar
