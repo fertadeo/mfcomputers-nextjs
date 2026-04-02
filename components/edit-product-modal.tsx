@@ -27,6 +27,7 @@ import {
   type ProductListTabKey,
 } from "@/lib/product-list-destination"
 import { ProductSaveConfirmDialog } from "@/components/product-save-confirm-dialog"
+import { nextIsActiveAfterStockChange } from "@/lib/product-stock-is-active"
 
 interface EditProductModalProps {
   product: Product | null
@@ -346,9 +347,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     setFormData((prev) => {
       const updated = { ...prev, [field]: value }
       if (field === "stock") {
-        const stockValue = parseInt(value) || 0
-        const backorders = prev.allow_backorders === "1"
-        if (stockValue === 0 && !backorders) updated.is_active = "0"
+        updated.is_active = nextIsActiveAfterStockChange(prev, value)
       }
       if (field === "allow_backorders") {
         const stockValue = parseInt(prev.stock) || 0

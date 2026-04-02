@@ -23,6 +23,7 @@ import {
   type ProductListTabKey,
 } from "@/lib/product-list-destination"
 import { ProductSaveConfirmDialog } from "@/components/product-save-confirm-dialog"
+import { nextIsActiveAfterStockChange } from "@/lib/product-stock-is-active"
 
 interface NewProductModalProps {
   isOpen: boolean
@@ -204,13 +205,8 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     setFormData(prev => {
       const updated = { ...prev, [field]: value }
       
-      // Si el stock cambia a 0 y no es venta por encargo, desactivar el producto
-      if (field === 'stock') {
-        const stockValue = parseInt(value) || 0
-        const backorders = prev.allow_backorders === "1"
-        if (stockValue === 0 && !backorders) {
-          updated.is_active = "0"
-        }
+      if (field === "stock") {
+        updated.is_active = nextIsActiveAfterStockChange(prev, value)
       }
       if (field === 'allow_backorders') {
         const stockValue = parseInt(prev.stock) || 0
