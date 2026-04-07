@@ -2310,6 +2310,70 @@ export async function linkWooCommerceIds(): Promise<LinkWooCommerceIdsSummary> {
   }
 }
 
+/** Respuesta de POST /api/integration/products/import-woocommerce-orphans (vía proxy Next o API directa). */
+export interface WooCommerceOrphansImportData {
+  created: number
+  skipped: number
+  imported_with_generated_code: number
+  errors: number
+  scanned_wc_products: number
+  dry_run: boolean
+  category_id?: number
+  error_details: { code?: string; message?: string }[]
+  created_codes: string[]
+}
+
+export interface WooCommerceOrphansImportResponse {
+  success: boolean
+  message: string
+  data: WooCommerceOrphansImportData
+  timestamp?: string
+}
+
+/**
+ * Importa productos huérfanos desde WooCommerce (proxy `/api/integration/...` con JWT; la API key va en el servidor).
+ */
+export async function importWooCommerceOrphans(params: {
+  dryRun: boolean
+  categoryId?: number
+}): Promise<WooCommerceOrphansImportResponse> {
+  const token = getAccessToken()
+  if (!token) {
+    throw new Error('Sesión no válida. Iniciá sesión nuevamente.')
+  }
+
+  const body: Record<string, unknown> = { dry_run: params.dryRun }
+  if (params.categoryId !== undefined) {
+    body.category_id = params.categoryId
+  }
+
+  const res = await fetch('/api/integration/products/import-woocommerce-orphans', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const json = (await res.json()) as WooCommerceOrphansImportResponse & {
+    error?: string
+    message?: string
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      json.message || json.error || `Error al importar huérfanos (${res.status})`
+    )
+  }
+
+  if (!json.success || !json.data) {
+    throw new Error(json.message || 'Respuesta inválida del servidor')
+  }
+
+  return json as WooCommerceOrphansImportResponse
+}
+
 /**
  * Actualiza el stock de un producto
  * Roles permitidos: gerencia, logistica
