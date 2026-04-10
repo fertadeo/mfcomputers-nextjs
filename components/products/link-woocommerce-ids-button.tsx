@@ -14,6 +14,14 @@ import {
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -25,6 +33,7 @@ import {
 import { AlertTriangle, CheckCircle2, Link2, Loader2, Package, Save } from "lucide-react"
 import { useLinkWooCommerceIds } from "@/app/hooks/useLinkWooCommerceIds"
 import {
+  type Category,
   type LinkWooCommerceIdsSummary,
   type WooCommerceUnmatchedErpItem,
   importWooCommerceProductsAsDraft,
@@ -40,12 +49,15 @@ interface LinkWooCommerceIdsButtonProps {
   onCompleted?: (summary: LinkWooCommerceIdsSummary) => void
   disabled?: boolean
   showSummary?: boolean
+  /** Para elegir categoría al importar borradores WC (mismo resumen embebido). */
+  categories?: Category[]
 }
 
 export function LinkWooCommerceIdsButton({
   onCompleted,
   disabled = false,
   showSummary = true,
+  categories,
 }: LinkWooCommerceIdsButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [lastRunAt, setLastRunAt] = useState<string | null>(null)
@@ -155,7 +167,7 @@ export function LinkWooCommerceIdsButton({
       {confirmDialog}
 
       {showSummary && result && (
-        <LinkWooCommerceSummary summary={result} lastRunAt={lastRunAt} />
+        <LinkWooCommerceSummary summary={result} lastRunAt={lastRunAt} categories={categories} />
       )}
     </div>
   )
@@ -165,11 +177,14 @@ export function LinkWooCommerceSummary({
   summary,
   lastRunAt,
   onDraftImportCompleted,
+  categories = [],
 }: {
   summary: LinkWooCommerceIdsSummary
   lastRunAt?: string | null
   /** Tras crear borradores en el ERP (p. ej. recargar listado de productos). */
   onDraftImportCompleted?: () => void | Promise<void>
+  /** Categorías ERP para enviar `category_id` al importar borradores (requerido si el servidor no define ERP_ORPHAN_IMPORT_CATEGORY_ID). */
+  categories?: Category[]
 }) {
   const { showToast } = useToast()
   const details = summary.not_found_in_erp_details
@@ -184,10 +199,26 @@ export function LinkWooCommerceSummary({
   const [draftSaving, setDraftSaving] = useState(false)
   const [errorsModalOpen, setErrorsModalOpen] = useState(false)
   const [migrationModalOpen, setMigrationModalOpen] = useState(false)
+  const [draftCategoryId, setDraftCategoryId] = useState("")
+
+  const categoryOptions = useMemo(() => {
+    const list = categories ?? []
+    const active = list.filter((c) => c.is_active !== false)
+    return active.length > 0 ? active : list
+  }, [categories])
 
   useEffect(() => {
     setSelectedKeys(new Set())
+    setDraftCategoryId("")
   }, [summary])
+
+  useEffect(() => {
+    if (categoryOptions.length === 0) return
+    setDraftCategoryId((cur) => {
+      if (cur && categoryOptions.some((c) => String(c.id) === cur)) return cur
+      return String(categoryOptions[0].id)
+    })
+  }, [categoryOptions])
 
   const rowKeys = useMemo(
     () => (hasDetailRows ? details!.map((row, i) => buildUnmatchedRowKey(row, i)) : []),
@@ -231,9 +262,24 @@ export function LinkWooCommerceSummary({
       showToast({ message: "Seleccioná al menos una fila para importar.", type: "error" })
       return
     }
+    let categoryId: number | undefined
+    if (categoryOptions.length > 0) {
+      const parsed = parseInt(draftCategoryId, 10)
+      if (!draftCategoryId.trim() || Number.isNaN(parsed)) {
+        showToast({
+          message: "Elegí la categoría destino en el ERP para crear los borradores.",
+          type: "error",
+        })
+        return
+      }
+      categoryId = parsed
+    }
     try {
       setDraftSaving(true)
-      const data = await importWooCommerceProductsAsDraft(items)
+      const data = await importWooCommerceProductsAsDraft(
+        items,
+        categoryId !== undefined ? { categoryId } : undefined
+      )
       const errPart =
         data.errors.length > 0 ? ` ${data.errors.length} avisos en la respuesta.` : ""
       showToast({
@@ -369,6 +415,43 @@ export function LinkWooCommerceSummary({
                   </DialogHeader>
                 </div>
 
+                {hasDetailRows && (
+                  <div className="space-y-2 border-b border-border/80 px-6 py-3">
+                    <Label htmlFor="wc-draft-import-category" className="text-xs font-medium">
+                      Categoría destino en el ERP
+                    </Label>
+                    {categoryOptions.length > 0 ? (
+                      <>
+                        <Select value={draftCategoryId} onValueChange={setDraftCategoryId}>
+                          <SelectTrigger id="wc-draft-import-category" className="h-9 w-full max-w-md">
+                            <SelectValue placeholder="Elegí categoría" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categoryOptions.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-muted-foreground">
+                          El servidor usa esta categoría al crear borradores (equivalente a enviar{" "}
+                          <code className="rounded bg-muted px-1">category_id</code> en el body). Si no
+                          aparecen categorías, revisá el catálogo en el ERP o configurá{" "}
+                          <code className="rounded bg-muted px-1">ERP_ORPHAN_IMPORT_CATEGORY_ID</code> en
+                          el servidor.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        No hay categorías cargadas en esta pantalla. Recargá la página o configurá en el
+                        servidor <code className="rounded bg-muted px-1">ERP_ORPHAN_IMPORT_CATEGORY_ID</code>
+                        .
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="min-h-0 max-h-[65vh] flex-1 overflow-y-auto px-6 py-4">
                   {hasDetailRows ? (
                     <div className="overflow-x-auto rounded-md border border-border">
@@ -460,7 +543,11 @@ export function LinkWooCommerceSummary({
                         <Button
                           type="button"
                           className="gap-2 w-full sm:w-auto"
-                          disabled={draftSaving || selectedKeys.size === 0}
+                          disabled={
+                            draftSaving ||
+                            selectedKeys.size === 0 ||
+                            (categoryOptions.length > 0 && !draftCategoryId.trim())
+                          }
                           onClick={() => void handleSaveDrafts()}
                         >
                           {draftSaving ? (

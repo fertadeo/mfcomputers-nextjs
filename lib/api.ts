@@ -2452,7 +2452,8 @@ interface WooCommerceProductsDraftImportResponse {
  * `/api/integration/products/import-woocommerce-products-draft` con JWT).
  */
 export async function importWooCommerceProductsAsDraft(
-  items: WooCommerceDraftImportItem[]
+  items: WooCommerceDraftImportItem[],
+  options?: { categoryId?: number }
 ): Promise<WooCommerceProductsDraftImportData> {
   const token = getAccessToken()
   if (!token) {
@@ -2462,13 +2463,22 @@ export async function importWooCommerceProductsAsDraft(
     throw new Error('Seleccioná al menos un producto para importar.')
   }
 
+  const body: Record<string, unknown> = { items }
+  if (
+    options?.categoryId !== undefined &&
+    typeof options.categoryId === 'number' &&
+    !Number.isNaN(options.categoryId)
+  ) {
+    body.category_id = options.categoryId
+  }
+
   const res = await fetch('/api/integration/products/import-woocommerce-products-draft', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify(body),
   })
 
   const json = (await res.json()) as WooCommerceProductsDraftImportResponse

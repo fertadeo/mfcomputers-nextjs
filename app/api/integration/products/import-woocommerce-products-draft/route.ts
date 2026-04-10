@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { items?: DraftItem[] }
+  let body: { items?: DraftItem[]; category_id?: number }
   try {
     body = await request.json()
   } catch {
@@ -124,6 +124,17 @@ export async function POST(request: Request) {
     )
   }
 
+  const payload: Record<string, unknown> = { items: body.items }
+  if (body.category_id !== undefined && body.category_id !== null) {
+    if (typeof body.category_id !== 'number' || Number.isNaN(body.category_id)) {
+      return NextResponse.json(
+        { success: false, message: 'category_id debe ser un número' },
+        { status: 400 }
+      )
+    }
+    payload.category_id = body.category_id
+  }
+
   const backendUrl = `${getBackendBaseUrl()}integration/products/import-woocommerce-products-draft`
 
   try {
@@ -133,7 +144,7 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
       },
-      body: JSON.stringify({ items: body.items }),
+      body: JSON.stringify(payload),
     })
 
     const data = await res.json().catch(() => ({ success: false, message: 'Respuesta no JSON del backend' }))

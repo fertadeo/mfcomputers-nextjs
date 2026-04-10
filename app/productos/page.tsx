@@ -441,6 +441,7 @@ export default function ProductosPage() {
               </div>
               {canLinkWooCommerce && linkSummary && (
                 <LinkWooCommerceSummary
+                  categories={categories}
                   summary={linkSummary}
                   lastRunAt={lastLinkAt}
                   onDraftImportCompleted={async () => {
