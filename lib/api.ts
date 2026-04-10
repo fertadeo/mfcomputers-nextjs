@@ -2425,6 +2425,65 @@ export async function importWooCommerceOrphans(params: {
   } as WooCommerceOrphansImportResponse
 }
 
+/** Cuerpo por fila para crear borradores en el ERP desde productos WC sin match (vía BFF). */
+export interface WooCommerceDraftImportItem {
+  woocommerce_id?: number | null
+  sku?: string | null
+  name?: string | null
+  sku_missing_in_wc?: boolean
+}
+
+export interface WooCommerceProductsDraftImportData {
+  created: number
+  skipped: number
+  errors: string[]
+}
+
+interface WooCommerceProductsDraftImportResponse {
+  success: boolean
+  message: string
+  data?: WooCommerceProductsDraftImportData
+  error?: string
+  timestamp?: string
+}
+
+/**
+ * Crea en el ERP productos en borrador para los ítems WC seleccionados (proxy
+ * `/api/integration/products/import-woocommerce-products-draft` con JWT).
+ */
+export async function importWooCommerceProductsAsDraft(
+  items: WooCommerceDraftImportItem[]
+): Promise<WooCommerceProductsDraftImportData> {
+  const token = getAccessToken()
+  if (!token) {
+    throw new Error('Sesión no válida. Iniciá sesión nuevamente.')
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('Seleccioná al menos un producto para importar.')
+  }
+
+  const res = await fetch('/api/integration/products/import-woocommerce-products-draft', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ items }),
+  })
+
+  const json = (await res.json()) as WooCommerceProductsDraftImportResponse
+
+  if (!res.ok) {
+    throw new Error(json.message || json.error || `Error al importar borradores (${res.status})`)
+  }
+
+  if (!json.success || !json.data) {
+    throw new Error(json.message || 'Respuesta inválida del servidor')
+  }
+
+  return json.data
+}
+
 /**
  * Actualiza el stock de un producto
  * Roles permitidos: gerencia, logistica

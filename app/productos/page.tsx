@@ -27,7 +27,6 @@ import { EditProductModal } from "@/components/edit-product-modal"
 import { BarcodeSearchModal } from "@/components/barcode-search-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { LinkWooCommerceIdsButton, LinkWooCommerceSummary } from "@/components/products/link-woocommerce-ids-button"
-import { WooCommerceOrphansImportDialog } from "@/components/products/woocommerce-orphans-import-dialog"
 import Image from "next/image"
 import {
   Select,
@@ -92,7 +91,6 @@ export default function ProductosPage() {
   const limit = 50 // Productos por página
   const [linkSummary, setLinkSummary] = useState<LinkWooCommerceIdsSummary | null>(null)
   const [lastLinkAt, setLastLinkAt] = useState<string | null>(null)
-  const [orphansImportOpen, setOrphansImportOpen] = useState(false)
 
   const STORAGE_KEYS = {
     viewMode: "productos-view-mode",
@@ -419,20 +417,11 @@ export default function ProductosPage() {
             <div className="flex flex-col gap-3">
               <div className="flex gap-2 md:justify-end">
                 {canLinkWooCommerce && (
-                  <>
-                    <WooCommerceOrphansImportDialog
-                      categories={categories}
-                      disabled={loading}
-                      onImportCompleted={loadProducts}
-                      open={orphansImportOpen}
-                      onOpenChange={setOrphansImportOpen}
-                    />
-                    <LinkWooCommerceIdsButton
-                      onCompleted={handleLinkCompleted}
-                      disabled={loading}
-                      showSummary={false}
-                    />
-                  </>
+                  <LinkWooCommerceIdsButton
+                    onCompleted={handleLinkCompleted}
+                    disabled={loading}
+                    showSummary={false}
+                  />
                 )}
                 <Button variant="outline">
                   <Download className="h-4 w-4 mr-2" />
@@ -454,7 +443,10 @@ export default function ProductosPage() {
                 <LinkWooCommerceSummary
                   summary={linkSummary}
                   lastRunAt={lastLinkAt}
-                  onOpenOrphansImport={() => setOrphansImportOpen(true)}
+                  onDraftImportCompleted={async () => {
+                    await loadProducts()
+                    await loadProductStats()
+                  }}
                 />
               )}
             </div>

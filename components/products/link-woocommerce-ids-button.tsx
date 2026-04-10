@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -21,24 +22,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertTriangle, CheckCircle2, Link2, Loader2, UploadCloud } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Link2, Loader2, Save } from "lucide-react"
 import { useLinkWooCommerceIds } from "@/app/hooks/useLinkWooCommerceIds"
-import { type LinkWooCommerceIdsSummary, type WooCommerceUnmatchedErpItem } from "@/lib/api"
+import {
+  type LinkWooCommerceIdsSummary,
+  type WooCommerceUnmatchedErpItem,
+  importWooCommerceProductsAsDraft,
+  type WooCommerceDraftImportItem,
+} from "@/lib/api"
 import { useToast } from "@/contexts/ToastContext"
+
+function buildUnmatchedRowKey(row: WooCommerceUnmatchedErpItem, index: number): string {
+  return `wc-${row.woocommerce_id ?? "none"}-sku-${row.sku ?? ""}-i-${index}`
+}
 
 interface LinkWooCommerceIdsButtonProps {
   onCompleted?: (summary: LinkWooCommerceIdsSummary) => void
   disabled?: boolean
   showSummary?: boolean
-  /** Abre el diálogo de migración de huérfanos (p. ej. desde la página de productos). */
-  onOpenOrphansImport?: () => void
 }
 
 export function LinkWooCommerceIdsButton({
   onCompleted,
   disabled = false,
   showSummary = true,
-  onOpenOrphansImport,
 }: LinkWooCommerceIdsButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [lastRunAt, setLastRunAt] = useState<string | null>(null)
@@ -106,8 +113,8 @@ export function LinkWooCommerceIdsButton({
             <p>
               • Los productos ya vinculados se mantienen sin cambios. <br />
               • Si en WooCommerce hay un SKU que no existe en el ERP, o un producto **sin SKU** en la
-              tienda, no habrá coincidencia hasta migrar ese artículo desde «Migración desde
-              WooCommerce».
+              tienda, no habrá coincidencia: podés elegir esos artículos en el listado posterior e
+              importarlos como borrador en el ERP.
             </p>
             <p className="font-medium text-foreground">
               ¿Deseás ejecutar la vinculación ahora?
@@ -148,11 +155,7 @@ export function LinkWooCommerceIdsButton({
       {confirmDialog}
 
       {showSummary && result && (
-        <LinkWooCommerceSummary
-          summary={result}
-          lastRunAt={lastRunAt}
-          onOpenOrphansImport={onOpenOrphansImport}
-        />
+        <LinkWooCommerceSummary summary={result} lastRunAt={lastRunAt} />
       )}
     </div>
   )
@@ -161,22 +164,91 @@ export function LinkWooCommerceIdsButton({
 export function LinkWooCommerceSummary({
   summary,
   lastRunAt,
-  onOpenOrphansImport,
+  onDraftImportCompleted,
 }: {
   summary: LinkWooCommerceIdsSummary
   lastRunAt?: string | null
-  onOpenOrphansImport?: () => void
+  /** Tras crear borradores en el ERP (p. ej. recargar listado de productos). */
+  onDraftImportCompleted?: () => void | Promise<void>
 }) {
+  const { showToast } = useToast()
   const details = summary.not_found_in_erp_details
   const hasDetailRows = Array.isArray(details) && details.length > 0
-  const showOrphansBlock = summary.not_found_in_erp > 0 && onOpenOrphansImport
+  const showOrphansBlock = summary.not_found_in_erp > 0
   const withoutWcSku =
     typeof summary.not_found_in_erp_without_wc_sku === "number"
       ? summary.not_found_in_erp_without_wc_sku
       : undefined
 
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
+  const [draftSaving, setDraftSaving] = useState(false)
+
+  useEffect(() => {
+    setSelectedKeys(new Set())
+  }, [summary])
+
+  const rowKeys = useMemo(
+    () => (hasDetailRows ? details!.map((row, i) => buildUnmatchedRowKey(row, i)) : []),
+    [details, hasDetailRows]
+  )
+
+  const allSelected = rowKeys.length > 0 && rowKeys.every((k) => selectedKeys.has(k))
+  const someSelected = rowKeys.some((k) => selectedKeys.has(k))
+
+  const toggleRow = useCallback((key: string, checked: boolean) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    if (allSelected) setSelectedKeys(new Set())
+    else setSelectedKeys(new Set(rowKeys))
+  }, [allSelected, rowKeys])
+
   const rowSkuMissing = (row: WooCommerceUnmatchedErpItem) =>
     row.sku_missing_in_wc === true || !(row.sku?.trim() ?? "")
+
+  const handleSaveDrafts = async () => {
+    if (!hasDetailRows || !details) return
+    const items: WooCommerceDraftImportItem[] = []
+    details.forEach((row, i) => {
+      const key = buildUnmatchedRowKey(row, i)
+      if (!selectedKeys.has(key)) return
+      items.push({
+        woocommerce_id: row.woocommerce_id,
+        sku: row.sku,
+        name: row.name,
+        sku_missing_in_wc: row.sku_missing_in_wc,
+      })
+    })
+    if (items.length === 0) {
+      showToast({ message: "Seleccioná al menos una fila para importar.", type: "error" })
+      return
+    }
+    try {
+      setDraftSaving(true)
+      const data = await importWooCommerceProductsAsDraft(items)
+      const errPart =
+        data.errors.length > 0 ? ` ${data.errors.length} avisos en la respuesta.` : ""
+      showToast({
+        message: `Borradores: ${data.created} creados, ${data.skipped} omitidos.${errPart}`,
+        type: "success",
+      })
+      setSelectedKeys(new Set())
+      await onDraftImportCompleted?.()
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "No se pudieron guardar los borradores",
+        type: "error",
+      })
+    } finally {
+      setDraftSaving(false)
+    }
+  }
 
   return (
     <Card className="border border-muted">
@@ -215,44 +287,88 @@ export function LinkWooCommerceSummary({
             {hasDetailRows ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Listado devuelto por el servidor. La columna «Sin SKU WC» indica productos en la
-                  tienda sin SKU (no cruzan por código hasta importarlos o generar código en ERP).
-                  La migración de huérfanos puede incluir más artículos; revisá la simulación antes de
-                  importar.
+                  Marcá los artículos a importar como borrador en el ERP. La columna «Sin SKU WC»
+                  indica productos en la tienda sin SKU (el backend puede generar código al crear el
+                  borrador).
                 </p>
                 <div className="max-h-56 overflow-auto rounded-md border border-border bg-background">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[22%]">SKU</TableHead>
-                        <TableHead className="w-[14%] text-center">Sin SKU WC</TableHead>
-                        <TableHead className="w-[16%]">ID WC</TableHead>
+                        <TableHead className="w-10 p-2">
+                          <Checkbox
+                            checked={
+                              allSelected ? true : someSelected ? "indeterminate" : false
+                            }
+                            onCheckedChange={() => toggleAll()}
+                            aria-label="Seleccionar todos"
+                          />
+                        </TableHead>
+                        <TableHead className="w-[20%]">SKU</TableHead>
+                        <TableHead className="w-[12%] text-center">Sin SKU WC</TableHead>
+                        <TableHead className="w-[14%]">ID WC</TableHead>
                         <TableHead>Nombre</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {details!.map((row, i) => (
-                        <TableRow key={`${row.sku ?? ""}-${row.woocommerce_id ?? i}-${i}`}>
-                          <TableCell className="font-mono text-xs">
-                            {row.sku?.trim() ? row.sku : "—"}
-                          </TableCell>
-                          <TableCell className="text-center text-xs">
-                            {rowSkuMissing(row) ? (
-                              <Badge variant="outline" className="text-[10px]">
-                                Sí
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs tabular-nums">
-                            {row.woocommerce_id != null ? row.woocommerce_id : "—"}
-                          </TableCell>
-                          <TableCell className="text-xs">{row.name?.trim() ? row.name : "—"}</TableCell>
-                        </TableRow>
-                      ))}
+                      {details!.map((row, i) => {
+                        const key = buildUnmatchedRowKey(row, i)
+                        return (
+                          <TableRow key={key}>
+                            <TableCell className="p-2 align-middle">
+                              <Checkbox
+                                checked={selectedKeys.has(key)}
+                                onCheckedChange={(v) => toggleRow(key, v === true)}
+                                aria-label={`Seleccionar ${row.name ?? row.sku ?? "producto"}`}
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {row.sku?.trim() ? row.sku : "—"}
+                            </TableCell>
+                            <TableCell className="text-center text-xs">
+                              {rowSkuMissing(row) ? (
+                                <Badge variant="outline" className="text-[10px]">
+                                  Sí
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs tabular-nums">
+                              {row.woocommerce_id != null ? row.woocommerce_id : "—"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {row.name?.trim() ? row.name : "—"}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    {selectedKeys.size} seleccionado{selectedKeys.size === 1 ? "" : "s"}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-2 w-full sm:w-auto"
+                    disabled={draftSaving || selectedKeys.size === 0}
+                    onClick={() => void handleSaveDrafts()}
+                  >
+                    {draftSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Guardando…
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Guardar seleccionados en borrador (ERP)
+                      </>
+                    )}
+                  </Button>
                 </div>
               </>
             ) : (
@@ -260,24 +376,14 @@ export function LinkWooCommerceSummary({
                 Hay {summary.not_found_in_erp} caso
                 {summary.not_found_in_erp === 1 ? "" : "s"} sin coincidencia (incluye productos en WC
                 con SKU pero sin par en el ERP, y con productos **sin SKU** en la tienda). Para ver el
-                detalle fila a fila, el backend debe incluir{" "}
+                detalle fila a fila y poder importar, el backend debe incluir{" "}
                 <code className="rounded bg-muted px-1 text-[11px]">not_found_in_erp_details</code> y{" "}
                 <code className="rounded bg-muted px-1 text-[11px]">
                   not_found_in_erp_without_wc_sku
                 </code>
-                . Usá la migración de huérfanos para revisar e importar.
+                .
               </p>
             )}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="gap-2 w-full sm:w-auto"
-              onClick={() => onOpenOrphansImport()}
-            >
-              <UploadCloud className="h-4 w-4" />
-              Abrir migración de huérfanos
-            </Button>
           </div>
         )}
         {lastRunAt && (
