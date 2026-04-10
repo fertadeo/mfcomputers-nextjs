@@ -2241,12 +2241,33 @@ export async function syncProductToWooCommerce(id: number): Promise<SyncToWooCom
   }
 }
 
+/**
+ * Fila opcional: producto en WooCommerce sin equivalente en el ERP (huérfano para vinculación).
+ * Ver documentación en `docs/BACKEND_WOOCOMMERCE_INTEGRATION.md`.
+ */
+export interface WooCommerceUnmatchedErpItem {
+  sku?: string | null
+  woocommerce_id?: number | null
+  name?: string | null
+  /** true si en WC no hay SKU (vacío/null); el ERP no puede cruzar por SKU hasta importar o generar código. */
+  sku_missing_in_wc?: boolean
+}
+
 export interface LinkWooCommerceIdsSummary {
   linked: number
   already_linked: number
   not_found_in_erp: number
   total_processed: number
   errors: string[]
+  /**
+   * Subconjunto opcional: de `not_found_in_erp`, cuántos son productos WC **sin SKU** (no emparejables por SKU).
+   */
+  not_found_in_erp_without_wc_sku?: number
+  /**
+   * Detalle por fila (opcional). El backend debe incluirlo en POST .../products/link-woocommerce-ids
+   * para listar los casos contados en `not_found_in_erp`.
+   */
+  not_found_in_erp_details?: WooCommerceUnmatchedErpItem[]
 }
 
 interface LinkWooCommerceIdsApiResponse {
@@ -2303,7 +2324,15 @@ export async function linkWooCommerceIds(): Promise<LinkWooCommerceIdsSummary> {
     }
 
     console.log('✅ [PRODUCTS] Vinculación con WooCommerce completada:', responseData.data)
-    return responseData.data
+    const raw = responseData.data as LinkWooCommerceIdsSummary & Record<string, unknown>
+    const detailsCandidate = raw.not_found_in_erp_details ?? raw.orphans_not_in_erp
+    const not_found_in_erp_details = Array.isArray(detailsCandidate)
+      ? (detailsCandidate as WooCommerceUnmatchedErpItem[])
+      : undefined
+    return {
+      ...raw,
+      not_found_in_erp_details,
+    }
   } catch (error) {
     console.error('💥 [PRODUCTS] Error al vincular productos con WooCommerce:', error)
     throw error instanceof Error ? error : new Error('Error desconocido al vincular productos con WooCommerce')
@@ -2321,6 +2350,10 @@ export interface WooCommerceOrphansImportData {
   category_id?: number
   error_details: { code?: string; message?: string }[]
   created_codes: string[]
+  /** Opcional: huérfanos detectados en WC que no tenían SKU en la tienda. */
+  scanned_without_wc_sku?: number
+  /** Opcional: filas creadas en ERP cuyo origen WC no tenía SKU (código generado en ERP). */
+  created_without_wc_sku?: number
 }
 
 export interface WooCommerceOrphansImportResponse {
@@ -2371,7 +2404,25 @@ export async function importWooCommerceOrphans(params: {
     throw new Error(json.message || 'Respuesta inválida del servidor')
   }
 
-  return json as WooCommerceOrphansImportResponse
+  const data = json.data as WooCommerceOrphansImportData & Record<string, unknown>
+  return {
+    ...json,
+    data: {
+      ...data,
+      scanned_without_wc_sku:
+        typeof data.scanned_without_wc_sku === 'number'
+          ? data.scanned_without_wc_sku
+          : typeof data.orphans_without_sku === 'number'
+            ? data.orphans_without_sku
+            : undefined,
+      created_without_wc_sku:
+        typeof data.created_without_wc_sku === 'number'
+          ? data.created_without_wc_sku
+          : typeof data.imported_without_wc_sku === 'number'
+            ? data.imported_without_wc_sku
+            : undefined,
+    },
+  } as WooCommerceOrphansImportResponse
 }
 
 /**

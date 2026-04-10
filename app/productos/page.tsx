@@ -92,6 +92,7 @@ export default function ProductosPage() {
   const limit = 50 // Productos por página
   const [linkSummary, setLinkSummary] = useState<LinkWooCommerceIdsSummary | null>(null)
   const [lastLinkAt, setLastLinkAt] = useState<string | null>(null)
+  const [orphansImportOpen, setOrphansImportOpen] = useState(false)
 
   const STORAGE_KEYS = {
     viewMode: "productos-view-mode",
@@ -423,6 +424,8 @@ export default function ProductosPage() {
                       categories={categories}
                       disabled={loading}
                       onImportCompleted={loadProducts}
+                      open={orphansImportOpen}
+                      onOpenChange={setOrphansImportOpen}
                     />
                     <LinkWooCommerceIdsButton
                       onCompleted={handleLinkCompleted}
@@ -448,7 +451,11 @@ export default function ProductosPage() {
                 </Button>
               </div>
               {canLinkWooCommerce && linkSummary && (
-                <LinkWooCommerceSummary summary={linkSummary} lastRunAt={lastLinkAt} />
+                <LinkWooCommerceSummary
+                  summary={linkSummary}
+                  lastRunAt={lastLinkAt}
+                  onOpenOrphansImport={() => setOrphansImportOpen(true)}
+                />
               )}
             </div>
           </div>
