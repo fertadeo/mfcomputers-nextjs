@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   title: "MF Computers - Sistema de Gestión Empresarial",
   description: "Sistema ERP para MF Computers con Next.js y Tailwind CSS",
   generator: "v0.app",
+  icons: {
+    icon: [{ url: "/images/Recurso-8@3x.png", type: "image/png" }],
+    apple: "/images/Recurso-8@3x.png",
+  },
 }
 
 export default function RootLayout({

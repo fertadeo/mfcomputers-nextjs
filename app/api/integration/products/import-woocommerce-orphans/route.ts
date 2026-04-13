@@ -12,11 +12,13 @@ function getBackendBaseUrl(): string {
   return url
 }
 
+/** Misma prioridad que `app/api/categories/route.ts` para no duplicar claves en `.env`. */
 function getApiKey(): string | undefined {
   return (
     process.env.API_KEY ||
     process.env.X_API_KEY ||
     process.env.X_API_KEY_INTEGRATION ||
+    process.env.X_API_KEY_CATEGORIES ||
     undefined
   )
 }
@@ -90,12 +92,12 @@ export async function POST(request: Request) {
 
   const apiKey = getApiKey()
   if (!apiKey) {
-    console.error('[import-woocommerce-orphans] Falta API_KEY / X_API_KEY en el servidor')
+    console.error('[import-woocommerce-orphans] Falta API key en el servidor (revisá .env.local)')
     return NextResponse.json(
       {
         success: false,
         message:
-          'El servidor no tiene configurada la API key para integraciones. Definí API_KEY o X_API_KEY en el entorno.',
+          'El servidor no tiene configurada la API key para integraciones. En el proyecto Next.js definí al menos una de: API_KEY, X_API_KEY, X_API_KEY_INTEGRATION o X_API_KEY_CATEGORIES (misma que usa el proxy de categorías). Reiniciá el servidor de desarrollo tras guardar .env.local.',
       },
       { status: 503 }
     )
