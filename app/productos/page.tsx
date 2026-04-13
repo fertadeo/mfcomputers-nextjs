@@ -27,7 +27,6 @@ import { EditProductModal } from "@/components/edit-product-modal"
 import { BarcodeSearchModal } from "@/components/barcode-search-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { LinkWooCommerceIdsButton, LinkWooCommerceSummary } from "@/components/products/link-woocommerce-ids-button"
-import { WooCommerceOrphansImportDialog } from "@/components/products/woocommerce-orphans-import-dialog"
 import Image from "next/image"
 import {
   Select,
@@ -418,18 +417,11 @@ export default function ProductosPage() {
             <div className="flex flex-col gap-3">
               <div className="flex gap-2 md:justify-end">
                 {canLinkWooCommerce && (
-                  <>
-                    <WooCommerceOrphansImportDialog
-                      categories={categories}
-                      disabled={loading}
-                      onImportCompleted={loadProducts}
-                    />
-                    <LinkWooCommerceIdsButton
-                      onCompleted={handleLinkCompleted}
-                      disabled={loading}
-                      showSummary={false}
-                    />
-                  </>
+                  <LinkWooCommerceIdsButton
+                    onCompleted={handleLinkCompleted}
+                    disabled={loading}
+                    showSummary={false}
+                  />
                 )}
                 <Button variant="outline">
                   <Download className="h-4 w-4 mr-2" />
@@ -448,7 +440,15 @@ export default function ProductosPage() {
                 </Button>
               </div>
               {canLinkWooCommerce && linkSummary && (
-                <LinkWooCommerceSummary summary={linkSummary} lastRunAt={lastLinkAt} />
+                <LinkWooCommerceSummary
+                  categories={categories}
+                  summary={linkSummary}
+                  lastRunAt={lastLinkAt}
+                  onDraftImportCompleted={async () => {
+                    await loadProducts()
+                    await loadProductStats()
+                  }}
+                />
               )}
             </div>
           </div>

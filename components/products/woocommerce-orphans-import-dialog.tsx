@@ -42,14 +42,25 @@ interface WooCommerceOrphansImportDialogProps {
   categories: Category[]
   disabled?: boolean
   onImportCompleted?: () => void
+  /** Modo controlado: permite abrir el diálogo desde el padre (p. ej. tras vincular con WooCommerce). */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 export function WooCommerceOrphansImportDialog({
   categories,
   disabled = false,
   onImportCompleted,
+  open: controlledOpen,
+  onOpenChange,
 }: WooCommerceOrphansImportDialogProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
+  const setOpen = (next: boolean) => {
+    onOpenChange?.(next)
+    if (!isControlled) setInternalOpen(next)
+  }
   const [categoryChoice, setCategoryChoice] = useState<string>(CATEGORY_DEFAULT)
   const [simulationOnly, setSimulationOnly] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -110,9 +121,10 @@ export function WooCommerceOrphansImportDialog({
         <DialogHeader>
           <DialogTitle>Migración desde WooCommerce</DialogTitle>
           <DialogDescription>
-            Importa productos huérfanos (presentes en WooCommerce y aún no dados de alta en el ERP).
-            Los nuevos productos se crean inactivos en la categoría elegida. Primero ejecutá una
-            simulación para revisar los números.
+            Importa productos huérfanos (presentes en WooCommerce y aún no dados de alta en el ERP),
+            incluidos los que no tienen SKU en la tienda: el backend debe generar código en el ERP y
+            enlazar <code className="text-xs">woocommerce_id</code>. Los nuevos productos se crean
+            inactivos en la categoría elegida. Primero ejecutá una simulación para revisar los números.
           </DialogDescription>
         </DialogHeader>
 
@@ -179,6 +191,12 @@ export function WooCommerceOrphansImportDialog({
                 <Stat label="Padres WC revisados" value={lastResult.scanned_wc_products} />
                 {lastResult.category_id != null && (
                   <Stat label="Categoría ID" value={lastResult.category_id} />
+                )}
+                {lastResult.scanned_without_wc_sku != null && lastResult.scanned_without_wc_sku > 0 && (
+                  <Stat label="Huérfanos sin SKU en WC (escaneo)" value={lastResult.scanned_without_wc_sku} />
+                )}
+                {lastResult.created_without_wc_sku != null && lastResult.created_without_wc_sku > 0 && (
+                  <Stat label="Creados sin SKU en WC" value={lastResult.created_without_wc_sku} />
                 )}
               </div>
               {lastResult.created_codes.length > 0 && (
