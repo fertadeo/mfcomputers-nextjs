@@ -756,6 +756,12 @@ export interface Sale {
   payment_method: SalePaymentMethod
   sale_date: string
   sync_status?: 'pending' | 'synced' | 'error'
+  arca_status?: 'pending' | 'success' | 'error' | null
+  arca_factura_id?: string | null
+  arca_cae?: string | null
+  arca_last_attempt_at?: string | null
+  arca_error_code?: string | null
+  arca_error_message?: string | null
   items?: SaleItemResponse[]
   created_at: string
   updated_at: string
@@ -858,6 +864,84 @@ export async function getSale(id: number): Promise<{ success: boolean; message: 
     if (response.status === 401) logout()
     throw err
   }
+  return data
+}
+
+export interface FacturarSaleRequest {
+  cuitEmisor?: string
+  puntoVenta?: number
+  docTipo?: number
+  docNro?: number
+  tipo?: number
+  condicionIvaReceptor?: number
+  concepto?: 1 | 2 | 3
+  fechaServicioDesde?: string
+  fechaServicioHasta?: string
+  force?: boolean
+}
+
+export interface FacturarSaleResponseData {
+  sale?: {
+    id: number
+    arca_status?: 'pending' | 'success' | 'error'
+    arca_factura_id?: string | null
+    arca_cae?: string | null
+    arca_last_attempt_at?: string | null
+    arca_error_code?: string | null
+    arca_error_message?: string | null
+  }
+  arca?: {
+    facturaId?: string
+    cae?: string
+    idempotencyKey?: string
+    response?: unknown
+  }
+  status?: number
+  code?: string
+  retryAfter?: number | string | null
+}
+
+export interface FacturarSaleResponse {
+  success: boolean
+  message: string
+  data?: FacturarSaleResponseData
+  error?: string
+  timestamp?: string
+}
+
+export async function facturarSale(id: number, body: FacturarSaleRequest): Promise<FacturarSaleResponse> {
+  const apiUrl = getApiUrl()
+  const headers: HeadersInit = { ...getAuthHeaders() }
+
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+    if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
+  }
+
+  const response = await fetch(`${apiUrl}sales/${id}/facturar`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  const data = (await response.json().catch(() => ({}))) as FacturarSaleResponse
+
+  if (!response.ok) {
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & {
+      status?: number
+      code?: string
+      retryAfter?: number | string | null
+      data?: FacturarSaleResponseData
+    }
+    err.status = response.status
+    err.code = data?.data?.code
+    err.retryAfter = data?.data?.retryAfter
+    err.data = data?.data
+    if (response.status === 401) logout()
+    throw err
+  }
+
   return data
 }
 

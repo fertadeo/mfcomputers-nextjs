@@ -159,6 +159,13 @@ export const MENU_GROUPS: MenuGroup[] = [
         href: "/presupuestos",
         requiredRoles: ['gerencia', 'ventas', 'admin']
       },
+      {
+        id: "facturacion",
+        label: "Facturación",
+        icon: FileText,
+        href: "/facturacion",
+        requiredRoles: ['gerencia', 'ventas', 'finanzas', 'admin']
+      },
       { 
         id: "reparaciones", 
         label: "Órdenes de reparación", 
