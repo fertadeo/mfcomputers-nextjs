@@ -909,6 +909,17 @@ export interface FacturarSaleResponse {
   timestamp?: string
 }
 
+export type FacturarSaleError = Error & {
+  status?: number
+  code?: string
+  retryAfter?: number | string | null
+  data?: FacturarSaleResponseData
+  /** Cuerpo JSON parseado completo cuando la API devuelve error */
+  responsePayload?: FacturarSaleResponse | Record<string, unknown>
+  /** Texto crudo de la respuesta (útil si no es JSON) */
+  rawResponseText?: string
+}
+
 export async function facturarSale(id: number, body: FacturarSaleRequest): Promise<FacturarSaleResponse> {
   const apiUrl = getApiUrl()
   const headers: HeadersInit = { ...getAuthHeaders() }
@@ -918,29 +929,71 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
     if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
   }
 
-  const response = await fetch(`${apiUrl}sales/${id}/facturar`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
+  const url = `${apiUrl}sales/${id}/facturar`
+  const bodySerialized = JSON.stringify(body)
 
-  const data = (await response.json().catch(() => ({}))) as FacturarSaleResponse
+  console.log('[FACTURAR] POST — URL:', url)
+  console.log('[FACTURAR] POST — saleId:', id)
+  console.log('[FACTURAR] POST — body (JSON):', bodySerialized)
+  console.log('[FACTURAR] POST — body (objeto):', body)
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: bodySerialized,
+    })
+  } catch (networkErr) {
+    console.error('[FACTURAR] Error de red al llamar facturar:', networkErr)
+    throw networkErr
+  }
+
+  const rawText = await response.text()
+  let data = {} as FacturarSaleResponse
+  try {
+    if (rawText) data = JSON.parse(rawText) as FacturarSaleResponse
+  } catch (parseErr) {
+    console.error('[FACTURAR] Respuesta no es JSON válido:', {
+      status: response.status,
+      statusText: response.statusText,
+      rawPreview: rawText.slice(0, 2000),
+      parseErr,
+    })
+  }
 
   if (!response.ok) {
-    const msg = data?.message || data?.error || `Error ${response.status}`
-    const err = new Error(msg) as Error & {
-      status?: number
-      code?: string
-      retryAfter?: number | string | null
-      data?: FacturarSaleResponseData
-    }
+    const msg = data?.message || data?.error || `Error ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
+    const err = new Error(msg) as FacturarSaleError
     err.status = response.status
-    err.code = data?.data?.code
+    err.code = data?.data?.code != null ? String(data.data.code) : undefined
     err.retryAfter = data?.data?.retryAfter
     err.data = data?.data
+    err.responsePayload = data
+    err.rawResponseText = rawText.length > 4000 ? `${rawText.slice(0, 4000)}…` : rawText
+
+    console.error('[FACTURAR] Error HTTP:', {
+      status: response.status,
+      statusText: response.statusText,
+      url,
+      saleId: id,
+      message: msg,
+      bodyEnviado: body,
+      bodyEnviadoJson: bodySerialized,
+      respuestaParseada: data,
+      respuestaCrudaPreview: rawText.slice(0, 2000),
+    })
+
     if (response.status === 401) logout()
     throw err
   }
+
+  console.log('[FACTURAR] OK:', {
+    status: response.status,
+    message: data?.message,
+    data: data?.data,
+    timestamp: data?.timestamp,
+  })
 
   return data
 }
