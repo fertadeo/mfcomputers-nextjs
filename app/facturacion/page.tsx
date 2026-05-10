@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -498,60 +499,92 @@ export default function FacturacionPage() {
                     <p className="text-muted-foreground text-sm">Cargando datos fiscales del cliente…</p>
                   ) : null}
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Input
-                      type="number"
-                      value={form.tipo ?? 11}
-                      onChange={(e) => setForm((prev) => ({ ...prev, tipo: Number(e.target.value) || 11 }))}
-                      placeholder="Tipo (default 11)"
-                    />
-                    <Input
-                      type="number"
-                      value={form.condicionIvaReceptor ?? 5}
-                      onChange={(e) => setForm((prev) => ({ ...prev, condicionIvaReceptor: Number(e.target.value) || 5 }))}
-                      placeholder="Condición IVA receptor"
-                    />
-                    <Select
-                      value={String(form.concepto ?? 1)}
-                      onValueChange={(value) => setForm((prev) => ({ ...prev, concepto: Number(value) as 1 | 2 | 3 }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Concepto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 - Productos</SelectItem>
-                        <SelectItem value="2">2 - Servicios</SelectItem>
-                        <SelectItem value="3">3 - Productos + servicios</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      value={form.docTipo ?? ""}
-                      onChange={(e) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          docTipo: e.target.value === "" ? undefined : Number(e.target.value),
-                        }))
-                      }
-                      placeholder="docTipo AFIP (ej. 80 CUIT, 99 CF)"
-                    />
-                    <Input
-                      value={form.docNro ?? ""}
-                      onChange={(e) => setForm((prev) => ({ ...prev, docNro: e.target.value ? Number(e.target.value) : undefined }))}
-                      placeholder="docNro (con CF usar 0)"
-                    />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="facturar-tipo-comprobante">Tipo de comprobante (`tipo`)</Label>
+                      <Input
+                        id="facturar-tipo-comprobante"
+                        type="number"
+                        value={form.tipo ?? 11}
+                        onChange={(e) => setForm((prev) => ({ ...prev, tipo: Number(e.target.value) || 11 }))}
+                        placeholder="Ej: 11 — Factura C"
+                      />
+                      <p className="text-muted-foreground text-xs">Código AFIP del comprobante (ej. 11 = Factura C).</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="facturar-condicion-iva">Condición IVA receptor</Label>
+                      <Input
+                        id="facturar-condicion-iva"
+                        type="number"
+                        value={form.condicionIvaReceptor ?? 5}
+                        onChange={(e) => setForm((prev) => ({ ...prev, condicionIvaReceptor: Number(e.target.value) || 5 }))}
+                        placeholder="Ej: 5 — Consumidor final"
+                      />
+                      <p className="text-muted-foreground text-xs">Ej. 5 = consumidor final (según tabla ARCA/AFIP).</p>
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="facturar-concepto">Concepto (`concepto`)</Label>
+                      <Select
+                        value={String(form.concepto ?? 1)}
+                        onValueChange={(value) => setForm((prev) => ({ ...prev, concepto: Number(value) as 1 | 2 | 3 }))}
+                      >
+                        <SelectTrigger id="facturar-concepto" className="w-full">
+                          <SelectValue placeholder="Elegí concepto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 - Productos</SelectItem>
+                          <SelectItem value="2">2 - Servicios</SelectItem>
+                          <SelectItem value="3">3 - Productos + servicios</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="facturar-doc-tipo">Tipo de documento receptor (`docTipo`)</Label>
+                      <Input
+                        id="facturar-doc-tipo"
+                        type="number"
+                        value={form.docTipo ?? ""}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            docTipo: e.target.value === "" ? undefined : Number(e.target.value),
+                          }))
+                        }
+                        placeholder="80 = CUIT, 99 = consumidor final"
+                      />
+                      <p className="text-muted-foreground text-xs">AFIP: 80 CUIT, 96 DNI, 99 sin identificar / CF.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="facturar-doc-nro">Número de documento receptor (`docNro`)</Label>
+                      <Input
+                        id="facturar-doc-nro"
+                        value={form.docNro ?? ""}
+                        onChange={(e) => setForm((prev) => ({ ...prev, docNro: e.target.value ? Number(e.target.value) : undefined }))}
+                        placeholder="Con docTipo 99 suele ser 0"
+                      />
+                      <p className="text-muted-foreground text-xs">Sin guiones; con consumidor final normalmente 0.</p>
+                    </div>
                     {(form.concepto === 2 || form.concepto === 3) && (
                       <>
-                        <Input
-                          type="date"
-                          value={form.fechaServicioDesde ?? ""}
-                          onChange={(e) => setForm((prev) => ({ ...prev, fechaServicioDesde: e.target.value || undefined }))}
-                        />
-                        <Input
-                          type="date"
-                          value={form.fechaServicioHasta ?? ""}
-                          onChange={(e) => setForm((prev) => ({ ...prev, fechaServicioHasta: e.target.value || undefined }))}
-                        />
+                        <div className="space-y-2">
+                          <Label htmlFor="facturar-servicio-desde">Servicio — fecha desde</Label>
+                          <Input
+                            id="facturar-servicio-desde"
+                            type="date"
+                            value={form.fechaServicioDesde ?? ""}
+                            onChange={(e) => setForm((prev) => ({ ...prev, fechaServicioDesde: e.target.value || undefined }))}
+                          />
+                          <p className="text-muted-foreground text-xs">Obligatorio si concepto es 2 o 3.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="facturar-servicio-hasta">Servicio — fecha hasta</Label>
+                          <Input
+                            id="facturar-servicio-hasta"
+                            type="date"
+                            value={form.fechaServicioHasta ?? ""}
+                            onChange={(e) => setForm((prev) => ({ ...prev, fechaServicioHasta: e.target.value || undefined }))}
+                          />
+                        </div>
                       </>
                     )}
                   </div>
