@@ -1,4 +1,9 @@
 import { getApiUrl } from '@/config/api';
+import {
+  getStoredFacturacionCuitEmisor,
+  getStoredFacturacionPuntoVenta,
+  getStoredFacturadorApiKey,
+} from '@/lib/facturacion-settings';
 
 // Función helper para obtener el token de autenticación
 function getAuthToken(): string | null {
@@ -927,15 +932,27 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
   if (typeof window !== 'undefined') {
     const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
     if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
+    const facturadorKey = getStoredFacturadorApiKey()
+    if (facturadorKey) {
+      ;(headers as Record<string, string>)['x-facturador-api-key'] = facturadorKey
+    }
+  }
+
+  const storedCuit = typeof window !== 'undefined' ? getStoredFacturacionCuitEmisor() : null
+  const storedPv = typeof window !== 'undefined' ? getStoredFacturacionPuntoVenta() : undefined
+  const bodyMerged: FacturarSaleRequest = {
+    ...body,
+    ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
+    ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
   }
 
   const url = `${apiUrl}sales/${id}/facturar`
-  const bodySerialized = JSON.stringify(body)
+  const bodySerialized = JSON.stringify(bodyMerged)
 
   console.log('[FACTURAR] POST — URL:', url)
   console.log('[FACTURAR] POST — saleId:', id)
   console.log('[FACTURAR] POST — body (JSON):', bodySerialized)
-  console.log('[FACTURAR] POST — body (objeto):', body)
+  console.log('[FACTURAR] POST — body (objeto):', bodyMerged)
 
   let response: Response
   try {
@@ -978,7 +995,7 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
       url,
       saleId: id,
       message: msg,
-      bodyEnviado: body,
+      bodyEnviado: bodyMerged,
       bodyEnviadoJson: bodySerialized,
       respuestaParseada: data,
       respuestaCrudaPreview: rawText.slice(0, 2000),

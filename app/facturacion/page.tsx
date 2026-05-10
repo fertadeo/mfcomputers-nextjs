@@ -22,6 +22,7 @@ import {
   type FacturarSaleError,
   type Sale,
 } from "@/lib/api"
+import { getStoredFacturacionCuitEmisor } from "@/lib/facturacion-settings"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -118,11 +119,28 @@ export default function FacturacionPage() {
   const [modalCliente, setModalCliente] = useState<Cliente | null>(null)
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
 
-  const emisorCuitMostrar = useMemo(() => {
+  const [emisorCuitMostrar, setEmisorCuitMostrar] = useState<string>(() => {
+    const stored = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
+    if (stored) return formatCuitMostrar(stored)
     const env = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR?.trim() : ""
     if (env) return formatCuitMostrar(env)
-    return "Definido en el servidor (FACTURADOR_CUIT_EMISOR). Opcional: NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR para mostrarlo aquí."
-  }, [])
+    return "Configurá el CUIT en Configuración → Facturación ARCA, variable NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR o FACTURADOR_CUIT_EMISOR en el servidor."
+  })
+
+  useEffect(() => {
+    const stored = getStoredFacturacionCuitEmisor()
+    if (stored) {
+      setEmisorCuitMostrar(formatCuitMostrar(stored))
+      return
+    }
+    const env = process.env.NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR?.trim()
+    if (env) setEmisorCuitMostrar(formatCuitMostrar(env))
+    else {
+      setEmisorCuitMostrar(
+        "Configurá el CUIT en Configuración → Facturación ARCA, variable NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR o FACTURADOR_CUIT_EMISOR en el servidor."
+      )
+    }
+  }, [isEmitModalOpen])
 
   const selectedSale = useMemo(
     () => sales.find((sale) => sale.id === selectedSaleId) ?? null,
