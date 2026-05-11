@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { AlertTriangle, CheckCircle2, Clock3, FileText, RefreshCcw, Search, Send } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Clock3, Copy, ExternalLink, Eye, FileText, RefreshCcw, Search, Send } from "lucide-react"
 import {
   facturarSale,
   getClienteById,
@@ -104,6 +104,8 @@ export default function FacturacionPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof ARCA_STATUS_OPTIONS)[number]>("all")
   const [selectedSaleId, setSelectedSaleId] = useState<number | null>(null)
   const [isEmitModalOpen, setIsEmitModalOpen] = useState(false)
+  /** `view` = solo lectura del comprobante ya emitido; `emit` = formulario de facturación */
+  const [invoiceModalMode, setInvoiceModalMode] = useState<"emit" | "view">("emit")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [retryAfterHint, setRetryAfterHint] = useState<string | null>(null)
@@ -140,7 +142,7 @@ export default function FacturacionPage() {
         "Configurá el CUIT en Configuración → Facturación ARCA, variable NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR o FACTURADOR_CUIT_EMISOR en el servidor."
       )
     }
-  }, [isEmitModalOpen])
+  }, [isEmitModalOpen, invoiceModalMode])
 
   const selectedSale = useMemo(
     () => sales.find((sale) => sale.id === selectedSaleId) ?? null,
@@ -189,7 +191,7 @@ export default function FacturacionPage() {
   }, [])
 
   useEffect(() => {
-    if (!isEmitModalOpen || selectedSaleId == null) {
+    if (!isEmitModalOpen || selectedSaleId == null || invoiceModalMode !== "emit") {
       setModalCliente(null)
       setModalClienteLoading(false)
       return
@@ -264,7 +266,7 @@ export default function FacturacionPage() {
     // Nota: no incluir `sales` en dependencias: si se refresca el listado con el modal abierto,
     // no debe reiniciarse el formulario ni volver a cargar cliente.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar venta seleccionada
-  }, [isEmitModalOpen, selectedSaleId])
+  }, [isEmitModalOpen, selectedSaleId, invoiceModalMode])
 
   const onSubmitFacturar = async () => {
     if (!selectedSale) {
@@ -403,7 +405,9 @@ export default function FacturacionPage() {
                 <FileText className="h-5 w-5" />
                 Ventas facturables
               </CardTitle>
-              <CardDescription>Seleccioná una acción para abrir el modal de emisión de comprobante.</CardDescription>
+              <CardDescription>
+                Si la venta ya está facturada, la acción principal es ver el comprobante. Emitir de nuevo queda como opción secundaria (reintento forzado).
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-col gap-3 md:flex-row">
@@ -463,16 +467,44 @@ export default function FacturacionPage() {
                           </TableCell>
                           <TableCell>{formatCurrency(sale.total_amount)}</TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedSaleId(sale.id)
-                                setIsEmitModalOpen(true)
-                              }}
-                            >
-                              Emitir comprobante
-                            </Button>
+                            {status === "success" ? (
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedSaleId(sale.id)
+                                    setInvoiceModalMode("view")
+                                    setIsEmitModalOpen(true)
+                                  }}
+                                >
+                                  <Eye className="mr-1 h-4 w-4" />
+                                  Ver comprobante
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedSaleId(sale.id)
+                                    setInvoiceModalMode("emit")
+                                    setIsEmitModalOpen(true)
+                                  }}
+                                >
+                                  Reemitir…
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedSaleId(sale.id)
+                                  setInvoiceModalMode("emit")
+                                  setIsEmitModalOpen(true)
+                                }}
+                              >
+                                Emitir comprobante
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       )
@@ -483,15 +515,94 @@ export default function FacturacionPage() {
             </CardContent>
           </Card>
 
-          <Dialog open={isEmitModalOpen} onOpenChange={setIsEmitModalOpen}>
+          <Dialog
+            open={isEmitModalOpen}
+            onOpenChange={(open) => {
+              setIsEmitModalOpen(open)
+              if (!open) setInvoiceModalMode("emit")
+            }}
+          >
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Emitir comprobante</DialogTitle>
-                <DialogDescription>Backend emite en ARCA y devuelve trazabilidad normalizada.</DialogDescription>
+                <DialogTitle>{invoiceModalMode === "view" ? "Comprobante emitido" : "Emitir comprobante"}</DialogTitle>
+                <DialogDescription>
+                  {invoiceModalMode === "view"
+                    ? "Datos persistidos por MF API tras la emisión en ARCA."
+                    : "Backend emite en ARCA y devuelve trazabilidad normalizada."}
+                </DialogDescription>
               </DialogHeader>
 
               {!selectedSale ? (
                 <Alert variant="warning" title="Sin venta seleccionada" description="Seleccioná una venta para habilitar la facturación." />
+              ) : invoiceModalMode === "view" ? (
+                <div className="space-y-4">
+                  <Alert variant="success" title="Facturado" description="Esta venta ya tiene comprobante registrado." />
+                  <div className="rounded-lg border p-4 text-sm space-y-3">
+                    <div>
+                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Venta</div>
+                      <div className="font-medium">{selectedSale.sale_number}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Cliente</div>
+                      <div>{selectedSale.client_name || "Consumidor final"}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">CAE</div>
+                      <div className="flex flex-wrap items-center gap-2 font-mono text-base">
+                        {selectedSale.arca_cae || "—"}
+                        {selectedSale.arca_cae ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => void navigator.clipboard.writeText(selectedSale.arca_cae ?? "")}
+                          >
+                            <Copy className="mr-1 h-3.5 w-3.5" />
+                            Copiar
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">ID comprobante (remoto)</div>
+                      <div className="break-all font-mono text-sm">{selectedSale.arca_factura_id || "—"}</div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Monto</div>
+                        <div>{formatCurrency(selectedSale.total_amount)}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Último intento</div>
+                        <div>{formatDateTime(selectedSale.arca_last_attempt_at)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <a
+                        href="https://www.afip.gob.ar/fe/consultar/default.asp"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Consultar comprobante en AFIP
+                      </a>
+                    </Button>
+                    <p className="text-muted-foreground w-full text-xs">
+                      El portal de AFIP puede pedirte CAE, fecha y otros datos del comprobante para validarlo.
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => setInvoiceModalMode("emit")}
+                  >
+                    Reemitir o corregir con reintento forzado…
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3 text-sm space-y-1">
@@ -625,16 +736,24 @@ export default function FacturacionPage() {
               )}
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEmitModalOpen(false)} disabled={isSubmitting}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={onSubmitFacturar}
-                  disabled={isSubmitting || !selectedSale || modalClienteLoading}
-                >
-                  <Send className="mr-2 h-4 w-4" />
-                  {isSubmitting ? "Facturando..." : "Facturar"}
-                </Button>
+                {invoiceModalMode === "view" ? (
+                  <Button variant="outline" onClick={() => setIsEmitModalOpen(false)}>
+                    Cerrar
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => setIsEmitModalOpen(false)} disabled={isSubmitting}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={onSubmitFacturar}
+                      disabled={isSubmitting || !selectedSale || modalClienteLoading}
+                    >
+                      <Send className="mr-2 h-4 w-4" />
+                      {isSubmitting ? "Facturando..." : "Facturar"}
+                    </Button>
+                  </>
+                )}
               </DialogFooter>
             </DialogContent>
           </Dialog>
