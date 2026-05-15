@@ -122,7 +122,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: "ventas",
     title: "Ventas",
     icon: Users,
-    requiredRoles: ['gerencia', 'ventas', 'admin'],
+    requiredRoles: ['gerencia', 'ventas', 'finanzas', 'logistica', 'admin', 'manager', 'employee', 'viewer'],
     items: [
       { 
         id: "ventas", 
@@ -154,10 +154,10 @@ export const MENU_GROUPS: MenuGroup[] = [
       },
       { 
         id: "presupuestos", 
-        label: "Presupuestos", 
+        label: "Presupuestos comerciales", 
         icon: Calculator, 
         href: "/presupuestos",
-        requiredRoles: ['gerencia', 'ventas', 'admin']
+        requiredRoles: ['admin', 'gerencia', 'ventas', 'finanzas', 'logistica', 'manager', 'employee', 'viewer']
       },
       {
         id: "facturacion",

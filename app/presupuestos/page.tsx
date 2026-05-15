@@ -1,529 +1,417 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
-import { Button } from "@/components/ui/button"
+import { useRole } from "@/app/hooks/useRole"
+import type { Role } from "@/app/config/menu"
+import {
+  COMMERCIAL_BUDGET_STATUS_LABELS,
+  getCommercialBudgets,
+  getCommercialBudgetStats,
+  type CommercialBudgetStatus,
+  type CommercialBudgetSummary,
+} from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-// import { NewBudgetModal } from "@/components/new-budget-modal"
-import { BudgetPdfModal } from "@/components/budget-pdf-modal"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
-  Search,
-  Plus,
-  Eye,
-  Edit,
-  Send,
-  FileText,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Pagination } from "@/components/ui/pagination"
+import {
   Calculator,
+  Eye,
+  FileSpreadsheet,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Send,
+  CheckCircle2,
+  Ban,
   Clock,
-  CheckCircle,
   XCircle,
-  AlertCircle,
 } from "lucide-react"
+import { toast } from "sonner"
 
-// Datos de ejemplo para presupuestos de reparaciones
-const presupuestosData = [
-  {
-    id: "PRES-001",
-    cliente: "María González",
-    email: "maria@email.com",
-    telefono: "+54 11 1234-5678",
-    equipo: "Notebook Dell XPS 13",
-    tipoEquipo: "Notebook",
-    servicio: "Reparación de placa madre y cambio de pantalla",
-    cantidadServicios: 2,
-    total: 85000,
-    estado: "pendiente",
-    fechaCreacion: "2024-01-15",
-    fechaVencimiento: "2024-01-30",
-    observaciones: "Cliente debe confirmar antes de proceder",
-  },
-  {
-    id: "PRES-002",
-    cliente: "Carlos Rodríguez",
-    email: "carlos@empresa.com",
-    telefono: "+54 11 9876-5432",
-    equipo: "PC Gamer - Custom Build",
-    tipoEquipo: "PC",
-    servicio: "Actualización de componentes y mantenimiento completo",
-    cantidadServicios: 1,
-    total: 45000,
-    estado: "aprobado",
-    fechaCreacion: "2024-01-10",
-    fechaVencimiento: "2024-01-25",
-    observaciones: "Aprobado - trabajo en curso",
-  },
-  {
-    id: "PRES-003",
-    cliente: "Ana Martínez",
-    email: "ana@eventos.com",
-    telefono: "+54 11 5555-1234",
-    equipo: "Impresora HP LaserJet Pro",
-    tipoEquipo: "Impresora",
-    servicio: "Limpieza completa, cambio de rodillos y calibración",
-    cantidadServicios: 1,
-    total: 25000,
-    estado: "enviado",
-    fechaCreacion: "2024-01-12",
-    fechaVencimiento: "2024-01-27",
-    observaciones: "Esperando respuesta del cliente",
-  },
-  {
-    id: "PRES-004",
-    cliente: "Empresa Tech Solutions",
-    email: "info@techsol.com",
-    telefono: "+54 11 7777-8888",
-    equipo: "Servidor Dell PowerEdge",
-    tipoEquipo: "Servidor",
-    servicio: "Diagnóstico y reparación de fuente de alimentación",
-    cantidadServicios: 1,
-    total: 120000,
-    estado: "rechazado",
-    fechaCreacion: "2024-01-08",
-    fechaVencimiento: "2024-01-23",
-    observaciones: "Presupuesto rechazado - cliente decidió comprar equipo nuevo",
-  },
+const ROLES_VER: Role[] = [
+  "admin",
+  "gerencia",
+  "ventas",
+  "finanzas",
+  "logistica",
+  "manager",
+  "employee",
+  "viewer",
 ]
 
-const estadoConfig = {
-  pendiente: {
-    label: "Pendiente",
-    color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
-    icon: Clock,
-  },
-  aprobado: {
-    label: "Aprobado",
-    color: "bg-turquoise-100 text-turquoise-800 dark:bg-turquoise-900/20 dark:text-turquoise-400",
-    icon: CheckCircle,
-  },
-  revision: {
-    label: "En Revisión",
-    color: "bg-turquoise-100 text-turquoise-800 dark:bg-turquoise-900/20 dark:text-turquoise-400",
-    icon: AlertCircle,
-  },
-  enviado: {
-    label: "Enviado",
-    color: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
-    icon: Send,
-  },
-  rechazado: {
-    label: "Rechazado",
-    color: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
-    icon: XCircle,
-  },
+const ROLES_EDITAR: Role[] = ["admin", "gerencia", "ventas"]
+
+function formatMoney(n: number) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—"
+  try {
+    return new Date(iso).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+  } catch {
+    return iso
+  }
+}
+
+function statusBadgeClass(s: CommercialBudgetStatus): string {
+  switch (s) {
+    case "draft":
+      return "bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-100"
+    case "sent":
+      return "bg-sky-100 text-sky-900 border-sky-200 dark:bg-sky-950 dark:text-sky-100"
+    case "approved":
+      return "bg-emerald-100 text-emerald-900 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-100"
+    case "rejected":
+      return "bg-red-100 text-red-900 border-red-200 dark:bg-red-950 dark:text-red-100"
+    case "expired":
+      return "bg-amber-100 text-amber-950 border-amber-200 dark:bg-amber-950 dark:text-amber-100"
+    default:
+      return ""
+  }
+}
+
+function StatusIcon({ s }: { s: CommercialBudgetStatus }) {
+  switch (s) {
+    case "draft":
+      return <FileSpreadsheet className="h-3.5 w-3.5" />
+    case "sent":
+      return <Send className="h-3.5 w-3.5" />
+    case "approved":
+      return <CheckCircle2 className="h-3.5 w-3.5" />
+    case "rejected":
+      return <XCircle className="h-3.5 w-3.5" />
+    case "expired":
+      return <Ban className="h-3.5 w-3.5" />
+    default:
+      return <Clock className="h-3.5 w-3.5" />
+  }
 }
 
 export default function PresupuestosPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedEstado, setSelectedEstado] = useState("todos")
-  const [isNewPresupuestoOpen, setIsNewPresupuestoOpen] = useState(false)
-  const [selectedPresupuesto, setSelectedPresupuesto] = useState<any>(null)
-  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false)
-  const [presupuestoParaPdf, setPresupuestoParaPdf] = useState<any>(null)
+  const router = useRouter()
+  const { hasAnyOfRoles } = useRole()
+  const puedeCrear = hasAnyOfRoles(ROLES_EDITAR)
 
-  const filteredPresupuestos = presupuestosData.filter((presupuesto) => {
-    const matchesSearch =
-      presupuesto.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      presupuesto.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesEstado = selectedEstado === "todos" || presupuesto.estado === selectedEstado
-    return matchesSearch && matchesEstado
-  })
+  const [loading, setLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [rows, setRows] = useState<CommercialBudgetSummary[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [limit] = useState(20)
+  const [status, setStatus] = useState<string>("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [search, setSearch] = useState("")
+  const [stats, setStats] = useState<{
+    total: number
+    draft: number
+    sent: number
+    approved: number
+    rejected: number
+    expired: number
+    total_amount_draft: number
+    total_amount_sent: number
+  } | null>(null)
 
-  const totalPresupuestos = presupuestosData.length
-  const pendientes = presupuestosData.filter((p) => p.estado === "pendiente").length
-  const aprobados = presupuestosData.filter((p) => p.estado === "aprobado").length
-  const valorTotal = presupuestosData.reduce((sum, p) => sum + p.total, 0)
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true)
+    try {
+      const res = await getCommercialBudgetStats()
+      setStats(res.data ?? null)
+    } catch {
+      setStats(null)
+    } finally {
+      setStatsLoading(false)
+    }
+  }, [])
+
+  const loadList = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await getCommercialBudgets({
+        page,
+        limit,
+        status: status === "all" ? undefined : (status as CommercialBudgetStatus),
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      })
+      const data = res.data
+      setRows(data?.budgets ?? [])
+      setTotal(typeof data?.total === "number" ? data.total : 0)
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string }
+      if (err?.status === 401) {
+        toast.error("Sesión expirada.")
+        router.replace("/login")
+        return
+      }
+      if (err?.status === 403) {
+        toast.error("No tenés permiso para ver presupuestos comerciales.")
+        router.replace("/403")
+        return
+      }
+      toast.error(err?.message ?? "No se pudieron cargar los presupuestos")
+      setRows([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [page, status, dateFrom, dateTo, router])
+
+  useEffect(() => {
+    loadStats()
+  }, [loadStats])
+
+  useEffect(() => {
+    loadList()
+  }, [loadList])
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((r) => {
+      const num = (r.budget_number || "").toLowerCase()
+      const name = (r.client_name || "").toLowerCase()
+      const code = (r.client_code || "").toLowerCase()
+      return num.includes(q) || name.includes(q) || code.includes(q)
+    })
+  }, [rows, search])
+
+  const totalPages = Math.max(1, Math.ceil(total / limit))
 
   return (
-    <Protected requiredRoles={['gerencia', 'ventas', 'admin']}>
+    <Protected requiredRoles={ROLES_VER}>
       <ERPLayout activeItem="presupuestos">
         <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Presupuestos</h1>
-            <p className="text-muted-foreground">Gestión de presupuestos para servicios y reparaciones de hardware</p>
-          </div>
-          <Button 
-            onClick={() => setIsNewPresupuestoOpen(true)}
-            className="gap-2 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-          >
-            <Plus className="h-4 w-4" />
-            Nuevo Presupuesto
-          </Button>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Presupuestos</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalPresupuestos}</div>
-              <p className="text-xs text-muted-foreground">Este mes</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{pendientes}</div>
-              <p className="text-xs text-muted-foreground">Esperando respuesta</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Aprobados</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">{aprobados}</div>
-              <p className="text-xs text-muted-foreground">Listos para producir</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
-              <Calculator className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">${valorTotal.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">En presupuestos activos</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filtros */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Filtros</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                  <Input
-                    placeholder="Buscar por cliente o ID..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select value={selectedEstado} onValueChange={setSelectedEstado}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos los estados</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="enviado">Enviado</SelectItem>
-                  <SelectItem value="aprobado">Aprobado</SelectItem>
-                  <SelectItem value="revision">En Revisión</SelectItem>
-                  <SelectItem value="rechazado">Rechazado</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold tracking-tight">Presupuestos comerciales</h1>
+              <p className="max-w-2xl text-muted-foreground text-sm leading-relaxed">
+                Cotizaciones con productos del catálogo y cliente. No mueven stock hasta convertir a venta. Es un
+                flujo distinto de las{" "}
+                <Link href="/reparaciones" className="text-primary underline-offset-4 hover:underline font-medium">
+                  órdenes de reparación
+                </Link>
+                .
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => { loadStats(); loadList(); }} className="gap-2">
+                <RefreshCw className={`h-4 w-4 ${loading || statsLoading ? "animate-spin" : ""}`} />
+                Actualizar
+              </Button>
+              {puedeCrear && (
+                <Button asChild className="gap-2 shadow-md">
+                  <Link href="/presupuestos/nuevo">
+                    <Plus className="h-4 w-4" />
+                    Nuevo presupuesto
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </div>
 
-        {/* Tabla de Presupuestos */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Lista de Presupuestos</CardTitle>
-            <CardDescription>{filteredPresupuestos.length} presupuesto(s) encontrado(s)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Equipo</TableHead>
-                    <TableHead>Servicio</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Vencimiento</TableHead>
-                    <TableHead>Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPresupuestos.map((presupuesto) => {
-                    const estadoInfo = estadoConfig[presupuesto.estado as keyof typeof estadoConfig]
-                    const IconComponent = estadoInfo.icon
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="border-t-4 border-t-slate-400 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription>Total registrados</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">
+                  {statsLoading ? "—" : stats?.total ?? 0}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">Todos los estados</CardContent>
+            </Card>
+            <Card className="border-t-4 border-t-sky-500 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription>Borradores + enviados</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">
+                  {statsLoading
+                    ? "—"
+                    : ((stats?.draft ?? 0) + (stats?.sent ?? 0)).toLocaleString("es-AR")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground space-y-0.5">
+                <div>Monto borradores: {statsLoading ? "—" : formatMoney(stats?.total_amount_draft ?? 0)}</div>
+                <div>Monto enviados: {statsLoading ? "—" : formatMoney(stats?.total_amount_sent ?? 0)}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-t-4 border-t-emerald-500 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription>Aprobados</CardDescription>
+                <CardTitle className="text-3xl tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {statsLoading ? "—" : stats?.approved ?? 0}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">Listos para convertir a venta</CardContent>
+            </Card>
+            <Card className="border-t-4 border-t-amber-500 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardDescription>Cerrados (rechazo / vencido)</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">
+                  {statsLoading ? "—" : ((stats?.rejected ?? 0) + (stats?.expired ?? 0)).toLocaleString("es-AR")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">Histórico comercial</CardContent>
+            </Card>
+          </div>
 
-                    return (
-                      <TableRow key={presupuesto.id}>
-                        <TableCell className="font-medium">{presupuesto.id}</TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{presupuesto.cliente}</div>
-                            <div className="text-sm text-muted-foreground">{presupuesto.email}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="max-w-48">
-                            <Badge variant="outline" className="mb-1">{presupuesto.tipoEquipo || "N/A"}</Badge>
-                            <div className="font-medium truncate text-sm">{presupuesto.equipo || "-"}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="max-w-64">
-                            <div className="text-sm truncate">{presupuesto.servicio || "-"}</div>
-                            {presupuesto.cantidadServicios > 1 && (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {presupuesto.cantidadServicios} servicios
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">${presupuesto.total.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge className={estadoInfo.color}>
-                            <IconComponent className="h-3 w-3 mr-1" />
-                            {estadoInfo.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{presupuesto.fechaVencimiento}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => setSelectedPresupuesto(presupuesto)}
-                              title="Ver detalles"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                // Convertir formato de datos para el PDF
-                                const pdfData = {
-                                  id: presupuesto.id,
-                                  numero: presupuesto.id,
-                                  cliente: presupuesto.cliente,
-                                  email: presupuesto.email,
-                                  telefono: presupuesto.telefono,
-                                  fecha: presupuesto.fechaCreacion,
-                                  fechaVencimiento: presupuesto.fechaVencimiento,
-                                  estado: presupuesto.estado,
-                                  items: [
-                                    {
-                                      id: '1',
-                                      service: presupuesto.servicio,
-                                      description: '',
-                                      equipmentType: presupuesto.tipoEquipo,
-                                      equipmentModel: presupuesto.equipo,
-                                      quantity: presupuesto.cantidadServicios || 1,
-                                      vat: 21,
-                                      unitPrice: presupuesto.total / (presupuesto.cantidadServicios || 1),
-                                      subtotal: presupuesto.total
-                                    }
-                                  ],
-                                  subtotal: presupuesto.total * 0.8264, // Aproximado
-                                  vat21: presupuesto.total * 0.1736,
-                                  vat105: 0,
-                                  total: presupuesto.total,
-                                  observaciones: presupuesto.observaciones,
-                                  validez: 10
-                                }
-                                setPresupuestoParaPdf(pdfData)
-                                setIsPdfModalOpen(true)
-                              }}
-                              title="Ver/Descargar PDF"
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={async () => {
-                                if (!presupuesto.email) {
-                                  alert('El presupuesto no tiene un email asociado')
-                                  return
-                                }
-                                // Aquí iría la lógica para enviar por email
-                                console.log('Enviando presupuesto por email:', presupuesto.id, 'a:', presupuesto.email)
-                                alert(`Presupuesto ${presupuesto.id} enviado a ${presupuesto.email}`)
-                              }}
-                              title="Enviar por email"
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Filtros</CardTitle>
+              <CardDescription>Los filtros de fecha aplican sobre la fecha de creación en el servidor.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
+              <div className="flex-1 min-w-[200px] space-y-2">
+                <label className="text-sm font-medium">Buscar</label>
+                <Input
+                  placeholder="Número, cliente o código…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="w-full sm:w-52 space-y-2">
+                <label className="text-sm font-medium">Estado</label>
+                <Select value={status} onValueChange={(v) => { setPage(1); setStatus(v); }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(Object.keys(COMMERCIAL_BUDGET_STATUS_LABELS) as CommercialBudgetStatus[]).map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {COMMERCIAL_BUDGET_STATUS_LABELS[k]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-44 space-y-2">
+                <label className="text-sm font-medium">Desde</label>
+                <Input type="date" value={dateFrom} onChange={(e) => { setPage(1); setDateFrom(e.target.value); }} />
+              </div>
+              <div className="w-full sm:w-44 space-y-2">
+                <label className="text-sm font-medium">Hasta</label>
+                <Input type="date" value={dateTo} onChange={(e) => { setPage(1); setDateTo(e.target.value); }} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center gap-2">
+              <Calculator className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <CardTitle>Listado</CardTitle>
+                <CardDescription>
+                  {search.trim()
+                    ? `${filteredRows.length} resultado(s) en esta página (filtro local)`
+                    : `${total} registro(s) en el servidor`}
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Número</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-center">Ítems</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Vigencia</TableHead>
+                      <TableHead>Creado</TableHead>
+                      <TableHead className="text-right w-[100px]">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                          <Loader2 className="h-6 w-6 animate-spin inline mr-2 align-middle" />
+                          Cargando…
                         </TableCell>
                       </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Modal de Detalle */}
-        <Dialog open={!!selectedPresupuesto} onOpenChange={() => setSelectedPresupuesto(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Detalle del Presupuesto {selectedPresupuesto?.id}</DialogTitle>
-            </DialogHeader>
-            {selectedPresupuesto && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Cliente</Label>
-                    <p className="text-sm">{selectedPresupuesto.cliente}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Email</Label>
-                    <p className="text-sm">{selectedPresupuesto.email}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Teléfono</Label>
-                    <p className="text-sm">{selectedPresupuesto.telefono}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Estado</Label>
-                    <Badge className={estadoConfig[selectedPresupuesto.estado as keyof typeof estadoConfig].color}>
-                      {estadoConfig[selectedPresupuesto.estado as keyof typeof estadoConfig].label}
-                    </Badge>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Equipo</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="outline">{selectedPresupuesto.tipoEquipo || "N/A"}</Badge>
-                    <p className="text-sm">{selectedPresupuesto.equipo || "-"}</p>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Servicio/Reparación</Label>
-                  <p className="text-sm mt-1">{selectedPresupuesto.servicio || "-"}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium">Cantidad de Servicios</Label>
-                    <p className="text-sm">{selectedPresupuesto.cantidadServicios || 1}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Fecha de Vencimiento</Label>
-                    <p className="text-sm">{selectedPresupuesto.fechaVencimiento}</p>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Total</Label>
-                  <p className="text-lg font-bold">${selectedPresupuesto.total.toLocaleString()}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Observaciones</Label>
-                  <p className="text-sm">{selectedPresupuesto.observaciones}</p>
-                </div>
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline">Editar</Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => {
-                      const pdfData = {
-                        id: selectedPresupuesto.id,
-                        numero: selectedPresupuesto.id,
-                        cliente: selectedPresupuesto.cliente,
-                        email: selectedPresupuesto.email,
-                        telefono: selectedPresupuesto.telefono,
-                        fecha: selectedPresupuesto.fechaCreacion,
-                        fechaVencimiento: selectedPresupuesto.fechaVencimiento,
-                        estado: selectedPresupuesto.estado,
-                        items: [
-                          {
-                            id: '1',
-                            service: selectedPresupuesto.servicio,
-                            description: '',
-                            equipmentType: selectedPresupuesto.tipoEquipo,
-                            equipmentModel: selectedPresupuesto.equipo,
-                            quantity: selectedPresupuesto.cantidadServicios || 1,
-                            vat: 21,
-                            unitPrice: selectedPresupuesto.total / (selectedPresupuesto.cantidadServicios || 1),
-                            subtotal: selectedPresupuesto.total
-                          }
-                        ],
-                        subtotal: selectedPresupuesto.total * 0.8264,
-                        vat21: selectedPresupuesto.total * 0.1736,
-                        vat105: 0,
-                        total: selectedPresupuesto.total,
-                        observaciones: selectedPresupuesto.observaciones,
-                        validez: 10
-                      }
-                      setPresupuestoParaPdf(pdfData)
-                      setIsPdfModalOpen(true)
-                      setSelectedPresupuesto(null)
-                    }}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Ver PDF
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      if (!selectedPresupuesto.email) {
-                        alert('El presupuesto no tiene un email asociado')
-                        return
-                      }
-                      console.log('Enviando presupuesto por email:', selectedPresupuesto.id, 'a:', selectedPresupuesto.email)
-                      alert(`Presupuesto ${selectedPresupuesto.id} enviado a ${selectedPresupuesto.email}`)
-                    }}
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    Enviar por Email
-                  </Button>
-                </div>
+                    ) : filteredRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-28 text-center text-muted-foreground">
+                          No hay presupuestos con los criterios elegidos.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredRows.map((b) => (
+                        <TableRow key={b.id} className="hover:bg-muted/40">
+                          <TableCell className="font-mono font-medium">{b.budget_number}</TableCell>
+                          <TableCell>
+                            <div className="font-medium leading-tight">{b.client_name || `Cliente #${b.client_id}`}</div>
+                            {b.client_email && (
+                              <div className="text-xs text-muted-foreground truncate max-w-[220px]">{b.client_email}</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums font-medium">
+                            {formatMoney(b.total_amount)}
+                          </TableCell>
+                          <TableCell className="text-center tabular-nums">{b.item_count ?? "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`gap-1 ${statusBadgeClass(b.status)}`}>
+                              <StatusIcon s={b.status} />
+                              {COMMERCIAL_BUDGET_STATUS_LABELS[b.status]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{formatDate(b.valid_until)}</TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{formatDate(b.created_at)}</TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" asChild className="gap-1">
+                              <Link href={`/presupuestos/${b.id}`}>
+                                <Eye className="h-4 w-4" />
+                                Ver
+                              </Link>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            )}
-          </DialogContent>
-        </Dialog>
 
-        {/* Modal de Nuevo Presupuesto */}
-        {/* <NewBudgetModal
-          isOpen={isNewPresupuestoOpen}
-          onClose={() => setIsNewPresupuestoOpen(false)}
-          onSuccess={() => {
-            setIsNewPresupuestoOpen(false)
-            // Aquí podrías agregar lógica para refrescar la lista de presupuestos
-            console.log('Presupuesto creado exitosamente')
-          }}
-        /> */}
-
-        {/* Modal de PDF del Presupuesto */}
-        <BudgetPdfModal
-          isOpen={isPdfModalOpen}
-          onClose={() => {
-            setIsPdfModalOpen(false)
-            setPresupuestoParaPdf(null)
-          }}
-          budget={presupuestoParaPdf}
-        />
+              {!search.trim() && totalPages > 1 && (
+                <div className="mt-4 flex justify-center">
+                  <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </ERPLayout>
     </Protected>

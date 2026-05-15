@@ -28,7 +28,7 @@ import {
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-interface BudgetItem {
+export interface BudgetPdfModalLine {
   id: string
   service: string
   description: string
@@ -41,7 +41,7 @@ interface BudgetItem {
   subtotal: number
 }
 
-interface BudgetData {
+export interface BudgetPdfModalData {
   id: string
   numero: string
   cliente: string
@@ -51,7 +51,7 @@ interface BudgetData {
   fecha: string
   fechaVencimiento: string
   estado: string
-  items: BudgetItem[]
+  items: BudgetPdfModalLine[]
   subtotal: number
   vat21: number
   vat105: number
@@ -65,10 +65,20 @@ interface BudgetData {
 interface BudgetPdfModalProps {
   isOpen: boolean
   onClose: () => void
-  budget: BudgetData | null
+  budget: BudgetPdfModalData | null
+  /** Cotización por catálogo (productos) vs. presupuesto de reparación legado */
+  documentVariant?: "repair" | "catalog"
+  /** Oculta envío por email (la API comercial aún no expone send-email) */
+  hideEmailButton?: boolean
 }
 
-export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps) {
+export function BudgetPdfModal({
+  isOpen,
+  onClose,
+  budget,
+  documentVariant = "repair",
+  hideEmailButton = false,
+}: BudgetPdfModalProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [isSendingEmail, setIsSendingEmail] = useState(false)
 
@@ -100,7 +110,13 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
       
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
-      doc.text('Servicios y Reparaciones de Hardware', margin, 21)
+      doc.text(
+        documentVariant === 'catalog'
+          ? 'Cotización comercial · catálogo de productos'
+          : 'Servicios y Reparaciones de Hardware',
+        margin,
+        21
+      )
       doc.text('Av. Ejemplo 1234, CABA | Tel: (011) 4444-5555', margin, 26)
       doc.text('info@mfcomputers.com', margin, 31)
 
@@ -155,19 +171,27 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
 
       yPosition += 10
 
-      // Tabla de servicios/reparaciones
-      const tableData = budget.items.map(item => [
+      const head =
+        documentVariant === 'catalog'
+          ? [['Cant.', 'Producto', 'Código', '—', 'P.Unit.', 'Importe']]
+          : [['Cant.', 'Servicio/Reparación', 'Equipo', 'IVA', 'P.Unit.', 'Subtotal']]
+
+      const tableData = budget.items.map((item) => [
         item.quantity.toString(),
         item.service,
-        item.equipmentType ? item.equipmentType.replace('_', ' ').toUpperCase() : '-',
-        `${item.vat}%`,
-        `$${item.unitPrice.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
-        `$${item.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+        documentVariant === "catalog"
+          ? item.equipmentModel || item.description?.replace(/^Código:\s*/i, "") || "—"
+          : item.equipmentType
+            ? item.equipmentType.replace("_", " ").toUpperCase()
+            : "-",
+        documentVariant === "catalog" ? "—" : `${item.vat}%`,
+        `$${item.unitPrice.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+        `$${item.subtotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
       ])
 
       autoTable(doc, {
         startY: yPosition,
-        head: [['Cant.', 'Servicio/Reparación', 'Equipo', 'IVA', 'P.Unit.', 'Subtotal']],
+        head,
         body: tableData,
         theme: 'striped',
         headStyles: { 
@@ -239,12 +263,11 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
       // Pie de página
       doc.setFontSize(8)
       doc.setTextColor(150, 150, 150)
-      doc.text(
-        'Este presupuesto tiene una validez de 10 días desde su emisión.',
-        pageWidth / 2,
-        pageHeight - 15,
-        { align: 'center' }
-      )
+      const foot1 =
+        documentVariant === 'catalog'
+          ? 'Cotización sin movimiento de stock hasta la aprobación y conversión a venta.'
+          : `Este presupuesto tiene una validez de ${budget.validez ?? 10} días desde su emisión.`
+      doc.text(foot1, pageWidth / 2, pageHeight - 15, { align: 'center' })
       doc.text(
         'Para consultas o aprobación, contáctenos por email o teléfono.',
         pageWidth / 2,
@@ -263,11 +286,13 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
   }
 
   const handlePrint = () => {
+    if (!budget) return
     window.print()
     console.log("Imprimiendo presupuesto:", budget.numero)
   }
 
   const handleSendEmail = async () => {
+    if (!budget) return
     if (!budget.email) {
       alert('El presupuesto no tiene un email asociado')
       return
@@ -292,29 +317,54 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
   }
 
   const getEstadoConfig = (estado: string) => {
-    const configs: Record<string, { label: string; color: string; icon: any }> = {
+    const configs: Record<string, { label: string; color: string; icon: typeof Clock }> = {
       pendiente: {
         label: "Pendiente",
         color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
-        icon: Clock
+        icon: Clock,
+      },
+      draft: {
+        label: "Borrador",
+        color: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200",
+        icon: Clock,
       },
       enviado: {
         label: "Enviado",
         color: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
-        icon: Mail
+        icon: Mail,
+      },
+      sent: {
+        label: "Enviado",
+        color: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
+        icon: Mail,
       },
       aprobado: {
         label: "Aprobado",
         color: "bg-turquoise-100 text-turquoise-800 dark:bg-turquoise-900/20 dark:text-turquoise-400",
-        icon: CheckCircle
+        icon: CheckCircle,
+      },
+      approved: {
+        label: "Aprobado",
+        color: "bg-turquoise-100 text-turquoise-800 dark:bg-turquoise-900/20 dark:text-turquoise-400",
+        icon: CheckCircle,
       },
       rechazado: {
         label: "Rechazado",
         color: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
-        icon: AlertCircle
-      }
+        icon: AlertCircle,
+      },
+      rejected: {
+        label: "Rechazado",
+        color: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
+        icon: AlertCircle,
+      },
+      expired: {
+        label: "Vencido",
+        color: "bg-orange-100 text-orange-900 dark:bg-orange-900/30 dark:text-orange-200",
+        icon: AlertCircle,
+      },
     }
-    return configs[estado] || configs.pendiente
+    return configs[estado] ?? configs.pendiente
   }
 
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
@@ -369,14 +419,16 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
             <Printer className="h-4 w-4 mr-2" />
             Imprimir
           </Button>
-          <Button 
-            onClick={handleSendEmail} 
-            disabled={isSendingEmail || !budget.email}
-            className="flex-1 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600"
-          >
-            <Mail className="h-4 w-4 mr-2" />
-            {isSendingEmail ? 'Enviando...' : 'Enviar por Email'}
-          </Button>
+          {!hideEmailButton && (
+            <Button
+              onClick={handleSendEmail}
+              disabled={isSendingEmail || !budget.email}
+              className="flex-1 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600"
+            >
+              <Mail className="h-4 w-4 mr-2" />
+              {isSendingEmail ? "Enviando..." : "Enviar por Email"}
+            </Button>
+          )}
         </div>
 
         <Separator />
@@ -388,7 +440,11 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
             <div className="flex justify-between items-start">
               <div>
                 <h2 className="text-2xl font-bold mb-2">MF COMPUTERS</h2>
-                <p className="text-sm">Servicios y Reparaciones de Hardware</p>
+                <p className="text-sm">
+                  {documentVariant === "catalog"
+                    ? "Cotización comercial · catálogo"
+                    : "Servicios y Reparaciones de Hardware"}
+                </p>
                 <p className="text-xs mt-1">Av. Ejemplo 1234, CABA | Tel: (011) 4444-5555</p>
                 <p className="text-xs">info@mfcomputers.com</p>
               </div>
@@ -436,11 +492,13 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
               <thead>
                 <tr className="bg-turquoise-600 text-white">
                   <th className="border p-2 text-left">Cant.</th>
-                  <th className="border p-2 text-left">Servicio/Reparación</th>
-                  <th className="border p-2 text-left">Equipo</th>
-                  <th className="border p-2 text-left">IVA</th>
+                  <th className="border p-2 text-left">
+                    {documentVariant === "catalog" ? "Producto" : "Servicio/Reparación"}
+                  </th>
+                  <th className="border p-2 text-left">{documentVariant === "catalog" ? "Código" : "Equipo"}</th>
+                  <th className="border p-2 text-left">{documentVariant === "catalog" ? " " : "IVA"}</th>
                   <th className="border p-2 text-right">P.Unit.</th>
-                  <th className="border p-2 text-right">Subtotal</th>
+                  <th className="border p-2 text-right">{documentVariant === "catalog" ? "Importe" : "Subtotal"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -458,15 +516,21 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
                     </td>
                     <td className="border p-2">
                       <div className="text-xs">
-                        {item.equipmentType && (
-                          <div className="font-medium uppercase">{item.equipmentType.replace('_', ' ')}</div>
-                        )}
-                        {item.equipmentModel && (
-                          <div className="text-muted-foreground">{item.equipmentModel}</div>
+                        {documentVariant === "catalog" ? (
+                          <div className="font-mono text-sm">{item.equipmentModel || "—"}</div>
+                        ) : (
+                          <>
+                            {item.equipmentType && (
+                              <div className="font-medium uppercase">{item.equipmentType.replace("_", " ")}</div>
+                            )}
+                            {item.equipmentModel && (
+                              <div className="text-muted-foreground">{item.equipmentModel}</div>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
-                    <td className="border p-2">{item.vat}%</td>
+                    <td className="border p-2">{documentVariant === "catalog" ? "—" : `${item.vat}%`}</td>
                     <td className="border p-2 text-right">${item.unitPrice.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
                     <td className="border p-2 text-right font-medium">${item.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
                   </tr>
@@ -512,7 +576,11 @@ export function BudgetPdfModal({ isOpen, onClose, budget }: BudgetPdfModalProps)
 
           {/* Pie de página */}
           <div className="text-xs text-center text-muted-foreground mt-8 pt-4 border-t border-slate-300">
-            <p>Este presupuesto tiene una validez de {budget.validez || 10} días desde su emisión.</p>
+            <p>
+              {documentVariant === "catalog"
+                ? "Los importes son orientativos hasta la conversión a venta; no se reserva stock."
+                : `Este presupuesto tiene una validez de ${budget.validez || 10} días desde su emisión.`}
+            </p>
             <p className="mt-1">Para consultas o aprobación, contáctenos por email o teléfono.</p>
           </div>
         </div>

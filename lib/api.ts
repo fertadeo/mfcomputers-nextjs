@@ -5851,267 +5851,308 @@ export async function deleteUser(id: number): Promise<void> {
 }
 
 // ============================================================================
-// PRESUPUESTOS / BUDGETS API
+// PRESUPUESTOS COMERCIALES — /api/budgets (JWT; catálogo + cliente, sin stock)
+// Distinto de POST /api/repair-orders/:id/send-budget (flujo de reparación).
 // ============================================================================
 
-export interface BudgetItem {
-  id?: string
-  service: string
-  description?: string
-  equipmentType?: string
-  equipmentModel?: string
-  problemDescription?: string
+export type CommercialBudgetStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'expired'
+
+export const COMMERCIAL_BUDGET_STATUS_LABELS: Record<CommercialBudgetStatus, string> = {
+  draft: 'Borrador',
+  sent: 'Enviado',
+  approved: 'Aprobado',
+  rejected: 'Rechazado',
+  expired: 'Vencido',
+}
+
+/** Línea en GET /api/budgets/:id */
+export interface CommercialBudgetLine {
+  id: number
+  budget_id: number
+  product_id: number
+  product_name: string
+  product_code: string
   quantity: number
-  vat: number
-  recovery?: number
-  unitPrice: number
-  subtotal: number
+  unit_price: number
+  total_price: number
+  created_at: string
 }
 
-export interface Budget {
-  id: string
-  numero: string
-  cliente_id: number
-  cliente_name: string
-  cliente_email?: string
-  cliente_telefono?: string
-  cliente_direccion?: string
-  fecha: string
-  fecha_vencimiento: string
-  estado: "pendiente" | "enviado" | "aprobado" | "revision" | "rechazado"
-  items: BudgetItem[]
-  subtotal: number
-  vat21: number
-  vat105: number
+/** Cabecera en listado GET /api/budgets (sin ítems) */
+export interface CommercialBudgetSummary {
+  id: number
+  budget_number: string
+  client_id: number
+  status: CommercialBudgetStatus
+  total_amount: number
+  valid_until: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  client_name?: string | null
+  client_code?: string | null
+  client_email?: string | null
+  item_count?: number
+}
+
+export type CommercialBudgetDetail = CommercialBudgetSummary & {
+  items: CommercialBudgetLine[]
+}
+
+export interface CommercialBudgetsListPayload {
+  budgets: CommercialBudgetSummary[]
   total: number
-  observaciones?: string
-  validez?: number
-  forma_pago?: string
-  vendedor?: string
-  currency?: string
-  quote?: number
-  created_at?: string
-  updated_at?: string
+  page: number
+  limit: number
 }
 
-export interface BudgetsResponse {
-  budgets: Budget[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
+export interface CommercialBudgetStatsPayload {
+  total: number
+  draft: number
+  sent: number
+  approved: number
+  rejected: number
+  expired: number
+  total_amount_draft: number
+  total_amount_sent: number
+}
+
+export interface CommercialBudgetItemInput {
+  product_id: number
+  quantity: number
+  unit_price: number
+}
+
+export interface CreateCommercialBudgetBody {
+  client_id: number
+  items: CommercialBudgetItemInput[]
+  valid_until?: string | null
+  notes?: string | null
+  allow_inactive?: boolean
+}
+
+export interface UpdateCommercialBudgetBody {
+  client_id?: number
+  valid_until?: string | null
+  notes?: string | null
+  items?: CommercialBudgetItemInput[]
+  allow_inactive?: boolean
+}
+
+export interface ConvertCommercialBudgetToSaleBody {
+  payment_method: SalePaymentMethod
+  payment_details?: CreateSalePaymentDetails
+  notes?: string
+  sync_to_woocommerce?: boolean
+  allow_inactive?: boolean
+  client_id?: number
+}
+
+export interface ConvertCommercialBudgetToSaleResult {
+  budget: CommercialBudgetSummary
+  sale: SaleResponseData
+}
+
+export type BudgetValidationIssue = { type?: string; path?: string; msg?: string }
+
+export type ApiBudgetError = Error & { status?: number; validationErrors?: BudgetValidationIssue[] }
+
+function throwBudgetApiError(res: Response, data: Record<string, unknown>): never {
+  const msg = (data?.message || data?.error || `Error ${res.status}`) as string
+  const err = new Error(msg) as ApiBudgetError
+  err.status = res.status
+  const inner = data?.data
+  if (Array.isArray(inner) && inner.length > 0 && typeof inner[0] === 'object') {
+    err.validationErrors = inner as BudgetValidationIssue[]
   }
+  throw err
 }
 
-export interface BudgetStats {
-  total_budgets: number
-  pending_budgets: number
-  sent_budgets: number
-  approved_budgets: number
-  rejected_budgets: number
-  total_value: number
+async function parseBudgetJson(res: Response): Promise<Record<string, unknown>> {
+  return (await res.json().catch(() => ({}))) as Record<string, unknown>
 }
 
-export interface CreateBudgetRequest {
-  cliente_id: number
-  fecha: string
-  fecha_vencimiento: string
-  items: BudgetItem[]
-  observaciones?: string
-  validez?: number
-  forma_pago?: string
-  vendedor?: string
-  currency?: string
-  quote?: number
-}
-
-export interface UpdateBudgetRequest {
-  estado?: "pendiente" | "enviado" | "aprobado" | "revision" | "rechazado"
-  fecha_vencimiento?: string
-  items?: BudgetItem[]
-  observaciones?: string
-}
-
-/**
- * Obtener todos los presupuestos con filtros opcionales
- */
-export async function getBudgets(
-  page: number = 1,
-  limit: number = 10,
-  search?: string,
-  status?: string,
-  clientId?: number
-): Promise<BudgetsResponse> {
+export async function getCommercialBudgets(params?: {
+  client_id?: number
+  status?: CommercialBudgetStatus
+  date_from?: string
+  date_to?: string
+  page?: number
+  limit?: number
+}): Promise<ApiResponse<CommercialBudgetsListPayload>> {
   const apiUrl = getApiUrl()
-  
-  const params = new URLSearchParams({
-    page: page.toString(),
-    limit: limit.toString()
+  const q = new URLSearchParams()
+  if (params?.client_id != null && params.client_id > 0) q.set('client_id', String(params.client_id))
+  if (params?.status) q.set('status', params.status)
+  if (params?.date_from) q.set('date_from', params.date_from)
+  if (params?.date_to) q.set('date_to', params.date_to)
+  if (params?.page != null && params.page > 0) q.set('page', String(params.page))
+  if (params?.limit != null && params.limit > 0) q.set('limit', String(Math.min(params.limit, 100)))
+  const url = `${apiUrl}budgets${q.toString() ? `?${q.toString()}` : ''}`
+  const res = await fetch(url, { method: 'GET', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
+  }
+  return data as unknown as ApiResponse<CommercialBudgetsListPayload>
+}
+
+export async function getCommercialBudgetStats(): Promise<ApiResponse<CommercialBudgetStatsPayload>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}budgets/stats`, { method: 'GET', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
+  }
+  return data as unknown as ApiResponse<CommercialBudgetStatsPayload>
+}
+
+export async function getCommercialBudgetById(
+  id: number | string
+): Promise<ApiResponse<CommercialBudgetDetail>> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}budgets/${id}`, { method: 'GET', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
+  }
+  return data as unknown as ApiResponse<CommercialBudgetDetail>
+}
+
+export async function createCommercialBudget(body: CreateCommercialBudgetBody): Promise<CommercialBudgetDetail> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}budgets`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(body),
   })
-  
-  if (search && search.trim()) {
-    params.append('search', search.trim())
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
-  
-  if (status) {
-    params.append('status', status)
+  const payload = data as unknown as ApiResponse<CommercialBudgetDetail>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al crear presupuesto')
   }
-  
-  if (clientId) {
-    params.append('client_id', clientId.toString())
-  }
-  
-  const fullUrl = `${apiUrl}budgets?${params.toString()}`
-  
-  try {
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    })
+  return payload.data
+}
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Error al obtener presupuestos: ${response.status} ${response.statusText}`)
-    }
+export async function updateCommercialBudget(
+  id: number | string,
+  body: UpdateCommercialBudgetBody
+): Promise<CommercialBudgetDetail> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}budgets/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
+  }
+  const payload = data as unknown as ApiResponse<CommercialBudgetDetail>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al actualizar presupuesto')
+  }
+  return payload.data
+}
 
-    const responseData: ApiResponse<BudgetsResponse> = await response.json()
-    return responseData.data || { budgets: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
-  } catch (error) {
-    console.error('💥 [API] Error al obtener presupuestos:', error)
-    throw error
+export async function deleteCommercialBudget(id: number | string): Promise<void> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}budgets/${id}`, { method: 'DELETE', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
 }
 
-/**
- * Obtener estadísticas de presupuestos
- */
-export async function getBudgetStats(): Promise<BudgetStats> {
+export async function postCommercialBudgetSend(id: number | string): Promise<CommercialBudgetDetail> {
   const apiUrl = getApiUrl()
-  const fullUrl = `${apiUrl}budgets/stats`
-  
-  try {
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Error al obtener estadísticas: ${response.status} ${response.statusText}`)
-    }
-
-    const responseData: ApiResponse<BudgetStats> = await response.json()
-    return responseData.data
-  } catch (error) {
-    console.error('💥 [API] Error al obtener estadísticas de presupuestos:', error)
-    throw error
+  const res = await fetch(`${apiUrl}budgets/${id}/send`, { method: 'POST', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
+  const payload = data as unknown as ApiResponse<CommercialBudgetDetail>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al enviar presupuesto')
+  }
+  return payload.data
 }
 
-/**
- * Obtener un presupuesto por ID
- */
-export async function getBudget(id: string): Promise<Budget> {
+export async function postCommercialBudgetApprove(id: number | string): Promise<CommercialBudgetDetail> {
   const apiUrl = getApiUrl()
-  const fullUrl = `${apiUrl}budgets/${id}`
-  
-  try {
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Error al obtener presupuesto: ${response.status} ${response.statusText}`)
-    }
-
-    const responseData: ApiResponse<Budget> = await response.json()
-    return responseData.data
-  } catch (error) {
-    console.error('💥 [API] Error al obtener presupuesto:', error)
-    throw error
+  const res = await fetch(`${apiUrl}budgets/${id}/approve`, { method: 'POST', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
+  const payload = data as unknown as ApiResponse<CommercialBudgetDetail>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al aprobar presupuesto')
+  }
+  return payload.data
 }
 
-/**
- * Crear un nuevo presupuesto
- */
-export async function createBudget(data: CreateBudgetRequest): Promise<Budget> {
+export async function postCommercialBudgetReject(id: number | string): Promise<CommercialBudgetDetail> {
   const apiUrl = getApiUrl()
-  const fullUrl = `${apiUrl}budgets`
-  
-  try {
-    const response = await fetch(fullUrl, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || `Error al crear presupuesto: ${response.status} ${response.statusText}`)
-    }
-
-    const responseData: ApiResponse<Budget> = await response.json()
-    return responseData.data
-  } catch (error) {
-    console.error('💥 [API] Error al crear presupuesto:', error)
-    throw error
+  const res = await fetch(`${apiUrl}budgets/${id}/reject`, { method: 'POST', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
+  const payload = data as unknown as ApiResponse<CommercialBudgetDetail>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al rechazar presupuesto')
+  }
+  return payload.data
 }
 
-/**
- * Actualizar un presupuesto existente
- */
-export async function updateBudget(id: string, data: UpdateBudgetRequest): Promise<Budget> {
+export async function postCommercialBudgetExpire(id: number | string): Promise<CommercialBudgetDetail> {
   const apiUrl = getApiUrl()
-  const fullUrl = `${apiUrl}budgets/${id}`
-  
-  try {
-    const response = await fetch(fullUrl, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || `Error al actualizar presupuesto: ${response.status} ${response.statusText}`)
-    }
-
-    const responseData: ApiResponse<Budget> = await response.json()
-    return responseData.data
-  } catch (error) {
-    console.error('💥 [API] Error al actualizar presupuesto:', error)
-    throw error
+  const res = await fetch(`${apiUrl}budgets/${id}/expire`, { method: 'POST', headers: getAuthHeaders() })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
+  const payload = data as unknown as ApiResponse<CommercialBudgetDetail>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al marcar vencido')
+  }
+  return payload.data
 }
 
-/**
- * Enviar presupuesto por email
- */
-export async function sendBudgetByEmail(id: string, email?: string): Promise<{ success: boolean; message: string }> {
+export async function postCommercialBudgetConvertToSale(
+  id: number | string,
+  body: ConvertCommercialBudgetToSaleBody
+): Promise<ConvertCommercialBudgetToSaleResult> {
   const apiUrl = getApiUrl()
-  const fullUrl = `${apiUrl}budgets/${id}/send-email`
-  
-  try {
-    const response = await fetch(fullUrl, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ email }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || `Error al enviar presupuesto: ${response.status} ${response.statusText}`)
-    }
-
-    const responseData: ApiResponse<{ success: boolean; message: string }> = await response.json()
-    return responseData.data
-  } catch (error) {
-    console.error('💥 [API] Error al enviar presupuesto por email:', error)
-    throw error
+  const res = await fetch(`${apiUrl}budgets/${id}/convert-to-sale`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await parseBudgetJson(res)
+  if (!res.ok) {
+    if (res.status === 401) logout()
+    throwBudgetApiError(res, data)
   }
+  const payload = data as unknown as ApiResponse<ConvertCommercialBudgetToSaleResult>
+  if (!payload?.success || !payload.data) {
+    throw new Error((payload?.message as string) || 'Error al convertir a venta')
+  }
+  return payload.data
 }
 
 // ========== Repair Orders (Órdenes de reparación) ==========
