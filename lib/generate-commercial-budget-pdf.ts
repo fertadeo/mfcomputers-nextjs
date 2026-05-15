@@ -138,6 +138,31 @@ function formatDateAr(iso: string): string {
   }
 }
 
+/** Ancho máximo de la columna descripción (evita pisar P. unit.) */
+const PRODUCT_NAME_MAX_CHARS = 46
+
+function ellipsizeToWidth(
+  doc: jsPDF,
+  text: string,
+  maxWidth: number,
+  fontStyle: "normal" | "bold" = "normal"
+): string {
+  const trimmed = text.trim() || "—"
+  if (trimmed.length > PRODUCT_NAME_MAX_CHARS) {
+    text = `${trimmed.slice(0, PRODUCT_NAME_MAX_CHARS - 1).trimEnd()}…`
+  } else {
+    text = trimmed
+  }
+  doc.setFont("helvetica", fontStyle)
+  if (doc.getTextWidth(text) <= maxWidth) return text
+  const ellipsis = "…"
+  let end = text.length
+  while (end > 1 && doc.getTextWidth(text.slice(0, end - 1).trimEnd() + ellipsis) > maxWidth) {
+    end -= 1
+  }
+  return end < text.length ? text.slice(0, end - 1).trimEnd() + ellipsis : text
+}
+
 function drawWrapped(
   doc: jsPDF,
   text: string,
@@ -313,19 +338,26 @@ function renderCommercialBudgetPdf(
         doc.line(mx, y, pageW - mx, y)
         y += 6
 
-        const title = item.product_name || "—"
-        const subtitle = item.product_code ? `Código: ${item.product_code}` : ""
-        const nameBlock = subtitle ? `${title}\n${subtitle}` : title
-        const nameLines = doc.splitTextToSize(nameBlock, colUnit - colDesc - 10) as string[]
-        const rowH = Math.max(22, 10 + nameLines.length * 11)
+        const descMaxW = colUnit - colDesc - 14
+        doc.setFontSize(9)
+        const title = ellipsizeToWidth(doc, item.product_name || "—", descMaxW, "bold")
+        const subtitle = item.product_code ? `Código: ${item.product_code.trim()}` : ""
+        doc.setFont("helvetica", "normal")
+        const subtitleLines = subtitle
+          ? (doc.splitTextToSize(subtitle, descMaxW) as string[])
+          : []
+        const nameLineCount = 1 + subtitleLines.length
+        const rowH = Math.max(22, 10 + nameLineCount * 11)
 
         doc.setFont("helvetica", "bold")
         doc.setTextColor(...TEXT_BODY)
-        nameLines.forEach((line, i) => {
-          doc.text(line, colDesc, y + 12 + i * 11)
-        })
+        doc.text(title, colDesc, y + 12)
         doc.setFont("helvetica", "normal")
         doc.setTextColor(...TEXT_MUTED)
+        subtitleLines.forEach((line, i) => {
+          doc.text(line, colDesc, y + 12 + 11 + i * 11)
+        })
+        doc.setTextColor(...TEXT_BODY)
         doc.text(formatMoneyAr(item.unit_price), colUnit, y + 12, { align: "right" })
         doc.setTextColor(...TEXT_BODY)
         doc.text(String(item.quantity), colQty, y + 12, { align: "right" })
