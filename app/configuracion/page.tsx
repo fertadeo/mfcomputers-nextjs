@@ -15,7 +15,26 @@ import { UsersManagement } from "@/components/users-management"
 import { ExceptionPermissions } from "@/components/exception-permissions"
 import { Alert } from "@/components/ui/alert"
 import { getPosApiKey } from "@/lib/api"
-import { FACTURACION_STORAGE_KEYS, normalizeCuitEmisor } from "@/lib/facturacion-settings"
+import {
+  FACTURACION_STORAGE_KEYS,
+  getStoredFacturacionFormDefaults,
+  normalizeCuitEmisor,
+  saveFacturacionFormDefaults,
+  setEmitirConDefaultsGuardados,
+  type FacturacionFormDefaults,
+} from "@/lib/facturacion-settings"
+import {
+  CONDICIONES_IVA_RECEPTOR,
+  TIPOS_COMPROBANTE_AFIP,
+} from "@/lib/facturacion-comprobantes"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const POS_API_KEY_STORAGE = "posApiKey"
 
@@ -72,6 +91,10 @@ function ArcaFacturacionSettingsCard() {
   const [cuit, setCuit] = useState("")
   const [puntoVenta, setPuntoVenta] = useState("")
   const [facturadorApiKey, setFacturadorApiKey] = useState("")
+  const [formDefaults, setFormDefaults] = useState<FacturacionFormDefaults>(() =>
+    getStoredFacturacionFormDefaults()
+  )
+  const [emitirConDefaults, setEmitirConDefaults] = useState(false)
   const [saved, setSaved] = useState(false)
   const [cuitError, setCuitError] = useState<string | null>(null)
 
@@ -80,6 +103,8 @@ function ArcaFacturacionSettingsCard() {
     setCuit(localStorage.getItem(FACTURACION_STORAGE_KEYS.CUIT_EMISOR) || "")
     setPuntoVenta(localStorage.getItem(FACTURACION_STORAGE_KEYS.PUNTO_VENTA) || "")
     setFacturadorApiKey(localStorage.getItem(FACTURACION_STORAGE_KEYS.FACTURADOR_API_KEY) || "")
+    setFormDefaults(getStoredFacturacionFormDefaults())
+    setEmitirConDefaults(localStorage.getItem(FACTURACION_STORAGE_KEYS.EMITIR_CON_DEFAULTS) === "1")
   }, [])
 
   function handleSave() {
@@ -114,6 +139,9 @@ function ArcaFacturacionSettingsCard() {
     const keyTrim = facturadorApiKey.trim()
     if (keyTrim) localStorage.setItem(FACTURACION_STORAGE_KEYS.FACTURADOR_API_KEY, keyTrim)
     else localStorage.removeItem(FACTURACION_STORAGE_KEYS.FACTURADOR_API_KEY)
+
+    saveFacturacionFormDefaults(formDefaults)
+    setEmitirConDefaultsGuardados(emitirConDefaults)
 
     setSaved(true)
     setTimeout(() => setSaved(false), 2200)
@@ -199,6 +227,106 @@ function ArcaFacturacionSettingsCard() {
             <p className="text-muted-foreground text-xs">
               Equivale a <code className="rounded bg-muted px-1 text-xs">puntoVenta</code> en el body; si está vacío, usa la configuración del servidor.
             </p>
+          </div>
+
+          <div className="border-t pt-4 space-y-4">
+            <div>
+              <h4 className="text-sm font-medium">Comprobante por defecto al emitir</h4>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Definí una sola vez el tipo de factura (por ejemplo Factura B = código 6). El módulo de facturación
+                usará estos valores en cada emisión.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="arca-tipo-comprobante">Tipo de comprobante</Label>
+                <Select
+                  value={String(formDefaults.tipo)}
+                  onValueChange={(v) =>
+                    setFormDefaults((prev) => ({ ...prev, tipo: parseInt(v, 10) || 6 }))
+                  }
+                >
+                  <SelectTrigger id="arca-tipo-comprobante" className="max-w-md">
+                    <SelectValue placeholder="Elegí tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPOS_COMPROBANTE_AFIP.map((t) => (
+                      <SelectItem key={t.value} value={String(t.value)}>
+                        {t.label} — código AFIP {t.value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  Monotributo / RI que factura a consumidor final suele usar <strong>Factura B (6)</strong>, no Factura C
+                  (11).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="arca-condicion-iva">Condición IVA receptor</Label>
+                <Select
+                  value={String(formDefaults.condicionIvaReceptor)}
+                  onValueChange={(v) =>
+                    setFormDefaults((prev) => ({
+                      ...prev,
+                      condicionIvaReceptor: parseInt(v, 10) || 5,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="arca-condicion-iva" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONDICIONES_IVA_RECEPTOR.map((c) => (
+                      <SelectItem key={c.value} value={String(c.value)}>
+                        {c.label} ({c.value})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="arca-concepto">Concepto</Label>
+                <Select
+                  value={String(formDefaults.concepto)}
+                  onValueChange={(v) =>
+                    setFormDefaults((prev) => ({
+                      ...prev,
+                      concepto: Number(v) as 1 | 2 | 3,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="arca-concepto" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 — Productos</SelectItem>
+                    <SelectItem value="2">2 — Servicios</SelectItem>
+                    <SelectItem value="3">3 — Productos + servicios</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Checkbox
+                id="arca-emitir-con-defaults"
+                checked={emitirConDefaults}
+                onCheckedChange={(checked) => setEmitirConDefaults(checked === true)}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="arca-emitir-con-defaults" className="cursor-pointer font-medium">
+                  Emisión rápida (no pedir datos en cada venta)
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  Al facturar una venta solo verás un resumen y el botón Facturar. Podés abrir «Opciones avanzadas» si
+                  necesitás cambiar algo puntual.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">

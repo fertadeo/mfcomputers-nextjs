@@ -135,7 +135,8 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     title: "Datos del comprobante inválidos",
     message:
       "AFIP rechazó el payload antes de emitir. Revisá tipo de comprobante, condición IVA, importes, documento del receptor y fechas de servicio.",
-    actionHint: "Corregí los datos del formulario y volvé a intentar. No uses el mismo intento sin cambios.",
+    actionHint:
+      "Verificá en Configuración → Facturación ARCA que el tipo sea el correcto (ej. Factura B = 6 para consumidor final, no Factura C = 11). Corregí y volvé a intentar.",
     severity: "error",
     canRetry: true,
   },
@@ -348,6 +349,9 @@ export interface FacturacionEmisionData {
   puntoVenta: number | null
   tipo: number | null
   qrUrl: string | null
+  fechaEmision?: string | null
+  cuitEmisor?: string | null
+  importe?: number | null
 }
 
 function pickString(...values: unknown[]): string | null {
@@ -408,6 +412,9 @@ export function extractFacturacionEmisionFromResponse(payload: unknown): Factura
     puntoVenta: pickNumber(remoteData?.puntoVenta, arca?.puntoVenta),
     tipo: pickNumber(remoteData?.tipo),
     qrUrl: pickString(remoteData?.qrUrl, arca?.qrUrl),
+    fechaEmision: pickString(remoteData?.fechaEmision, remoteData?.fecha_cbte),
+    cuitEmisor: pickString(remoteData?.cuitEmisor, remoteData?.cuit_emisor),
+    importe: pickNumber(remoteData?.importe, remoteData?.importeTotal),
   }
 }
 
