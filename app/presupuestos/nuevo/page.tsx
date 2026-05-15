@@ -148,8 +148,8 @@ export default function NuevoPresupuestoPage() {
         notes: notes.trim() || undefined,
         allow_inactive: allowInactive,
       })
-      toast.success("Presupuesto creado en borrador")
-      router.push(`/presupuestos/${created.id}`)
+      toast.success("Presupuesto guardado")
+      router.push(`/presupuestos/${created.id}?pdf=1`)
     } catch (e: unknown) {
       const err = e as ApiBudgetError
       if (err.validationErrors?.length) {
@@ -177,9 +177,9 @@ export default function NuevoPresupuestoPage() {
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Nuevo presupuesto comercial</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Nuevo presupuesto</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Se crea en estado borrador. No se descuenta stock hasta aprobar y convertir a venta.
+              Guardá el presupuesto y descargá el PDF para el cliente. No se descuenta stock hasta convertir a venta.
             </p>
           </div>
 
@@ -393,7 +393,7 @@ export default function NuevoPresupuestoPage() {
             </Button>
             <Button onClick={handleSubmit} disabled={submitting} className="min-w-[160px] gap-2">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Guardar borrador
+              Guardar presupuesto
             </Button>
           </div>
         </div>

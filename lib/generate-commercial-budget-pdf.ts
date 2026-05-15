@@ -2,11 +2,7 @@
  * PDF de presupuesto comercial para entregar al cliente (misma línea gráfica que la recepción de orden de reparación).
  */
 import jsPDF from "jspdf"
-import {
-  COMMERCIAL_BUDGET_STATUS_LABELS,
-  type CommercialBudgetDetail,
-  type CommercialBudgetStatus,
-} from "@/lib/api"
+import type { CommercialBudgetDetail } from "@/lib/api"
 
 const LOGO_PATH = "/images/Recurso-8@3x.png"
 
@@ -35,7 +31,6 @@ export interface CommercialBudgetPdfLineItem {
 
 export interface GenerateCommercialBudgetPdfParams {
   budget_number: string
-  status_label: string
   emission_date: string
   valid_until: string | null
   clientName: string
@@ -74,19 +69,6 @@ export interface CommercialPdfFromModalInput {
   observaciones?: string
 }
 
-function commercialBudgetStatusLabel(estado: string): string {
-  const api = COMMERCIAL_BUDGET_STATUS_LABELS as Record<string, string>
-  if (api[estado]) return api[estado]
-  const legacy: Record<string, string> = {
-    pendiente: "Pendiente",
-    enviado: "Enviado",
-    aprobado: "Aprobado",
-    rechazado: "Rechazado",
-    revision: "En revisión",
-  }
-  return legacy[estado] ?? estado
-}
-
 export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalInput): GenerateCommercialBudgetPdfParams {
   const lineItems: CommercialBudgetPdfLineItem[] = data.items.map((it) => ({
     product_name: it.service,
@@ -98,7 +80,6 @@ export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalIn
 
   return {
     budget_number: data.numero,
-    status_label: commercialBudgetStatusLabel(data.estado),
     emission_date: data.fecha,
     valid_until: data.fechaVencimiento?.trim() ? data.fechaVencimiento : null,
     clientName: data.cliente,
@@ -124,7 +105,6 @@ export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail)
 
   return {
     budget_number: detail.budget_number,
-    status_label: COMMERCIAL_BUDGET_STATUS_LABELS[detail.status as CommercialBudgetStatus] ?? detail.status,
     emission_date: detail.created_at.split("T")[0],
     valid_until: detail.valid_until ? detail.valid_until.split("T")[0] : null,
     clientName: detail.client_name?.trim() || `Cliente #${detail.client_id}`,
@@ -173,48 +153,45 @@ function drawWrapped(
   return y + slice.length * lineHeight
 }
 
-export function generateCommercialBudgetPdf(params: GenerateCommercialBudgetPdfParams): void {
-  if (typeof window === "undefined") return
-
-  const doc = new jsPDF("p", "pt", "a4")
+function renderCommercialBudgetPdf(
+  doc: jsPDF,
+  params: GenerateCommercialBudgetPdfParams,
+  logoH: number
+): void {
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
   const mx = 40
   const contentW = pageW - mx * 2
   const topY = 36
 
-  const safeFile = String(params.budget_number || "presupuesto").replace(/[^\w\-]+/g, "-")
+  let y = topY
 
-  const finish = (logoH: number) => {
-    let y = topY
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(20)
+  doc.setTextColor(...BRAND_BLUE)
+  doc.text("PRESUPUESTO", pageW - mx, y + (logoH > 0 ? 8 : 4), { align: "right" })
 
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(20)
-    doc.setTextColor(...BRAND_BLUE)
-    doc.text("PRESUPUESTO COMERCIAL", pageW - mx, y + (logoH > 0 ? 8 : 4), { align: "right" })
+  doc.setFontSize(9)
+  doc.setFont("helvetica", "normal")
+  doc.setTextColor(...TEXT_MUTED)
+  doc.text(`Emitido: ${formatDateAr(params.emission_date)}`, pageW - mx, y + (logoH > 0 ? 28 : 22), {
+    align: "right",
+  })
 
-    doc.setFontSize(9)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(...TEXT_MUTED)
-    doc.text(`Emitido: ${formatDateAr(params.emission_date)}`, pageW - mx, y + (logoH > 0 ? 28 : 22), {
-      align: "right",
-    })
+  doc.setFont("helvetica", "bold")
+  doc.setTextColor(...TEXT_BODY)
+  doc.text(`N° ${params.budget_number}`, pageW - mx, y + (logoH > 0 ? 42 : 36), { align: "right" })
 
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(...TEXT_BODY)
-    doc.text(`N° ${params.budget_number}`, pageW - mx, y + (logoH > 0 ? 42 : 36), { align: "right" })
-
+  if (params.valid_until) {
     doc.setFont("helvetica", "normal")
     doc.setFontSize(8)
     doc.setTextColor(...TEXT_MUTED)
-    doc.text(`Estado: ${params.status_label}`, pageW - mx, y + (logoH > 0 ? 54 : 48), { align: "right" })
-    if (params.valid_until) {
-      doc.text(`Válido hasta: ${formatDateAr(params.valid_until)}`, pageW - mx, y + (logoH > 0 ? 64 : 58), {
-        align: "right",
-      })
-    }
+    doc.text(`Válido hasta: ${formatDateAr(params.valid_until)}`, pageW - mx, y + (logoH > 0 ? 54 : 48), {
+      align: "right",
+    })
+  }
 
-    y = topY + Math.max(logoH, 60) + 20
+  y = topY + Math.max(logoH, params.valid_until ? 60 : 52) + 20
 
     doc.setDrawColor(...GRAY_LINE)
     doc.setLineWidth(0.5)
@@ -284,7 +261,7 @@ export function generateCommercialBudgetPdf(params: GenerateCommercialBudgetPdfP
     doc.setFontSize(9)
     doc.setTextColor(...TEXT_BODY)
     const infoText =
-      "Presupuesto de productos del catálogo. No reserva stock ni genera movimientos contables hasta su aprobación y conversión a venta. Los precios y disponibilidad se confirman al momento del cobro."
+      "Presupuesto de productos del catálogo. No reserva stock hasta registrar la venta. Los precios y disponibilidad se confirman al momento del cobro."
     drawWrapped(doc, infoText, mx + 10, y + 30, contentW - 20, 11, 4)
 
     y += infoBoxH + 18
@@ -462,28 +439,54 @@ export function generateCommercialBudgetPdf(params: GenerateCommercialBudgetPdfP
     doc.setTextColor(...TEXT_MUTED)
     c3 += 9
     const terms = doc.splitTextToSize(
-      "Documento de cotización comercial. No constituye factura fiscal ni comprobante de pago. El stock se descuenta al emitir la venta.",
+      "Documento de presupuesto. No constituye factura fiscal ni comprobante de pago. El stock se descuenta al emitir la venta.",
       third - 6
     ) as string[]
     terms.forEach((t, i) => {
       doc.text(t, mx + third * 2, c3 + i * 8)
     })
+}
 
-    doc.save(`presupuesto-comercial-${safeFile}.pdf`)
+export function buildCommercialBudgetPdf(
+  params: GenerateCommercialBudgetPdfParams
+): Promise<{ doc: jsPDF; safeFile: string }> {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("PDF solo disponible en el navegador"))
   }
 
-  const img = new window.Image()
-  img.crossOrigin = "anonymous"
-  img.src = LOGO_PATH
-  img.onload = () => {
-    const lw = 108
-    const lh = img.width ? (img.height / img.width) * lw : 56
-    try {
-      doc.addImage(img, "PNG", mx, topY, lw, lh)
-    } catch {
-      /* continuar sin logo */
+  const doc = new jsPDF("p", "pt", "a4")
+  const mx = 40
+  const topY = 36
+  const safeFile = String(params.budget_number || "presupuesto").replace(/[^\w\-]+/g, "-")
+
+  return new Promise((resolve) => {
+    const img = new window.Image()
+    img.crossOrigin = "anonymous"
+    img.src = LOGO_PATH
+    img.onload = () => {
+      const lw = 108
+      const lh = img.width ? (img.height / img.width) * lw : 56
+      try {
+        doc.addImage(img, "PNG", mx, topY, lw, lh)
+      } catch {
+        /* continuar sin logo */
+      }
+      renderCommercialBudgetPdf(doc, params, lh)
+      resolve({ doc, safeFile })
     }
-    finish(lh)
-  }
-  img.onerror = () => finish(0)
+    img.onerror = () => {
+      renderCommercialBudgetPdf(doc, params, 0)
+      resolve({ doc, safeFile })
+    }
+  })
+}
+
+export async function getCommercialBudgetPdfBlob(params: GenerateCommercialBudgetPdfParams): Promise<Blob> {
+  const { doc } = await buildCommercialBudgetPdf(params)
+  return doc.output("blob")
+}
+
+export async function generateCommercialBudgetPdf(params: GenerateCommercialBudgetPdfParams): Promise<void> {
+  const { doc, safeFile } = await buildCommercialBudgetPdf(params)
+  doc.save(`presupuesto-${safeFile}.pdf`)
 }

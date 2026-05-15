@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -10,25 +10,13 @@ import {
 } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  Download,
-  Printer,
-  Mail,
-  Share2,
-  FileText,
-  Calendar,
-  User,
-  Phone,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-} from "lucide-react"
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { Download, FileText, Loader2, Printer } from "lucide-react"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 import {
   generateCommercialBudgetPdf,
+  getCommercialBudgetPdfBlob,
   commercialPdfParamsFromModalInput,
 } from "@/lib/generate-commercial-budget-pdf"
 
@@ -70,10 +58,8 @@ interface BudgetPdfModalProps {
   isOpen: boolean
   onClose: () => void
   budget: BudgetPdfModalData | null
-  /** Cotización por catálogo (productos) vs. presupuesto de reparación legado */
+  /** Catálogo (presupuestos del módulo) vs. reparación legado */
   documentVariant?: "repair" | "catalog"
-  /** Oculta envío por email (la API comercial aún no expone send-email) */
-  hideEmailButton?: boolean
 }
 
 export function BudgetPdfModal({
@@ -81,18 +67,53 @@ export function BudgetPdfModal({
   onClose,
   budget,
   documentVariant = "repair",
-  hideEmailButton = false,
 }: BudgetPdfModalProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
-  const [isSendingEmail, setIsSendingEmail] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  const isCatalog = documentVariant === "catalog"
+
+  useEffect(() => {
+    if (!isOpen || !budget || !isCatalog) {
+      setPreviewUrl(null)
+      setPreviewError(null)
+      return
+    }
+
+    let revoked: string | null = null
+    let cancelled = false
+    setPreviewLoading(true)
+    setPreviewError(null)
+
+    getCommercialBudgetPdfBlob(commercialPdfParamsFromModalInput(budget))
+      .then((blob) => {
+        if (cancelled) return
+        const url = URL.createObjectURL(blob)
+        revoked = url
+        setPreviewUrl(url)
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewError("No se pudo generar la vista previa")
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      if (revoked) URL.revokeObjectURL(revoked)
+    }
+  }, [isOpen, budget, isCatalog])
 
   const handleDownloadPDF = async () => {
     if (!budget) return
 
-    if (documentVariant === "catalog") {
+    if (isCatalog) {
       setIsGeneratingPdf(true)
       try {
-        generateCommercialBudgetPdf(commercialPdfParamsFromModalInput(budget))
+        await generateCommercialBudgetPdf(commercialPdfParamsFromModalInput(budget))
       } catch (error) {
         console.error("Error al generar PDF:", error)
         alert("No se pudo generar el PDF. Intenta nuevamente.")
@@ -103,87 +124,45 @@ export function BudgetPdfModal({
     }
 
     setIsGeneratingPdf(true)
-
     try {
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
-
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
       const pageWidth = doc.internal.pageSize.getWidth()
       const pageHeight = doc.internal.pageSize.getHeight()
       const margin = 15
       let yPosition = margin
 
-      // Header con fondo turquoise
       doc.setFillColor(20, 184, 166)
-      doc.rect(0, 0, pageWidth, 35, 'F')
-      
+      doc.rect(0, 0, pageWidth, 35, "F")
       doc.setTextColor(255, 255, 255)
       doc.setFontSize(22)
-      doc.setFont('helvetica', 'bold')
-      doc.text('MF COMPUTERS', margin, 15)
-      
+      doc.setFont("helvetica", "bold")
+      doc.text("MF COMPUTERS", margin, 15)
       doc.setFontSize(9)
-      doc.setFont('helvetica', 'normal')
+      doc.setFont("helvetica", "normal")
       doc.text("Servicios y Reparaciones de Hardware", margin, 21)
-      doc.text('Av. Ejemplo 1234, CABA | Tel: (011) 4444-5555', margin, 26)
-      doc.text('info@mfcomputers.com', margin, 31)
 
-      // Recuadro de PRESUPUESTO
       const boxX = pageWidth - margin - 50
       doc.setFillColor(240, 240, 240)
-      doc.roundedRect(boxX, 8, 48, 22, 2, 2, 'FD')
-      
+      doc.roundedRect(boxX, 8, 48, 22, 2, 2, "FD")
       doc.setTextColor(20, 184, 166)
       doc.setFontSize(14)
-      doc.setFont('helvetica', 'bold')
-      doc.text('PRESUPUESTO', boxX + 24, 15, { align: 'center' })
-      
+      doc.setFont("helvetica", "bold")
+      doc.text("PRESUPUESTO", boxX + 24, 15, { align: "center" })
       doc.setFontSize(12)
-      doc.text(`N° ${budget.numero}`, boxX + 24, 20, { align: 'center' })
-      
-      doc.setFontSize(10)
-      doc.setTextColor(100, 100, 100)
-      doc.text('Fecha:', boxX + 5, 25)
-      doc.text(new Date(budget.fecha).toLocaleDateString('es-AR'), boxX + 18, 25)
-      
-      doc.text('Válido hasta:', boxX + 5, 29)
-      doc.text(new Date(budget.fechaVencimiento).toLocaleDateString('es-AR'), boxX + 34, 29)
+      doc.text(`N° ${budget.numero}`, boxX + 24, 20, { align: "center" })
 
       yPosition = 45
-
-      // Datos del cliente
       doc.setTextColor(0, 0, 0)
       doc.setFontSize(12)
-      doc.setFont('helvetica', 'bold')
-      doc.text('CLIENTE:', margin, yPosition)
-      
+      doc.setFont("helvetica", "bold")
+      doc.text("CLIENTE:", margin, yPosition)
       yPosition += 6
       doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
+      doc.setFont("helvetica", "normal")
       doc.text(`Nombre: ${budget.cliente}`, margin, yPosition)
-      
-      if (budget.email) {
-        yPosition += 5
-        doc.text(`Email: ${budget.email}`, margin, yPosition)
-      }
-      
-      if (budget.telefono) {
-        yPosition += 5
-        doc.text(`Teléfono: ${budget.telefono}`, margin, yPosition)
-      }
-      
-      if (budget.direccion) {
-        yPosition += 5
-        doc.text(`Dirección: ${budget.direccion}`, margin, yPosition)
-      }
-
       yPosition += 10
 
-      const head = [['Cant.', 'Servicio/Reparación', 'Equipo', 'IVA', 'P.Unit.', 'Subtotal']]
-
+      const head = [["Cant.", "Servicio/Reparación", "Equipo", "IVA", "P.Unit.", "Subtotal"]]
       const tableData = budget.items.map((item) => [
         item.quantity.toString(),
         item.service,
@@ -197,175 +176,30 @@ export function BudgetPdfModal({
         startY: yPosition,
         head,
         body: tableData,
-        theme: 'striped',
-        headStyles: { 
-          fillColor: [20, 184, 166],
-          textColor: [255, 255, 255],
-          fontStyle: 'bold'
-        },
+        theme: "striped",
+        headStyles: { fillColor: [20, 184, 166], textColor: [255, 255, 255], fontStyle: "bold" },
         styles: { fontSize: 9 },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          1: { cellWidth: 70 },
-          2: { cellWidth: 35 },
-          3: { cellWidth: 20 },
-          4: { cellWidth: 30 },
-          5: { cellWidth: 30, halign: 'right' }
-        },
-        margin: { left: margin, right: margin }
+        margin: { left: margin, right: margin },
       })
 
-      yPosition = (doc as any).lastAutoTable.finalY + 10
-
-      // Totales
-      const totalsX = pageWidth - margin - 60
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      
-      doc.text('Subtotal:', totalsX, yPosition, { align: 'right' })
-      doc.text(`$${budget.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - margin, yPosition, { align: 'right' })
-      
-      if (budget.vat21 > 0) {
-        yPosition += 5
-        doc.text('IVA 21%:', totalsX, yPosition, { align: 'right' })
-        doc.text(`$${budget.vat21.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - margin, yPosition, { align: 'right' })
-      }
-      
-      if (budget.vat105 > 0) {
-        yPosition += 5
-        doc.text('IVA 10.5%:', totalsX, yPosition, { align: 'right' })
-        doc.text(`$${budget.vat105.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - margin, yPosition, { align: 'right' })
-      }
-
-      yPosition += 8
-      doc.setDrawColor(20, 184, 166)
-      doc.setLineWidth(0.5)
-      doc.line(totalsX - 10, yPosition, pageWidth - margin, yPosition)
-
-      yPosition += 7
-      doc.setFontSize(14)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(20, 184, 166)
-      doc.text('TOTAL:', totalsX, yPosition, { align: 'right' })
-      doc.text(`$${budget.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - margin, yPosition, { align: 'right' })
-
-      yPosition += 15
-
-      // Observaciones
-      if (budget.observaciones) {
-        doc.setTextColor(0, 0, 0)
-        doc.setFontSize(10)
-        doc.setFont('helvetica', 'bold')
-        doc.text('OBSERVACIONES:', margin, yPosition)
-        yPosition += 5
-        doc.setFont('helvetica', 'normal')
-        const obsLines = doc.splitTextToSize(budget.observaciones, pageWidth - 2 * margin)
-        doc.text(obsLines, margin, yPosition)
-        yPosition += obsLines.length * 5 + 5
-      }
-
-      // Pie de página
-      doc.setFontSize(8)
-      doc.setTextColor(150, 150, 150)
-      const foot1 = `Este presupuesto tiene una validez de ${budget.validez ?? 10} días desde su emisión.`
-      doc.text(foot1, pageWidth / 2, pageHeight - 15, { align: 'center' })
-      doc.text(
-        'Para consultas o aprobación, contáctenos por email o teléfono.',
-        pageWidth / 2,
-        pageHeight - 10,
-        { align: 'center' }
-      )
-
-      const date = new Date().toISOString().split('T')[0]
+      const date = new Date().toISOString().split("T")[0]
       doc.save(`Presupuesto_${budget.numero}_${date}.pdf`)
     } catch (error) {
-      console.error('Error al generar PDF:', error)
-      alert('No se pudo generar el PDF. Intenta nuevamente.')
+      console.error("Error al generar PDF:", error)
+      alert("No se pudo generar el PDF. Intenta nuevamente.")
     } finally {
       setIsGeneratingPdf(false)
     }
   }
 
   const handlePrint = () => {
-    if (!budget) return
-    window.print()
-    console.log("Imprimiendo presupuesto:", budget.numero)
-  }
-
-  const handleSendEmail = async () => {
-    if (!budget) return
-    if (!budget.email) {
-      alert('El presupuesto no tiene un email asociado')
+    if (isCatalog && previewUrl) {
+      const w = window.open(previewUrl, "_blank")
+      w?.addEventListener("load", () => w?.print())
       return
     }
-
-    setIsSendingEmail(true)
-    try {
-      // Aquí iría la lógica para enviar el presupuesto por email
-      // Por ahora solo simulamos
-      console.log("Enviando presupuesto por email a:", budget.email)
-      
-      // Simular delay
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      alert(`Presupuesto ${budget.numero} enviado exitosamente a ${budget.email}`)
-    } catch (error) {
-      console.error('Error al enviar email:', error)
-      alert('No se pudo enviar el email. Intenta nuevamente.')
-    } finally {
-      setIsSendingEmail(false)
-    }
-  }
-
-  const getEstadoConfig = (estado: string) => {
-    const configs: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-      pendiente: {
-        label: "Pendiente",
-        color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
-        icon: Clock,
-      },
-      draft: {
-        label: "Borrador",
-        color: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200",
-        icon: Clock,
-      },
-      enviado: {
-        label: "Enviado",
-        color: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
-        icon: Mail,
-      },
-      sent: {
-        label: "Enviado",
-        color: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
-        icon: Mail,
-      },
-      aprobado: {
-        label: "Aprobado",
-        color: "bg-turquoise-100 text-turquoise-800 dark:bg-turquoise-900/20 dark:text-turquoise-400",
-        icon: CheckCircle,
-      },
-      approved: {
-        label: "Aprobado",
-        color: "bg-turquoise-100 text-turquoise-800 dark:bg-turquoise-900/20 dark:text-turquoise-400",
-        icon: CheckCircle,
-      },
-      rechazado: {
-        label: "Rechazado",
-        color: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
-        icon: AlertCircle,
-      },
-      rejected: {
-        label: "Rechazado",
-        color: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
-        icon: AlertCircle,
-      },
-      expired: {
-        label: "Vencido",
-        color: "bg-orange-100 text-orange-900 dark:bg-orange-900/30 dark:text-orange-200",
-        icon: AlertCircle,
-      },
-    }
-    return configs[estado] ?? configs.pendiente
+    if (!budget) return
+    window.print()
   }
 
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
@@ -374,220 +208,78 @@ export function BudgetPdfModal({
 
   if (!budget) return null
 
-  const estadoConfig = getEstadoConfig(budget.estado)
-  const EstadoIcon = estadoConfig.icon
-
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-50 dark:bg-slate-900">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <div className="p-2 bg-turquoise-100 dark:bg-turquoise-900/50 rounded-lg">
-              <FileText className="h-5 w-5 text-turquoise-600 dark:text-turquoise-400" />
-            </div>
-            <div>
-              <div>Presupuesto {budget.numero}</div>
-              <div className="text-sm font-normal text-muted-foreground mt-1">
-                <Badge className={estadoConfig.color}>
-                  <EstadoIcon className="h-3 w-3 mr-1" />
-                  {estadoConfig.label}
-                </Badge>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-50 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
-            </div>
-          </DialogTitle>
-          <DialogDescription>
-            Visualización y acciones del presupuesto
-          </DialogDescription>
-        </DialogHeader>
+              <span>Presupuesto {budget.numero}</span>
+            </DialogTitle>
+            <DialogDescription>
+              {isCatalog
+                ? "Vista previa idéntica al PDF que se descarga."
+                : "Visualización y descarga del presupuesto"}
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* Botones de acción */}
-        <div className="flex gap-2 flex-wrap">
-          <Button 
-            onClick={handleDownloadPDF} 
-            disabled={isGeneratingPdf}
-            variant="outline"
-            className="flex-1"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            {isGeneratingPdf ? 'Generando...' : 'Descargar PDF'}
-          </Button>
-          <Button 
-            onClick={handlePrint} 
-            variant="outline"
-            className="flex-1"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Imprimir
-          </Button>
-          {!hideEmailButton && (
+          <div className="flex gap-2 flex-wrap">
             <Button
-              onClick={handleSendEmail}
-              disabled={isSendingEmail || !budget.email}
-              className="flex-1 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600"
+              onClick={handleDownloadPDF}
+              disabled={isGeneratingPdf}
+              variant="default"
+              className="flex-1 gap-2"
             >
-              <Mail className="h-4 w-4 mr-2" />
-              {isSendingEmail ? "Enviando..." : "Enviar por Email"}
+              {isGeneratingPdf ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {isGeneratingPdf ? "Generando…" : "Descargar PDF"}
             </Button>
-          )}
-        </div>
-
-        <Separator />
-
-        {/* Vista previa del presupuesto */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700 print:p-8 print:border-0">
-          {/* Header */}
-          <div className="bg-turquoise-600 text-white p-4 rounded-t-lg mb-6 print:mb-8">
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="text-2xl font-bold mb-2">MF COMPUTERS</h2>
-                <p className="text-sm">
-                  {documentVariant === "catalog"
-                    ? "Cotización comercial · catálogo"
-                    : "Servicios y Reparaciones de Hardware"}
-                </p>
-                <p className="text-xs mt-1">Av. Ejemplo 1234, CABA | Tel: (011) 4444-5555</p>
-                <p className="text-xs">info@mfcomputers.com</p>
-              </div>
-              <div className="bg-white/20 backdrop-blur-sm p-3 rounded text-right">
-                <div className="text-lg font-bold mb-1">PRESUPUESTO</div>
-                <div className="text-sm">N° {budget.numero}</div>
-                <div className="text-xs mt-2">
-                  <div>Fecha: {new Date(budget.fecha).toLocaleDateString('es-AR')}</div>
-                  <div>Válido hasta: {new Date(budget.fechaVencimiento).toLocaleDateString('es-AR')}</div>
-                </div>
-              </div>
-            </div>
+            <Button
+              onClick={handlePrint}
+              variant="outline"
+              className="flex-1 gap-2"
+              disabled={isCatalog && (previewLoading || !previewUrl)}
+            >
+              <Printer className="h-4 w-4" />
+              Imprimir
+            </Button>
           </div>
 
-          {/* Datos del cliente */}
-          <div className="mb-6">
-            <h3 className="font-bold text-lg mb-3">CLIENTE:</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Nombre:</span> {budget.cliente}
-              </div>
-              {budget.email && (
-                <div>
-                  <span className="font-medium">Email:</span> {budget.email}
+          <Separator />
+
+          {isCatalog ? (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white min-h-[480px]">
+              {previewLoading && (
+                <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <p className="text-sm">Generando vista previa…</p>
                 </div>
               )}
-              {budget.telefono && (
-                <div>
-                  <span className="font-medium">Teléfono:</span> {budget.telefono}
-                </div>
+              {previewError && (
+                <div className="p-8 text-center text-destructive text-sm">{previewError}</div>
               )}
-              {budget.direccion && (
-                <div className="col-span-2">
-                  <span className="font-medium">Dirección:</span> {budget.direccion}
-                </div>
+              {!previewLoading && previewUrl && (
+                <iframe
+                  title={`Vista previa presupuesto ${budget.numero}`}
+                  src={previewUrl}
+                  className="w-full min-h-[70vh] border-0"
+                />
               )}
             </div>
-          </div>
-
-          <Separator className="my-6" />
-
-          {/* Tabla de servicios */}
-          <div className="mb-6">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-turquoise-600 text-white">
-                  <th className="border p-2 text-left">Cant.</th>
-                  <th className="border p-2 text-left">
-                    {documentVariant === "catalog" ? "Producto" : "Servicio/Reparación"}
-                  </th>
-                  <th className="border p-2 text-left">{documentVariant === "catalog" ? "Código" : "Equipo"}</th>
-                  <th className="border p-2 text-left">{documentVariant === "catalog" ? " " : "IVA"}</th>
-                  <th className="border p-2 text-right">P.Unit.</th>
-                  <th className="border p-2 text-right">{documentVariant === "catalog" ? "Importe" : "Subtotal"}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {budget.items.map((item, idx) => (
-                  <tr key={item.id} className={idx % 2 === 0 ? 'bg-slate-50 dark:bg-slate-900' : ''}>
-                    <td className="border p-2">{item.quantity}</td>
-                    <td className="border p-2">
-                      <div className="font-medium">{item.service}</div>
-                      {item.description && (
-                        <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
-                      )}
-                      {item.problemDescription && (
-                        <div className="text-xs text-orange-600 mt-1 italic">Problema: {item.problemDescription}</div>
-                      )}
-                    </td>
-                    <td className="border p-2">
-                      <div className="text-xs">
-                        {documentVariant === "catalog" ? (
-                          <div className="font-mono text-sm">{item.equipmentModel || "—"}</div>
-                        ) : (
-                          <>
-                            {item.equipmentType && (
-                              <div className="font-medium uppercase">{item.equipmentType.replace("_", " ")}</div>
-                            )}
-                            {item.equipmentModel && (
-                              <div className="text-muted-foreground">{item.equipmentModel}</div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td className="border p-2">{documentVariant === "catalog" ? "—" : `${item.vat}%`}</td>
-                    <td className="border p-2 text-right">${item.unitPrice.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                    <td className="border p-2 text-right font-medium">${item.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totales */}
-          <div className="flex justify-end mb-6">
-            <div className="w-64">
-              <div className="flex justify-between py-2">
-                <span>Subtotal:</span>
-                <span className="font-medium">${budget.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
-              </div>
-              {budget.vat21 > 0 && (
-                <div className="flex justify-between py-2">
-                  <span>IVA 21%:</span>
-                  <span className="font-medium">${budget.vat21.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
-                </div>
-              )}
-              {budget.vat105 > 0 && (
-                <div className="flex justify-between py-2">
-                  <span>IVA 10.5%:</span>
-                  <span className="font-medium">${budget.vat105.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
-                </div>
-              )}
-              <Separator className="my-2" />
-              <div className="flex justify-between py-2 text-lg font-bold text-turquoise-600">
-                <span>TOTAL:</span>
-                <span>${budget.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Observaciones */}
-          {budget.observaciones && (
-            <div className="mb-6 p-4 bg-slate-100 dark:bg-slate-700 rounded">
-              <h4 className="font-bold mb-2">OBSERVACIONES:</h4>
-              <p className="text-sm whitespace-pre-wrap">{budget.observaciones}</p>
+          ) : (
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-lg border text-sm text-muted-foreground">
+              Vista previa HTML solo disponible para presupuestos de reparación. Usá Descargar PDF.
             </div>
           )}
-
-          {/* Pie de página */}
-          <div className="text-xs text-center text-muted-foreground mt-8 pt-4 border-t border-slate-300">
-            <p>
-              {documentVariant === "catalog"
-                ? "Los importes son orientativos hasta la conversión a venta; no se reserva stock."
-                : `Este presupuesto tiene una validez de ${budget.validez || 10} días desde su emisión.`}
-            </p>
-            <p className="mt-1">Para consultas o aprobación, contáctenos por email o teléfono.</p>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-    {confirmDialog}
+        </DialogContent>
+      </Dialog>
+      {confirmDialog}
     </>
   )
 }

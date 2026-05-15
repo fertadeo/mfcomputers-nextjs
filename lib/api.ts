@@ -6133,6 +6133,27 @@ export async function postCommercialBudgetExpire(id: number | string): Promise<C
   return payload.data
 }
 
+/**
+ * Deja el presupuesto en `approved` (sin mostrar estados al usuario) para poder convertir a venta.
+ */
+export async function ensureCommercialBudgetApproved(
+  id: number | string
+): Promise<CommercialBudgetDetail> {
+  const res = await getCommercialBudgetById(id)
+  let budget = res.data
+  if (budget.status === 'approved') return budget
+  if (budget.status === 'rejected' || budget.status === 'expired') {
+    throw new Error('Este presupuesto está cerrado y no puede convertirse a venta')
+  }
+  if (budget.status === 'draft') {
+    budget = await postCommercialBudgetSend(id)
+  }
+  if (budget.status === 'sent') {
+    budget = await postCommercialBudgetApprove(id)
+  }
+  return budget
+}
+
 export async function postCommercialBudgetConvertToSale(
   id: number | string,
   body: ConvertCommercialBudgetToSaleBody

@@ -7,17 +7,10 @@ import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { useRole } from "@/app/hooks/useRole"
 import type { Role } from "@/app/config/menu"
-import {
-  COMMERCIAL_BUDGET_STATUS_LABELS,
-  getCommercialBudgets,
-  getCommercialBudgetStats,
-  type CommercialBudgetStatus,
-  type CommercialBudgetSummary,
-} from "@/lib/api"
+import { getCommercialBudgets, getCommercialBudgetStats, type CommercialBudgetSummary } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableBody,
@@ -26,27 +19,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Pagination } from "@/components/ui/pagination"
-import {
-  Calculator,
-  Eye,
-  FileSpreadsheet,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Send,
-  CheckCircle2,
-  Ban,
-  Clock,
-  XCircle,
-} from "lucide-react"
+import { Calculator, Eye, Loader2, Plus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_VER: Role[] = [
@@ -84,40 +58,6 @@ function formatDate(iso: string | null) {
   }
 }
 
-function statusBadgeClass(s: CommercialBudgetStatus): string {
-  switch (s) {
-    case "draft":
-      return "bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-100"
-    case "sent":
-      return "bg-sky-100 text-sky-900 border-sky-200 dark:bg-sky-950 dark:text-sky-100"
-    case "approved":
-      return "bg-emerald-100 text-emerald-900 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-100"
-    case "rejected":
-      return "bg-red-100 text-red-900 border-red-200 dark:bg-red-950 dark:text-red-100"
-    case "expired":
-      return "bg-amber-100 text-amber-950 border-amber-200 dark:bg-amber-950 dark:text-amber-100"
-    default:
-      return ""
-  }
-}
-
-function StatusIcon({ s }: { s: CommercialBudgetStatus }) {
-  switch (s) {
-    case "draft":
-      return <FileSpreadsheet className="h-3.5 w-3.5" />
-    case "sent":
-      return <Send className="h-3.5 w-3.5" />
-    case "approved":
-      return <CheckCircle2 className="h-3.5 w-3.5" />
-    case "rejected":
-      return <XCircle className="h-3.5 w-3.5" />
-    case "expired":
-      return <Ban className="h-3.5 w-3.5" />
-    default:
-      return <Clock className="h-3.5 w-3.5" />
-  }
-}
-
 export default function PresupuestosPage() {
   const router = useRouter()
   const { hasAnyOfRoles } = useRole()
@@ -129,17 +69,11 @@ export default function PresupuestosPage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [limit] = useState(20)
-  const [status, setStatus] = useState<string>("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [search, setSearch] = useState("")
   const [stats, setStats] = useState<{
     total: number
-    draft: number
-    sent: number
-    approved: number
-    rejected: number
-    expired: number
     total_amount_draft: number
     total_amount_sent: number
   } | null>(null)
@@ -148,7 +82,16 @@ export default function PresupuestosPage() {
     setStatsLoading(true)
     try {
       const res = await getCommercialBudgetStats()
-      setStats(res.data ?? null)
+      const d = res.data
+      setStats(
+        d
+          ? {
+              total: d.total,
+              total_amount_draft: d.total_amount_draft,
+              total_amount_sent: d.total_amount_sent,
+            }
+          : null
+      )
     } catch {
       setStats(null)
     } finally {
@@ -162,7 +105,6 @@ export default function PresupuestosPage() {
       const res = await getCommercialBudgets({
         page,
         limit,
-        status: status === "all" ? undefined : (status as CommercialBudgetStatus),
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
       })
@@ -177,7 +119,7 @@ export default function PresupuestosPage() {
         return
       }
       if (err?.status === 403) {
-        toast.error("No tenés permiso para ver presupuestos comerciales.")
+        toast.error("No tenés permiso para ver presupuestos.")
         router.replace("/403")
         return
       }
@@ -187,7 +129,7 @@ export default function PresupuestosPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, status, dateFrom, dateTo, router])
+  }, [page, dateFrom, dateTo, router])
 
   useEffect(() => {
     loadStats()
@@ -209,6 +151,8 @@ export default function PresupuestosPage() {
   }, [rows, search])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const montoCotizado =
+    (stats?.total_amount_draft ?? 0) + (stats?.total_amount_sent ?? 0)
 
   return (
     <Protected requiredRoles={ROLES_VER}>
@@ -216,7 +160,7 @@ export default function PresupuestosPage() {
         <div className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
-              <h1 className="text-3xl font-bold tracking-tight">Presupuestos comerciales</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Presupuestos</h1>
               <p className="max-w-2xl text-muted-foreground text-sm leading-relaxed">
                 Cotizaciones con productos del catálogo y cliente. No mueven stock hasta convertir a venta. Es un
                 flujo distinto de las{" "}
@@ -242,47 +186,26 @@ export default function PresupuestosPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="border-t-4 border-t-slate-400 shadow-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Card className="border-t-4 border-t-primary shadow-sm">
               <CardHeader className="pb-2">
-                <CardDescription>Total registrados</CardDescription>
+                <CardDescription>Presupuestos registrados</CardDescription>
                 <CardTitle className="text-3xl tabular-nums">
-                  {statsLoading ? "—" : stats?.total ?? 0}
+                  {statsLoading ? "—" : (stats?.total ?? 0).toLocaleString("es-AR")}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">Todos los estados</CardContent>
+              <CardContent className="text-xs text-muted-foreground">Histórico completo</CardContent>
             </Card>
             <Card className="border-t-4 border-t-sky-500 shadow-sm">
               <CardHeader className="pb-2">
-                <CardDescription>Borradores + enviados</CardDescription>
-                <CardTitle className="text-3xl tabular-nums">
-                  {statsLoading
-                    ? "—"
-                    : ((stats?.draft ?? 0) + (stats?.sent ?? 0)).toLocaleString("es-AR")}
+                <CardDescription>Monto en cotización activa</CardDescription>
+                <CardTitle className="text-2xl tabular-nums">
+                  {statsLoading ? "—" : formatMoney(montoCotizado)}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-xs text-muted-foreground space-y-0.5">
-                <div>Monto borradores: {statsLoading ? "—" : formatMoney(stats?.total_amount_draft ?? 0)}</div>
-                <div>Monto enviados: {statsLoading ? "—" : formatMoney(stats?.total_amount_sent ?? 0)}</div>
+              <CardContent className="text-xs text-muted-foreground">
+                Suma de presupuestos pendientes de cierre
               </CardContent>
-            </Card>
-            <Card className="border-t-4 border-t-emerald-500 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardDescription>Aprobados</CardDescription>
-                <CardTitle className="text-3xl tabular-nums text-emerald-700 dark:text-emerald-400">
-                  {statsLoading ? "—" : stats?.approved ?? 0}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">Listos para convertir a venta</CardContent>
-            </Card>
-            <Card className="border-t-4 border-t-amber-500 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardDescription>Cerrados (rechazo / vencido)</CardDescription>
-                <CardTitle className="text-3xl tabular-nums">
-                  {statsLoading ? "—" : ((stats?.rejected ?? 0) + (stats?.expired ?? 0)).toLocaleString("es-AR")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">Histórico comercial</CardContent>
             </Card>
           </div>
 
@@ -299,22 +222,6 @@ export default function PresupuestosPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
-              </div>
-              <div className="w-full sm:w-52 space-y-2">
-                <label className="text-sm font-medium">Estado</label>
-                <Select value={status} onValueChange={(v) => { setPage(1); setStatus(v); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {(Object.keys(COMMERCIAL_BUDGET_STATUS_LABELS) as CommercialBudgetStatus[]).map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {COMMERCIAL_BUDGET_STATUS_LABELS[k]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               <div className="w-full sm:w-44 space-y-2">
                 <label className="text-sm font-medium">Desde</label>
@@ -348,7 +255,6 @@ export default function PresupuestosPage() {
                       <TableHead>Cliente</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-center">Ítems</TableHead>
-                      <TableHead>Estado</TableHead>
                       <TableHead>Vigencia</TableHead>
                       <TableHead>Creado</TableHead>
                       <TableHead className="text-right w-[100px]">Acciones</TableHead>
@@ -357,14 +263,14 @@ export default function PresupuestosPage() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                        <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                           <Loader2 className="h-6 w-6 animate-spin inline mr-2 align-middle" />
                           Cargando…
                         </TableCell>
                       </TableRow>
                     ) : filteredRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-28 text-center text-muted-foreground">
+                        <TableCell colSpan={7} className="h-28 text-center text-muted-foreground">
                           No hay presupuestos con los criterios elegidos.
                         </TableCell>
                       </TableRow>
@@ -382,12 +288,6 @@ export default function PresupuestosPage() {
                             {formatMoney(b.total_amount)}
                           </TableCell>
                           <TableCell className="text-center tabular-nums">{b.item_count ?? "—"}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={`gap-1 ${statusBadgeClass(b.status)}`}>
-                              <StatusIcon s={b.status} />
-                              {COMMERCIAL_BUDGET_STATUS_LABELS[b.status]}
-                            </Badge>
-                          </TableCell>
                           <TableCell className="text-sm whitespace-nowrap">{formatDate(b.valid_until)}</TableCell>
                           <TableCell className="text-sm whitespace-nowrap">{formatDate(b.created_at)}</TableCell>
                           <TableCell className="text-right">

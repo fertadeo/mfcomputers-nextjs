@@ -154,7 +154,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       },
       { 
         id: "presupuestos", 
-        label: "Presupuestos comerciales", 
+        label: "Presupuestos", 
         icon: Calculator, 
         href: "/presupuestos",
         requiredRoles: ['admin', 'gerencia', 'ventas', 'finanzas', 'logistica', 'manager', 'employee', 'viewer']

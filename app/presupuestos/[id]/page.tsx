@@ -2,21 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { useRole } from "@/app/hooks/useRole"
 import type { Role } from "@/app/config/menu"
 import {
-  COMMERCIAL_BUDGET_STATUS_LABELS,
   deleteCommercialBudget,
+  ensureCommercialBudgetApproved,
   getCommercialBudgetById,
   getClientes,
   getProducts,
-  postCommercialBudgetApprove,
-  postCommercialBudgetExpire,
-  postCommercialBudgetReject,
-  postCommercialBudgetSend,
   updateCommercialBudget,
   type CommercialBudgetDetail,
   type CommercialBudgetLine,
@@ -25,10 +21,6 @@ import {
   type ApiBudgetError,
 } from "@/lib/api"
 import { commercialBudgetDetailToPdfData } from "@/lib/commercial-budget-pdf-mapper"
-import {
-  generateCommercialBudgetPdf,
-  commercialPdfParamsFromApiDetail,
-} from "@/lib/generate-commercial-budget-pdf"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
 import { BudgetConvertSaleDialog } from "@/components/budget-convert-sale-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,7 +28,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -55,20 +46,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  ArrowLeft,
-  Ban,
-  CheckCircle2,
-  Download,
-  FileText,
-  Loader2,
-  Plus,
-  Save,
-  Search,
-  Send,
-  Trash2,
-  XCircle,
-} from "lucide-react"
+import { ArrowLeft, CheckCircle2, FileText, Loader2, Plus, Save, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_VER: Role[] = [
@@ -122,6 +100,7 @@ function linesFromDetail(items: CommercialBudgetLine[]) {
 export default function PresupuestoDetallePage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const id = String(params.id ?? "")
   const { hasAnyOfRoles } = useRole()
   const puedeEditar = hasAnyOfRoles(ROLES_EDITAR)
@@ -182,7 +161,13 @@ export default function PresupuestoDetallePage() {
   }, [load])
 
   useEffect(() => {
-    if (!detail || detail.status !== "draft") return
+    if (searchParams.get("pdf") === "1" && detail && !loading) {
+      setPdfOpen(true)
+    }
+  }, [searchParams, detail, loading])
+
+  useEffect(() => {
+    if (!detail || detail.status === "rejected" || detail.status === "expired") return
     let cancelled = false
     ;(async () => {
       try {
@@ -227,35 +212,26 @@ export default function PresupuestoDetallePage() {
 
   async function saveChanges() {
     if (!detail || !puedeEditar) return
+    if (!clientId) {
+      toast.error("Cliente requerido")
+      return
+    }
     setSaving(true)
     try {
-      if (detail.status === "draft") {
-        if (!clientId) {
-          toast.error("Cliente requerido")
-          return
-        }
-        const updated = await updateCommercialBudget(detail.id, {
-          client_id: clientId,
-          valid_until: validUntil.trim() || null,
-          notes: notes.trim() || null,
-          items: draftLines.map((l) => ({
-            product_id: l.product_id,
-            quantity: Math.max(1, Math.floor(l.quantity)),
-            unit_price: Math.max(0, l.unit_price),
-          })),
-          allow_inactive: allowInactiveDraft,
-        })
-        setDetail(updated)
-        setDraftLines(linesFromDetail(updated.items || []))
-        toast.success("Cambios guardados")
-      } else if (detail.status === "sent") {
-        const updated = await updateCommercialBudget(detail.id, {
-          valid_until: validUntil.trim() || null,
-          notes: notes.trim() || null,
-        })
-        setDetail(updated)
-        toast.success("Notas y vigencia actualizadas")
-      }
+      const updated = await updateCommercialBudget(detail.id, {
+        client_id: clientId,
+        valid_until: validUntil.trim() || null,
+        notes: notes.trim() || null,
+        items: draftLines.map((l) => ({
+          product_id: l.product_id,
+          quantity: Math.max(1, Math.floor(l.quantity)),
+          unit_price: Math.max(0, l.unit_price),
+        })),
+        allow_inactive: allowInactiveDraft,
+      })
+      setDetail(updated)
+      setDraftLines(linesFromDetail(updated.items || []))
+      toast.success("Cambios guardados")
     } catch (e: unknown) {
       const err = e as ApiBudgetError
       toast.error(err?.message ?? "No se pudo guardar")
@@ -332,11 +308,8 @@ export default function PresupuestoDetallePage() {
     )
   }
 
-  const st = detail.status
-  const draft = st === "draft"
-  const sent = st === "sent"
-  const approved = st === "approved"
-  const readonly = st === "rejected" || st === "expired"
+  const readonly = detail.status === "rejected" || detail.status === "expired"
+  const editable = puedeEditar && !readonly
 
   return (
     <Protected requiredRoles={ROLES_VER}>
@@ -353,12 +326,7 @@ export default function PresupuestoDetallePage() {
 
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h1 className="text-2xl font-bold font-mono tracking-tight">{detail.budget_number}</h1>
-                <Badge variant="outline" className="text-sm">
-                  {COMMERCIAL_BUDGET_STATUS_LABELS[st]}
-                </Badge>
-              </div>
+              <h1 className="text-2xl font-bold font-mono tracking-tight mb-1">{detail.budget_number}</h1>
               <p className="text-muted-foreground text-sm">
                 Cliente:{" "}
                 <span className="text-foreground font-medium">
@@ -373,31 +341,32 @@ export default function PresupuestoDetallePage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                className="gap-1 shadow-sm"
-                onClick={() => {
-                  try {
-                    generateCommercialBudgetPdf(commercialPdfParamsFromApiDetail(detail))
-                    toast.success("Descarga iniciada", {
-                      description: "PDF con plantilla corporativa (misma línea que orden de reparación).",
-                    })
-                  } catch {
-                    toast.error("No se pudo iniciar el PDF")
-                  }
-                }}
-              >
-                <Download className="h-4 w-4" />
-                Descargar PDF
-              </Button>
-              <Button variant="outline" size="sm" className="gap-1" onClick={() => setPdfOpen(true)}>
+              <Button variant="default" size="sm" className="gap-1 shadow-sm" onClick={() => setPdfOpen(true)}>
                 <FileText className="h-4 w-4" />
-                Vista previa
+                Ver / descargar PDF
               </Button>
-              {puedeEditar && approved && (
-                <Button size="sm" className="gap-1" onClick={() => setConvertOpen(true)}>
-                  <CheckCircle2 className="h-4 w-4" />
+              {editable && (
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  disabled={actionLoading === "convert"}
+                  onClick={async () => {
+                    setActionLoading("convert")
+                    try {
+                      await ensureCommercialBudgetApproved(detail.id)
+                      setConvertOpen(true)
+                    } catch (e: unknown) {
+                      toast.error((e as Error)?.message ?? "No se pudo preparar la venta")
+                    } finally {
+                      setActionLoading(null)
+                    }
+                  }}
+                >
+                  {actionLoading === "convert" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
                   Convertir a venta
                 </Button>
               )}
@@ -413,216 +382,83 @@ export default function PresupuestoDetallePage() {
                   {detail.item_count ?? detail.items?.length ?? 0} ítem(s) · sin movimiento de stock
                 </p>
               </div>
-              {puedeEditar && (
-                <div className="flex flex-wrap gap-2">
-                  {draft && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="gap-1"
-                        disabled={!!actionLoading}
-                        onClick={() =>
-                          setConfirm({
-                            title: "Enviar presupuesto",
-                            description: "Pasará a estado Enviado. Luego solo podrás editar notas y vigencia.",
-                            action: async () => {
-                              await postCommercialBudgetSend(detail.id)
-                              toast.success("Presupuesto enviado")
-                            },
-                          })
-                        }
-                      >
-                        <Send className="h-4 w-4" />
-                        Enviar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1"
-                        disabled={!!actionLoading}
-                        onClick={() =>
-                          setConfirm({
-                            title: "Marcar vencido",
-                            description: "El presupuesto quedará cerrado como vencido.",
-                            action: async () => {
-                              await postCommercialBudgetExpire(detail.id)
-                              toast.success("Marcado como vencido")
-                            },
-                          })
-                        }
-                      >
-                        <Ban className="h-4 w-4" />
-                        Vencer
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="gap-1"
-                        disabled={!!actionLoading}
-                        onClick={() =>
-                          setConfirm({
-                            title: "Rechazar presupuesto",
-                            description: "Esta acción cierra el presupuesto como rechazado.",
-                            destructive: true,
-                            action: async () => {
-                              await postCommercialBudgetReject(detail.id)
-                              toast.success("Presupuesto rechazado")
-                            },
-                          })
-                        }
-                      >
-                        <XCircle className="h-4 w-4" />
-                        Rechazar
-                      </Button>
-                    </>
-                  )}
-                  {sent && (
-                    <>
-                      <Button
-                        size="sm"
-                        className="gap-1"
-                        disabled={!!actionLoading}
-                        onClick={() =>
-                          setConfirm({
-                            title: "Aprobar presupuesto",
-                            description: "Quedará aprobado y podrás convertirlo a venta cuando el cliente pague.",
-                            action: async () => {
-                              await postCommercialBudgetApprove(detail.id)
-                              toast.success("Presupuesto aprobado")
-                            },
-                          })
-                        }
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        Aprobar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1"
-                        disabled={!!actionLoading}
-                        onClick={() =>
-                          setConfirm({
-                            title: "Marcar vencido",
-                            description: "Cerrará el presupuesto como vencido.",
-                            action: async () => {
-                              await postCommercialBudgetExpire(detail.id)
-                              toast.success("Marcado como vencido")
-                            },
-                          })
-                        }
-                      >
-                        <Ban className="h-4 w-4" />
-                        Vencer
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="gap-1"
-                        disabled={!!actionLoading}
-                        onClick={() =>
-                          setConfirm({
-                            title: "Rechazar",
-                            description: "El presupuesto quedará rechazado.",
-                            destructive: true,
-                            action: async () => {
-                              await postCommercialBudgetReject(detail.id)
-                              toast.success("Rechazado")
-                            },
-                          })
-                        }
-                      >
-                        <XCircle className="h-4 w-4" />
-                        Rechazar
-                      </Button>
-                    </>
-                  )}
-                  {draft && puedeEliminar && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive gap-1"
-                      disabled={!!actionLoading}
-                      onClick={() =>
-                        setConfirm({
-                          title: "Eliminar borrador",
-                          description: "Se eliminará el presupuesto y todas sus líneas. No se puede deshacer.",
-                          destructive: true,
-                          action: async () => {
-                            await deleteCommercialBudget(detail.id)
-                            toast.success("Presupuesto eliminado")
-                            router.push("/presupuestos")
-                          },
-                        })
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Eliminar
-                    </Button>
-                  )}
-                </div>
+              {editable && puedeEliminar && detail.status === "draft" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive gap-1"
+                  disabled={!!actionLoading}
+                  onClick={() =>
+                    setConfirm({
+                      title: "Eliminar presupuesto",
+                      description: "Se eliminará el presupuesto y todas sus líneas. No se puede deshacer.",
+                      destructive: true,
+                      action: async () => {
+                        await deleteCommercialBudget(detail.id)
+                        toast.success("Presupuesto eliminado")
+                        router.push("/presupuestos")
+                      },
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </Button>
               )}
             </CardContent>
           </Card>
 
-          {!readonly && puedeEditar && (draft || sent) && (
+          {editable && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">{draft ? "Edición (borrador)" : "Notas y vigencia (enviado)"}</CardTitle>
+                <CardTitle className="text-lg">Editar presupuesto</CardTitle>
                 <CardDescription>
-                  {draft
-                    ? "Podés cambiar cliente, líneas, notas y vigencia. Guardá antes de enviar."
-                    : "Solo notas y fecha de vigencia. No se pueden cambiar cliente ni líneas."}
+                  Cliente, líneas, notas y vigencia. Guardá los cambios antes de convertir a venta.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {draft && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Cambiar cliente</Label>
-                      <div className="relative max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          className="pl-9"
-                          placeholder="Buscar cliente activo…"
-                          value={clientSearch}
-                          onChange={(e) => setClientSearch(e.target.value)}
-                        />
-                      </div>
-                      {clients.length > 0 && (
-                        <ul className="border rounded-md max-h-40 overflow-y-auto divide-y max-w-md">
-                          {clients.map((c) => (
-                            <li key={c.id}>
-                              <button
-                                type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                                onClick={() => {
-                                  setClientId(c.id)
-                                  setClientSearch("")
-                                  setClients([])
-                                }}
-                              >
-                                {c.name} <span className="text-muted-foreground">({c.code})</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <p className="text-xs text-muted-foreground">Cliente actual en el presupuesto: ID {clientId}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="aid"
-                        checked={allowInactiveDraft}
-                        onCheckedChange={(c) => setAllowInactiveDraft(c === true)}
-                      />
-                      <Label htmlFor="aid" className="text-sm font-normal cursor-pointer">
-                        Permitir productos inactivos al guardar
-                      </Label>
-                    </div>
-                  </>
-                )}
+                <div className="space-y-2">
+                  <Label>Cambiar cliente</Label>
+                  <div className="relative max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      className="pl-9"
+                      placeholder="Buscar cliente activo…"
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                    />
+                  </div>
+                  {clients.length > 0 && (
+                    <ul className="border rounded-md max-h-40 overflow-y-auto divide-y max-w-md">
+                      {clients.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                            onClick={() => {
+                              setClientId(c.id)
+                              setClientSearch("")
+                              setClients([])
+                            }}
+                          >
+                            {c.name} <span className="text-muted-foreground">({c.code})</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-xs text-muted-foreground">Cliente actual en el presupuesto: ID {clientId}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="aid"
+                    checked={allowInactiveDraft}
+                    onCheckedChange={(c) => setAllowInactiveDraft(c === true)}
+                  />
+                  <Label htmlFor="aid" className="text-sm font-normal cursor-pointer">
+                    Permitir productos inactivos al guardar
+                  </Label>
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
                   <div className="space-y-2">
                     <Label>Válido hasta</Label>
@@ -635,7 +471,7 @@ export default function PresupuestoDetallePage() {
                 </div>
                 <Button onClick={saveChanges} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Guardar
+                  Guardar cambios
                 </Button>
               </CardContent>
             </Card>
@@ -647,7 +483,7 @@ export default function PresupuestoDetallePage() {
                 <CardTitle>Ítems</CardTitle>
                 <CardDescription>Productos cotizados</CardDescription>
               </div>
-              {draft && puedeEditar && (
+              {editable && (
                 <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => setShowAddProduct((v) => !v)}>
                   <Plus className="h-4 w-4" />
                   Agregar producto
@@ -655,7 +491,7 @@ export default function PresupuestoDetallePage() {
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              {draft && puedeEditar && showAddProduct && (
+              {editable && showAddProduct && (
                 <div className="rounded-lg border p-3 space-y-2 bg-muted/20">
                   <Input
                     placeholder="Buscar en catálogo…"
@@ -685,11 +521,11 @@ export default function PresupuestoDetallePage() {
                       <TableHead className="w-28">Cant.</TableHead>
                       <TableHead className="text-right w-32">P. unit.</TableHead>
                       <TableHead className="text-right w-36">Subtotal</TableHead>
-                      {draft && puedeEditar && <TableHead className="w-12" />}
+                      {editable && <TableHead className="w-12" />}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(draft && puedeEditar ? draftLines : (detail.items || []).map((i) => ({
+                    {(editable ? draftLines : (detail.items || []).map((i) => ({
                       id: i.id,
                       product_id: i.product_id,
                       product_name: i.product_name,
@@ -703,7 +539,7 @@ export default function PresupuestoDetallePage() {
                           <div className="text-xs font-mono text-muted-foreground">{row.product_code}</div>
                         </TableCell>
                         <TableCell>
-                          {draft && puedeEditar ? (
+                          {editable ? (
                             <Input
                               type="number"
                               min={1}
@@ -721,7 +557,7 @@ export default function PresupuestoDetallePage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {draft && puedeEditar ? (
+                          {editable ? (
                             <Input
                               type="number"
                               min={0}
@@ -742,7 +578,7 @@ export default function PresupuestoDetallePage() {
                         <TableCell className="text-right font-medium tabular-nums">
                           {formatMoney(row.quantity * row.unit_price)}
                         </TableCell>
-                        {draft && puedeEditar && (
+                        {editable && (
                           <TableCell>
                             <Button
                               type="button"
@@ -767,7 +603,7 @@ export default function PresupuestoDetallePage() {
           {readonly && (
             <Card className="border-dashed">
               <CardContent className="py-6 text-sm text-muted-foreground">
-                Este presupuesto está cerrado ({COMMERCIAL_BUDGET_STATUS_LABELS[st]}). Solo lectura.
+                Este presupuesto está cerrado y no se puede editar.
               </CardContent>
             </Card>
           )}
@@ -775,7 +611,7 @@ export default function PresupuestoDetallePage() {
           <Separator />
 
           <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
-            Los presupuestos comerciales no reservan stock. La conversión a venta usa el mismo flujo que el POS y
+            Los presupuestos no reservan stock. La conversión a venta usa el mismo flujo que el POS y
             valida disponibilidad en ese momento. Las{" "}
             <Link href="/reparaciones" className="underline underline-offset-2">
               órdenes de reparación
@@ -789,7 +625,6 @@ export default function PresupuestoDetallePage() {
           onClose={() => setPdfOpen(false)}
           budget={pdfPayload}
           documentVariant="catalog"
-          hideEmailButton
         />
 
         <BudgetConvertSaleDialog
