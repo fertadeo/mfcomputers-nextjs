@@ -21,6 +21,7 @@ import {
   type ApiBudgetError,
 } from "@/lib/api"
 import { commercialBudgetDetailToPdfData } from "@/lib/commercial-budget-pdf-mapper"
+import { BudgetProductCatalog } from "@/components/budget-product-catalog"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
 import { BudgetConvertSaleDialog } from "@/components/budget-convert-sale-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -122,7 +123,7 @@ export default function PresupuestoDetallePage() {
   const [allowInactiveDraft, setAllowInactiveDraft] = useState(false)
 
   const [products, setProducts] = useState<Product[]>([])
-  const [productSearch, setProductSearch] = useState("")
+  const [loadingProducts, setLoadingProducts] = useState(false)
   const [showAddProduct, setShowAddProduct] = useState(false)
 
   const [saving, setSaving] = useState(false)
@@ -169,13 +170,16 @@ export default function PresupuestoDetallePage() {
   useEffect(() => {
     if (!detail || detail.status === "rejected" || detail.status === "expired") return
     let cancelled = false
+    setLoadingProducts(true)
     ;(async () => {
       try {
-        const data = await getProducts(1, 400, false)
+        const data = await getProducts(1, 500, false)
         const list = Array.isArray(data) ? data : (data as { products: Product[] }).products || []
         if (!cancelled) setProducts(list)
       } catch {
         /* ignore */
+      } finally {
+        if (!cancelled) setLoadingProducts(false)
       }
     })()
     return () => {
@@ -196,19 +200,8 @@ export default function PresupuestoDetallePage() {
     return () => clearTimeout(t)
   }, [clientSearch])
 
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase()
-    if (!q) return products.slice(0, 30)
-    return products
-      .filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          p.code?.toLowerCase().includes(q)
-      )
-      .slice(0, 40)
-  }, [products, productSearch])
-
   const pdfPayload = useMemo(() => (detail ? commercialBudgetDetailToPdfData(detail) : null), [detail])
+  const lineProductIds = useMemo(() => draftLines.map((l) => l.product_id), [draftLines])
 
   async function saveChanges() {
     if (!detail || !puedeEditar) return
@@ -261,8 +254,7 @@ export default function PresupuestoDetallePage() {
         unit_price: Number(p.price) || 0,
       },
     ])
-    setShowAddProduct(false)
-    setProductSearch("")
+    toast.message("Producto agregado", { description: p.name })
   }
 
   function runConfirm() {
@@ -492,25 +484,13 @@ export default function PresupuestoDetallePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {editable && showAddProduct && (
-                <div className="rounded-lg border p-3 space-y-2 bg-muted/20">
-                  <Input
-                    placeholder="Buscar en catálogo…"
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
+                <div className="rounded-lg border p-3 bg-muted/20">
+                  <BudgetProductCatalog
+                    products={products}
+                    loading={loadingProducts}
+                    onAddProduct={addProductLine}
+                    lineProductIds={lineProductIds}
                   />
-                  <div className="max-h-48 overflow-y-auto divide-y border rounded bg-background">
-                    {filteredProducts.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className="w-full text-left px-2 py-2 text-sm hover:bg-muted flex justify-between gap-2"
-                        onClick={() => addProductLine(p)}
-                      >
-                        <span className="truncate">{p.name}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">{p.code}</span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
               )}
               <div className="rounded-md border overflow-x-auto">

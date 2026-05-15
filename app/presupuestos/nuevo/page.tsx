@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
@@ -21,8 +21,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowLeft, Loader2, Plus, Search, Trash2 } from "lucide-react"
+import { BudgetProductCatalog } from "@/components/budget-product-catalog"
+import { BudgetLinesPanel, type BudgetLineItem } from "@/components/budget-lines-panel"
+import { ArrowLeft, Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_EDITAR: Role[] = ["admin", "gerencia", "ventas"]
@@ -49,7 +50,6 @@ export default function NuevoPresupuestoPage() {
   const [clientId, setClientId] = useState<number | null>(null)
   const [clientLabel, setClientLabel] = useState("")
 
-  const [productSearch, setProductSearch] = useState("")
   const [products, setProducts] = useState<Product[]>([])
   const [lines, setLines] = useState<Line[]>([])
 
@@ -64,7 +64,7 @@ export default function NuevoPresupuestoPage() {
     let cancelled = false
     ;(async () => {
       try {
-        const data = await getProducts(1, 400, false)
+        const data = await getProducts(1, 500, false)
         const list = Array.isArray(data) ? data : (data as { products: Product[] }).products || []
         if (!cancelled) setProducts(list)
       } catch {
@@ -91,20 +91,17 @@ export default function NuevoPresupuestoPage() {
     return () => clearTimeout(t)
   }, [clientSearch])
 
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase()
-    if (!q) return products.slice(0, 40)
-    return products
-      .filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          p.code?.toLowerCase().includes(q) ||
-          p.category_name?.toLowerCase().includes(q)
-      )
-      .slice(0, 60)
-  }, [products, productSearch])
+  const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0)
+  const lineProductIds = lines.map((l) => l.product.id)
 
-  const total = useMemo(() => lines.reduce((s, l) => s + l.quantity * l.unit_price, 0), [lines])
+  const budgetLineItems: BudgetLineItem[] = lines.map((l) => ({
+    key: l.product.id,
+    name: l.product.name,
+    code: l.product.code,
+    quantity: l.quantity,
+    unit_price: l.unit_price,
+    product: l.product,
+  }))
 
   function addLine(p: Product) {
     const existing = lines.find((l) => l.product.id === p.id)
@@ -166,7 +163,7 @@ export default function NuevoPresupuestoPage() {
   return (
     <Protected requiredRoles={ROLES_EDITAR}>
       <ERPLayout activeItem="presupuestos">
-        <div className="max-w-5xl mx-auto space-y-6">
+        <div className="max-w-6xl mx-auto space-y-6">
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="ghost" size="sm" asChild className="gap-1">
               <Link href="/presupuestos">
@@ -241,113 +238,38 @@ export default function NuevoPresupuestoPage() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="lg:col-span-1">
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
+            <Card>
               <CardHeader>
                 <CardTitle>Catálogo</CardTitle>
-                <CardDescription>Tocá un producto para agregarlo al presupuesto.</CardDescription>
+                <CardDescription>
+                  Lista, cuadrícula o vista ampliada. También podés usar <strong>Armado de PC</strong>.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Input
-                  placeholder="Filtrar productos…"
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  disabled={loadingProducts}
+              <CardContent>
+                <BudgetProductCatalog
+                  products={products}
+                  loading={loadingProducts}
+                  onAddProduct={addLine}
+                  lineProductIds={lineProductIds}
                 />
-                <div className="border rounded-md max-h-[420px] overflow-y-auto divide-y">
-                  {loadingProducts ? (
-                    <div className="p-8 text-center text-muted-foreground text-sm">
-                      <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
-                      Cargando catálogo…
-                    </div>
-                  ) : filteredProducts.length === 0 ? (
-                    <p className="p-6 text-sm text-muted-foreground text-center">Sin resultados</p>
-                  ) : (
-                    filteredProducts.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => addLine(p)}
-                        className="w-full text-left px-3 py-2.5 hover:bg-muted/80 flex justify-between gap-2 items-start"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-medium text-sm leading-snug truncate">{p.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{p.code}</div>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <div className="text-sm font-medium tabular-nums">{formatMoney(p.price)}</div>
-                          <div className="text-[10px] text-muted-foreground">stock {p.stock}</div>
-                        </div>
-                        <Plus className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-                      </button>
-                    ))
-                  )}
-                </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-2">
                 <CardTitle>Líneas del presupuesto</CardTitle>
-                <CardDescription className="tabular-nums">Total estimado: {formatMoney(total)}</CardDescription>
+                <CardDescription>Revisá cantidades y precios. Lista, cuadrícula o vista ampliada.</CardDescription>
               </CardHeader>
               <CardContent>
-                {lines.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-8 text-center">Agregá productos desde el panel izquierdo.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Producto</TableHead>
-                        <TableHead className="w-24">Cant.</TableHead>
-                        <TableHead className="w-32 text-right">P. unit.</TableHead>
-                        <TableHead className="w-36 text-right">Subtotal</TableHead>
-                        <TableHead className="w-12" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lines.map((l) => (
-                        <TableRow key={l.product.id}>
-                          <TableCell>
-                            <div className="font-medium text-sm">{l.product.name}</div>
-                            <div className="text-xs text-muted-foreground font-mono">{l.product.code}</div>
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min={1}
-                              className="h-8"
-                              value={l.quantity}
-                              onChange={(e) =>
-                                updateLine(l.product.id, { quantity: Math.max(1, parseInt(e.target.value, 10) || 1) })
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min={0}
-                              step={0.01}
-                              className="h-8 text-right"
-                              value={l.unit_price}
-                              onChange={(e) =>
-                                updateLine(l.product.id, { unit_price: Math.max(0, parseFloat(e.target.value) || 0) })
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums font-medium">
-                            {formatMoney(l.quantity * l.unit_price)}
-                          </TableCell>
-                          <TableCell>
-                            <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(l.product.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                <BudgetLinesPanel
+                  lines={budgetLineItems}
+                  total={total}
+                  formatMoney={formatMoney}
+                  onUpdateQuantity={(key, q) => updateLine(key, { quantity: q })}
+                  onUpdateUnitPrice={(key, p) => updateLine(key, { unit_price: p })}
+                  onRemove={removeLine}
+                />
               </CardContent>
             </Card>
           </div>

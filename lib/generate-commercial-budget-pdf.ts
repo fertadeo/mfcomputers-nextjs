@@ -15,6 +15,8 @@ const TEXT_BODY: [number, number, number] = [30, 41, 59]
 
 const COMPANY = {
   name: "MFComputers",
+  legalName: "MAXIMILIANO IVAN JESUS FIGUEROA",
+  cuit: "20-33998594-5",
   tagline: "Soluciones informáticas",
   address: "Luther King 1095",
   city: "Santa Rosa, La Pampa",
@@ -166,6 +168,26 @@ function renderCommercialBudgetPdf(
 
   let y = topY
 
+  const headerLeftY0 = topY + (logoH > 0 ? logoH + 10 : 0)
+  let headerLeftY = headerLeftY0
+  if (logoH === 0) {
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.setTextColor(...BRAND_BLUE)
+    doc.text(COMPANY.name, mx, headerLeftY)
+    headerLeftY += 13
+  }
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(8)
+  doc.setTextColor(...TEXT_BODY)
+  doc.text(COMPANY.legalName, mx, headerLeftY)
+  headerLeftY += 11
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(8)
+  doc.setTextColor(...TEXT_MUTED)
+  doc.text(`CUIT: ${COMPANY.cuit}`, mx, headerLeftY)
+  const headerLeftBottom = headerLeftY + 8
+
   doc.setFont("helvetica", "bold")
   doc.setFontSize(20)
   doc.setTextColor(...BRAND_BLUE)
@@ -191,7 +213,7 @@ function renderCommercialBudgetPdf(
     })
   }
 
-  y = topY + Math.max(logoH, params.valid_until ? 60 : 52) + 20
+  y = topY + Math.max(logoH, headerLeftBottom - topY, params.valid_until ? 60 : 52) + 20
 
     doc.setDrawColor(...GRAY_LINE)
     doc.setLineWidth(0.5)
@@ -217,7 +239,14 @@ function renderCommercialBudgetPdf(
 
     doc.setFont("helvetica", "normal")
     doc.setFontSize(9)
+    doc.setTextColor(...TEXT_BODY)
+    doc.text(COMPANY.legalName, mx, y)
+    y += 11
+    doc.setFontSize(8)
     doc.setTextColor(...TEXT_MUTED)
+    doc.text(`CUIT: ${COMPANY.cuit}`, mx, y)
+    y += 11
+    doc.setFontSize(9)
     doc.text(COMPANY.tagline, mx, y)
     y += 11
     doc.text(COMPANY.address, mx, y)
@@ -245,26 +274,6 @@ function renderCommercialBudgetPdf(
     y = Math.max(y, yRight) + 8
     doc.line(mx, y, pageW - mx, y)
     y += 16
-
-    const infoBoxH = 68
-    doc.setFillColor(...BRAND_BLUE_LIGHT)
-    doc.setDrawColor(...BRAND_BLUE)
-    doc.setLineWidth(0.3)
-    doc.roundedRect(mx, y, contentW, infoBoxH, 3, 3, "FD")
-
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(10)
-    doc.setTextColor(...BRAND_BLUE_DARK)
-    doc.text("Sobre esta cotización", mx + 10, y + 18)
-
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(9)
-    doc.setTextColor(...TEXT_BODY)
-    const infoText =
-      "Presupuesto de productos del catálogo. No reserva stock hasta registrar la venta. Los precios y disponibilidad se confirman al momento del cobro."
-    drawWrapped(doc, infoText, mx + 10, y + 30, contentW - 20, 11, 4)
-
-    y += infoBoxH + 18
 
     if (y > pageH - 220) {
       doc.addPage()
