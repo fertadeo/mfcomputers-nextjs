@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  LayoutTemplate,
   RefreshCcw,
   Search,
   Send,
@@ -45,6 +46,8 @@ import {
 } from "@/lib/facturacion-settings"
 import {
   CONDICIONES_IVA_RECEPTOR,
+  formatComprobanteAfipReferencia,
+  getNotaCreditoTipoForFactura,
   getTipoComprobanteLabel,
   TIPOS_COMPROBANTE_AFIP,
 } from "@/lib/facturacion-comprobantes"
@@ -55,6 +58,7 @@ import {
   resolveFacturacionErrorFromSale,
   type FacturacionErrorInfo,
 } from "@/lib/facturacion-errors"
+import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -147,6 +151,8 @@ export default function FacturacionPage() {
   const [showAdvancedEmitForm, setShowAdvancedEmitForm] = useState(() => !getEmitirConDefaultsGuardados())
   const [defaultsSavedHint, setDefaultsSavedHint] = useState(false)
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
+  const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
 
   const [modalCliente, setModalCliente] = useState<Cliente | null>(null)
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
@@ -185,6 +191,28 @@ export default function FacturacionPage() {
     () => sales.find((sale) => sale.id === selectedSaleId) ?? null,
     [sales, selectedSaleId]
   )
+
+  const creditNotePreview = useMemo(() => {
+    if (!creditNoteSale) return null
+    const cached = getCachedFacturacionEmision(creditNoteSale.id)
+    const tipoFactura =
+      cached?.emision.tipo ?? cached?.facturarPayload.tipo ?? buildDefaultFacturarFormRequest().tipo ?? 6
+    const ncTipo = getNotaCreditoTipoForFactura(tipoFactura)
+    const pv = cached?.emision.puntoVenta ?? cached?.facturarPayload.puntoVenta
+    const numero = cached?.emision.numero
+    return {
+      cached,
+      tipoFactura,
+      ncTipo,
+      ncLabel: ncTipo != null ? getTipoComprobanteLabel(ncTipo) : null,
+      facturaRef:
+        numero != null
+          ? formatComprobanteAfipReferencia(tipoFactura, pv, numero)
+          : null,
+      importe: cached?.emision.importe ?? creditNoteSale.total_amount,
+      cae: creditNoteSale.arca_cae ?? cached?.emision.cae,
+    }
+  }, [creditNoteSale])
 
   const filteredSales = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -457,11 +485,19 @@ export default function FacturacionPage() {
                 </Link>
               </p>
             </div>
-            <Button variant="outline" onClick={() => void loadSales()} disabled={isLoading}>
-              <RefreshCcw className="mr-2 h-4 w-4" />
-              Actualizar ventas
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setIsTemplateDialogOpen(true)}>
+                <LayoutTemplate className="mr-2 h-4 w-4" />
+                Ver plantilla factura
+              </Button>
+              <Button variant="outline" onClick={() => void loadSales()} disabled={isLoading}>
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Actualizar ventas
+              </Button>
+            </div>
           </div>
+
+          <ArcaInvoiceTemplateDialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen} />
 
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
@@ -544,7 +580,7 @@ export default function FacturacionPage() {
                 Ventas facturables
               </CardTitle>
               <CardDescription>
-                Si la venta ya está facturada, la acción principal es ver el comprobante. Emitir de nuevo queda como opción secundaria (reintento forzado).
+                Ventas facturadas: ver comprobante, reemitir (solo con confirmación) o anular por error con nota de crédito (cuando el backend lo habilite).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -580,7 +616,7 @@ export default function FacturacionPage() {
                     <TableHead>Fecha</TableHead>
                     <TableHead>Estado ARCA</TableHead>
                     <TableHead>Total</TableHead>
-                    <TableHead className="text-right">Acción</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -617,29 +653,41 @@ export default function FacturacionPage() {
                           <TableCell>{formatCurrency(sale.total_amount)}</TableCell>
                           <TableCell className="text-right">
                             {status === "success" ? (
-                              <div className="flex flex-wrap justify-end gap-2">
+                              <div className="flex flex-col items-end gap-1.5">
                                 <Button
                                   size="sm"
+                                  className="h-8"
                                   onClick={() => {
                                     setSelectedSaleId(sale.id)
                                     setInvoiceModalMode("view")
                                     setIsEmitModalOpen(true)
                                   }}
                                 >
-                                  <Eye className="mr-1 h-4 w-4" />
+                                  <Eye className="mr-1 h-3.5 w-3.5" />
                                   Ver comprobante
                                 </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedSaleId(sale.id)
-                                    setInvoiceModalMode("emit")
-                                    setIsEmitModalOpen(true)
-                                  }}
-                                >
-                                  Reemitir…
-                                </Button>
+                                <div className="flex flex-wrap justify-end gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => {
+                                      setSelectedSaleId(sale.id)
+                                      setInvoiceModalMode("emit")
+                                      setIsEmitModalOpen(true)
+                                    }}
+                                  >
+                                    Reemitir
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
+                                    onClick={() => setCreditNoteSale(sale)}
+                                  >
+                                    ¿Fue un error?
+                                  </Button>
+                                </div>
                               </div>
                             ) : (
                               <Button
@@ -753,7 +801,7 @@ export default function FacturacionPage() {
                       </a>
                     </Button>
                     <p className="text-muted-foreground w-full text-xs">
-                      El PDF replica el formato AFIP (ORIGINAL) con CAE y código QR de la respuesta de emisión.
+                      El PDF replica el formato AFIP por triplicado (ORIGINAL, DUPLICADO, TRIPLICADO) con CAE y código QR.
                     </p>
                   </div>
                   <Button
@@ -1051,6 +1099,88 @@ export default function FacturacionPage() {
                     </Button>
                   </>
                 )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>¿Fue un error?</DialogTitle>
+                <DialogDescription>
+                  Si la factura fiscal se emitió por error y no corresponde a una venta real, la vía correcta ante
+                  AFIP es una <strong>nota de crédito</strong> por el mismo importe, referenciando el comprobante original.
+                </DialogDescription>
+              </DialogHeader>
+
+              {creditNoteSale && creditNotePreview ? (
+                <div className="space-y-4 text-sm">
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <div>
+                      <span className="text-muted-foreground">Venta: </span>
+                      <span className="font-medium">{creditNoteSale.sale_number}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Importe a anular: </span>
+                      <span className="font-medium">{formatCurrency(creditNotePreview.importe)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Factura original: </span>
+                      <span className="font-medium">
+                        {getTipoComprobanteLabel(creditNotePreview.tipoFactura)}
+                        {creditNotePreview.facturaRef ? ` — ${creditNotePreview.facturaRef}` : ""}
+                      </span>
+                    </div>
+                    {creditNotePreview.cae ? (
+                      <div>
+                        <span className="text-muted-foreground">CAE factura: </span>
+                        <span className="font-mono">{creditNotePreview.cae}</span>
+                      </div>
+                    ) : null}
+                    {creditNotePreview.ncLabel ? (
+                      <div>
+                        <span className="text-muted-foreground">Nota de crédito sugerida: </span>
+                        <span className="font-medium">{creditNotePreview.ncLabel}</span>
+                      </div>
+                    ) : (
+                      <Alert
+                        variant="warning"
+                        title="Tipo de NC no definido"
+                        description="No se pudo inferir la nota de crédito desde el tipo de factura. El backend debe mapear tipo factura → tipo NC."
+                      />
+                    )}
+                  </div>
+
+                  {!creditNotePreview.facturaRef ? (
+                    <Alert
+                      variant="warning"
+                      title="Faltan datos del comprobante original"
+                      description="Para emitir la NC, el backend debe persistir punto de venta y número AFIP al facturar. Si facturaste en otra sesión, abrí la venta desde este navegador o pedí el dato a soporte."
+                    />
+                  ) : null}
+
+                  <Alert
+                    variant="info"
+                    title="Próximo paso: backend"
+                    description={
+                      <>
+                        Pedí al equipo MF API el endpoint{" "}
+                        <code className="rounded bg-muted px-1 text-xs">POST /api/sales/:id/nota-credito</code>.
+                        Especificación en{" "}
+                        <code className="rounded bg-muted px-1 text-xs">docs/nota-credito-arca-backend.md</code>.
+                      </>
+                    }
+                  />
+                </div>
+              ) : null}
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setCreditNoteSale(null)}>
+                  Cerrar
+                </Button>
+                <Button disabled title="Disponible cuando MF API implemente POST /api/sales/:id/nota-credito">
+                  Emitir nota de crédito
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

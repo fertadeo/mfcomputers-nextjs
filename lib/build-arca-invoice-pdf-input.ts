@@ -7,20 +7,20 @@ import {
   type SaleItemResponse,
 } from "@/lib/api"
 import { buildAfipQrUrl } from "@/lib/arca-invoice-afip-qr"
+import type { GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
 import type { FacturacionEmisionData } from "@/lib/facturacion-errors"
 import {
   getStoredFacturacionCuitEmisor,
   getStoredFacturacionPuntoVenta,
 } from "@/lib/facturacion-settings"
-import type { GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
 
 const EMISOR_DEFAULT = {
-  razonSocial: "MAXIMILIANO IVAN JESUS FIGUEROA",
-  nombreFantasia: "MFComputers",
-  domicilio: "Luther King 1095, Santa Rosa, La Pampa",
-  condicionIva: "Responsable Monotributo",
-  ingresosBrutos: "—",
-  inicioActividades: "—",
+  razonSocial: "FIGUEROA MAXIMILIANO IVAN JESUS",
+  domicilio: "Luther King 1095 - Santa Rosa, La Pampa",
+  condicionIva: "IVA Responsable Inscripto",
+  ingresosBrutos: "2275400",
+  inicioActividades: "03/01/2011",
+  firmaAutorizada: "Figueroa Maximiliano",
 }
 
 export interface BuildArcaInvoicePdfInputArgs {
@@ -73,10 +73,15 @@ export async function buildArcaInvoicePdfInput(
       "No se encontró el número de comprobante AFIP en la respuesta. Si la factura se emitió en esta sesión, volvé a abrir la venta desde la lista; si no, consultá el comprobante en MultiCUIT."
     )
   }
+
   const docTipo = facturarPayload.docTipo ?? 99
   const docNro = facturarPayload.docNro ?? 0
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
   const total = emision.importe ?? sale.total_amount
+  const subtotalItems = items.reduce((acc, it) => acc + lineSubtotal(it), 0)
+  const subtotal = Math.abs(subtotalItems - total) < 0.02 ? subtotalItems : total
+  const ivaContenido = Math.round((total - total / 1.21) * 100) / 100
+
   const fechaEmision =
     emision.fechaEmision?.slice(0, 10) ??
     new Date(sale.sale_date || sale.created_at).toISOString().slice(0, 10)
@@ -101,9 +106,6 @@ export async function buildArcaInvoicePdfInput(
       cae: emision.cae,
     })
 
-  const netoGravado = Math.round((total / 1.21) * 100) / 100
-  const iva21 = Math.round((total - netoGravado) * 100) / 100
-
   const condicionLabels: Record<number, string> = {
     1: "IVA Responsable Inscripto",
     4: "IVA Sujeto Exento",
@@ -113,54 +115,53 @@ export async function buildArcaInvoicePdfInput(
     10: "IVA Liberado",
   }
 
-  const docTipoLabels: Record<number, string> = {
-    80: "CUIT",
-    86: "CUIL",
-    96: "DNI",
-    99: "Sin identificar / Consumidor final",
-  }
+  const receptorNombre =
+    cliente?.name ?? saleSnapshot?.client_name ?? (docNro === 0 ? "" : "Consumidor final")
 
   return {
     emisor: {
-      ...EMISOR_DEFAULT,
+      razonSocial: EMISOR_DEFAULT.razonSocial,
+      domicilio: EMISOR_DEFAULT.domicilio,
+      condicionIva: EMISOR_DEFAULT.condicionIva,
       cuit: cuitEmisor,
+      ingresosBrutos: EMISOR_DEFAULT.ingresosBrutos,
+      inicioActividades: EMISOR_DEFAULT.inicioActividades,
     },
     comprobante: {
       tipo,
-      letra: undefined,
       puntoVenta,
       numero,
       fechaEmision,
-      concepto: facturarPayload.concepto ?? 1,
+      concepto: (facturarPayload.concepto ?? 1) as 1 | 2 | 3,
     },
     receptor: {
-      razonSocial: cliente?.name ?? saleSnapshot?.client_name ?? "Consumidor final",
+      razonSocial: receptorNombre,
       docTipo,
-      docTipoLabel: docTipoLabels[docTipo] ?? `Tipo ${docTipo}`,
       docNro,
-      condicionIva,
       condicionIvaLabel: condicionLabels[condicionIva] ?? `Condición ${condicionIva}`,
-      domicilio:
-        [cliente?.address, cliente?.city].filter(Boolean).join(", ") || undefined,
+      domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || undefined,
     },
     items: items.map((item) => ({
       codigo: String(item.product_id),
       descripcion: names.get(item.product_id) ?? `Producto #${item.product_id}`,
       cantidad: item.quantity,
-      unidadMedida: "un",
+      unidadMedida: "unidades",
       precioUnitario: item.unit_price,
       bonificacionPct: 0,
+      importeBonificacion: 0,
       subtotal: lineSubtotal(item),
     })),
     totales: {
-      netoGravado,
-      iva21,
+      subtotal,
       otrosTributos: 0,
       total,
+      ivaContenido: ivaContenido > 0 ? ivaContenido : null,
     },
     cae: emision.cae,
     caeVencimiento: emision.vencimientoCaeIso,
     qrUrl,
-    copia: "ORIGINAL",
+    condicionVenta: "Contado",
+    firmaAutorizada: EMISOR_DEFAULT.firmaAutorizada,
+    pagina: "1/1",
   }
 }

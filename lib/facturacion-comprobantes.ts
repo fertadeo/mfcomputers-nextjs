@@ -72,3 +72,26 @@ export function formatCuitAfip(cuit: string | number | null | undefined): string
   if (d.length !== 11) return String(cuit ?? "—")
   return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
 }
+
+/** Tipo WSFE de nota de crédito asociado a la factura emitida (misma letra). */
+const FACTURA_A_NOTA_CREDITO: Record<number, number> = {
+  1: 3,
+  6: 8,
+  11: 13,
+  2: 2,
+  7: 7,
+  12: 12,
+}
+
+export function getNotaCreditoTipoForFactura(tipoFactura: number): number | null {
+  return FACTURA_A_NOTA_CREDITO[tipoFactura] ?? null
+}
+
+export function formatComprobanteAfipReferencia(
+  tipo: number,
+  puntoVenta: number | null | undefined,
+  numero: number | null | undefined
+): string {
+  const letra = getLetraComprobanteAfip(tipo)
+  return `${letra} ${formatPuntoVentaAfip(puntoVenta)}-${formatNumeroComprobanteAfip(numero)}`
+}

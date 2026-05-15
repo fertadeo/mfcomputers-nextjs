@@ -1,0 +1,151 @@
+"use client"
+
+import { fmtDateAr } from "@/lib/arca-invoice-format"
+import type { ArcaInvoiceEmisor, GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
+import type { FacturaCopia } from "@/lib/generate-arca-invoice-pdf"
+import {
+  formatNumeroComprobanteAfip,
+  formatPuntoVentaAfip,
+  getCodigoComprobanteAfip,
+  getLetraComprobanteAfip,
+} from "@/lib/facturacion-comprobantes"
+
+const border = "1px solid #000"
+const font = "Arial, Helvetica, sans-serif"
+
+function LabelValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ fontSize: "11px", lineHeight: 1.35, marginTop: "3px" }}>
+      <span style={{ fontWeight: 700 }}>{label}</span>
+      <span>{value}</span>
+    </div>
+  )
+}
+
+export interface ArcaInvoiceHeaderProps {
+  copia: FacturaCopia
+  emisor: ArcaInvoiceEmisor
+  comprobante: GenerateArcaInvoicePdfParams["comprobante"]
+}
+
+export function ArcaInvoiceHeader({ copia, emisor, comprobante }: ArcaInvoiceHeaderProps) {
+  const letra = comprobante.letra ?? getLetraComprobanteAfip(comprobante.tipo)
+  const codigo = getCodigoComprobanteAfip(comprobante.tipo)
+  const cuit = String(emisor.cuit).replace(/\D/g, "")
+
+  return (
+    <header style={{ fontFamily: font, color: "#000", position: "relative" }}>
+      <div
+        style={{
+          textAlign: "center",
+          fontWeight: 700,
+          fontSize: "11px",
+          padding: "5px 8px",
+          borderBottom: border,
+          letterSpacing: "0.03em",
+        }}
+      >
+        {copia}
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          minHeight: "102px",
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "calc(50% - 28px)",
+            borderTop: border,
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: "calc(50% - 28px)",
+            borderTop: border,
+          }}
+        />
+
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "46px",
+            bottom: 0,
+            width: "1px",
+            background: "#000",
+            transform: "translateX(-50%)",
+          }}
+        />
+
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            transform: "translate(-50%, -50%)",
+            zIndex: 2,
+            background: "#fff",
+            textAlign: "center",
+            padding: "0 2px",
+          }}
+        >
+          <div
+            style={{
+              width: "40px",
+              height: "38px",
+              border: "1px solid #000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "26px",
+              fontWeight: 700,
+              margin: "0 auto",
+              lineHeight: 1,
+            }}
+          >
+            {letra}
+          </div>
+          <div style={{ fontSize: "9px", marginTop: "2px", lineHeight: 1.2 }}>COD. {codigo}</div>
+        </div>
+
+        <div style={{ padding: "14px 10px 10px" }}>
+          <LabelValue label="Razón Social: " value={emisor.razonSocial} />
+          <LabelValue label="Domicilio Comercial: " value={emisor.domicilio} />
+          <LabelValue label="Condición frente al IVA: " value={emisor.condicionIva} />
+        </div>
+
+        <div style={{ padding: "14px 10px 10px" }}>
+          <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px", letterSpacing: "0.02em" }}>
+            FACTURA
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "baseline" }}>
+            <LabelValue label="Punto de Venta: " value={formatPuntoVentaAfip(comprobante.puntoVenta)} />
+            <LabelValue label="Comp. Nro: " value={formatNumeroComprobanteAfip(comprobante.numero)} />
+          </div>
+          <LabelValue label="Fecha de Emisión: " value={fmtDateAr(comprobante.fechaEmision)} />
+          <LabelValue label="CUIT: " value={cuit} />
+          <LabelValue label="Ingresos Brutos: " value={emisor.ingresosBrutos ?? "—"} />
+          <LabelValue
+            label="Fecha de Inicio de Actividades: "
+            value={emisor.inicioActividades ?? "—"}
+          />
+        </div>
+      </div>
+
+      <div aria-hidden style={{ borderBottom: border }} />
+    </header>
+  )
+}
