@@ -27,6 +27,10 @@ import {
 } from "lucide-react"
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import {
+  generateCommercialBudgetPdf,
+  commercialPdfParamsFromModalInput,
+} from "@/lib/generate-commercial-budget-pdf"
 
 export interface BudgetPdfModalLine {
   id: string
@@ -84,9 +88,22 @@ export function BudgetPdfModal({
 
   const handleDownloadPDF = async () => {
     if (!budget) return
-    
+
+    if (documentVariant === "catalog") {
+      setIsGeneratingPdf(true)
+      try {
+        generateCommercialBudgetPdf(commercialPdfParamsFromModalInput(budget))
+      } catch (error) {
+        console.error("Error al generar PDF:", error)
+        alert("No se pudo generar el PDF. Intenta nuevamente.")
+      } finally {
+        setIsGeneratingPdf(false)
+      }
+      return
+    }
+
     setIsGeneratingPdf(true)
-    
+
     try {
       const doc = new jsPDF({
         orientation: 'portrait',
@@ -110,13 +127,7 @@ export function BudgetPdfModal({
       
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
-      doc.text(
-        documentVariant === 'catalog'
-          ? 'Cotización comercial · catálogo de productos'
-          : 'Servicios y Reparaciones de Hardware',
-        margin,
-        21
-      )
+      doc.text("Servicios y Reparaciones de Hardware", margin, 21)
       doc.text('Av. Ejemplo 1234, CABA | Tel: (011) 4444-5555', margin, 26)
       doc.text('info@mfcomputers.com', margin, 31)
 
@@ -171,20 +182,13 @@ export function BudgetPdfModal({
 
       yPosition += 10
 
-      const head =
-        documentVariant === 'catalog'
-          ? [['Cant.', 'Producto', 'Código', '—', 'P.Unit.', 'Importe']]
-          : [['Cant.', 'Servicio/Reparación', 'Equipo', 'IVA', 'P.Unit.', 'Subtotal']]
+      const head = [['Cant.', 'Servicio/Reparación', 'Equipo', 'IVA', 'P.Unit.', 'Subtotal']]
 
       const tableData = budget.items.map((item) => [
         item.quantity.toString(),
         item.service,
-        documentVariant === "catalog"
-          ? item.equipmentModel || item.description?.replace(/^Código:\s*/i, "") || "—"
-          : item.equipmentType
-            ? item.equipmentType.replace("_", " ").toUpperCase()
-            : "-",
-        documentVariant === "catalog" ? "—" : `${item.vat}%`,
+        item.equipmentType ? item.equipmentType.replace("_", " ").toUpperCase() : "-",
+        `${item.vat}%`,
         `$${item.unitPrice.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
         `$${item.subtotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
       ])
@@ -263,10 +267,7 @@ export function BudgetPdfModal({
       // Pie de página
       doc.setFontSize(8)
       doc.setTextColor(150, 150, 150)
-      const foot1 =
-        documentVariant === 'catalog'
-          ? 'Cotización sin movimiento de stock hasta la aprobación y conversión a venta.'
-          : `Este presupuesto tiene una validez de ${budget.validez ?? 10} días desde su emisión.`
+      const foot1 = `Este presupuesto tiene una validez de ${budget.validez ?? 10} días desde su emisión.`
       doc.text(foot1, pageWidth / 2, pageHeight - 15, { align: 'center' })
       doc.text(
         'Para consultas o aprobación, contáctenos por email o teléfono.',

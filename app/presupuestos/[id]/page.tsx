@@ -25,6 +25,10 @@ import {
   type ApiBudgetError,
 } from "@/lib/api"
 import { commercialBudgetDetailToPdfData } from "@/lib/commercial-budget-pdf-mapper"
+import {
+  generateCommercialBudgetPdf,
+  commercialPdfParamsFromApiDetail,
+} from "@/lib/generate-commercial-budget-pdf"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
 import { BudgetConvertSaleDialog } from "@/components/budget-convert-sale-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -55,6 +59,7 @@ import {
   ArrowLeft,
   Ban,
   CheckCircle2,
+  Download,
   FileText,
   Loader2,
   Plus,
@@ -368,9 +373,27 @@ export default function PresupuestoDetallePage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1 shadow-sm"
+                onClick={() => {
+                  try {
+                    generateCommercialBudgetPdf(commercialPdfParamsFromApiDetail(detail))
+                    toast.success("Descarga iniciada", {
+                      description: "PDF con plantilla corporativa (misma línea que orden de reparación).",
+                    })
+                  } catch {
+                    toast.error("No se pudo iniciar el PDF")
+                  }
+                }}
+              >
+                <Download className="h-4 w-4" />
+                Descargar PDF
+              </Button>
               <Button variant="outline" size="sm" className="gap-1" onClick={() => setPdfOpen(true)}>
                 <FileText className="h-4 w-4" />
-                PDF
+                Vista previa
               </Button>
               {puedeEditar && approved && (
                 <Button size="sm" className="gap-1" onClick={() => setConvertOpen(true)}>
