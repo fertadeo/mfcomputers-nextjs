@@ -23,6 +23,13 @@ import {
   type Sale,
 } from "@/lib/api"
 import { getStoredFacturacionCuitEmisor } from "@/lib/facturacion-settings"
+import {
+  extractFacturacionEmisionFromResponse,
+  formatFacturacionErrorForUi,
+  resolveFacturacionError,
+  resolveFacturacionErrorFromSale,
+  type FacturacionErrorInfo,
+} from "@/lib/facturacion-errors"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -107,6 +114,8 @@ export default function FacturacionPage() {
   /** `view` = solo lectura del comprobante ya emitido; `emit` = formulario de facturación */
   const [invoiceModalMode, setInvoiceModalMode] = useState<"emit" | "view">("emit")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [errorTitle, setErrorTitle] = useState<string | null>(null)
+  const [errorDetail, setErrorDetail] = useState<FacturacionErrorInfo | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [retryAfterHint, setRetryAfterHint] = useState<string | null>(null)
   const [form, setForm] = useState<FacturarSaleRequest>({
@@ -281,6 +290,8 @@ export default function FacturacionPage() {
 
     setIsSubmitting(true)
     setErrorMsg(null)
+    setErrorTitle(null)
+    setErrorDetail(null)
     setSuccessMsg(null)
     setRetryAfterHint(null)
     try {
@@ -300,26 +311,54 @@ export default function FacturacionPage() {
       })
 
       const response = await facturarSale(selectedSale.id, payload)
-      const cae = response?.data?.arca?.cae || response?.data?.sale?.arca_cae
-      setSuccessMsg(cae ? `Factura emitida correctamente. CAE: ${cae}` : "Factura emitida correctamente.")
+      const emision = extractFacturacionEmisionFromResponse(response)
+      const cae = emision?.cae ?? response?.data?.arca?.cae ?? response?.data?.sale?.arca_cae
+      const vto = emision?.vencimientoCaeIso
+      const partes = ["Factura emitida correctamente en ARCA."]
+      if (cae) partes.push(`CAE: ${cae}.`)
+      if (vto) partes.push(`Vencimiento CAE: ${vto}.`)
+      if (emision?.facturaId) partes.push(`ID comprobante: ${emision.facturaId}.`)
+      setSuccessMsg(partes.join(" "))
       setIsEmitModalOpen(false)
       await loadSales()
     } catch (error: unknown) {
       const err = error as FacturarSaleError
+      const isNetwork =
+        error instanceof TypeError ||
+        err?.name === "TypeError" ||
+        /failed to fetch|network|load failed/i.test(String(err?.message ?? ""))
+
+      const resolved =
+        err?.facturacionError ??
+        resolveFacturacionError({
+          code: isNetwork ? "NETWORK_ERROR" : err?.code,
+          httpStatus: err?.status,
+          rawMessage: err?.message,
+          requestId: err?.requestId,
+        })
+
       console.error("[FACTURAR UI] Error al emitir comprobante:", {
         message: err?.message,
         name: err?.name,
         status: err?.status,
-        code: err?.code,
+        code: resolved.code,
         retryAfter: err?.retryAfter,
+        requestId: err?.requestId,
+        facturacionError: resolved,
         data: err?.data,
         responsePayload: err?.responsePayload,
         rawResponseText: err?.rawResponseText,
         stack: err?.stack,
       })
-      setErrorMsg(err?.message ?? "Error al facturar venta en ARCA.")
+
+      setErrorTitle(resolved.title)
+      setErrorDetail(resolved)
+      setErrorMsg(formatFacturacionErrorForUi(resolved, err?.requestId))
+
       if (err?.status === 429 && err?.retryAfter != null) {
         setRetryAfterHint(`Límite alcanzado. Reintentá luego de: ${String(err.retryAfter)}.`)
+      } else if (resolved.code === "RATE_LIMITED" && err?.retryAfter != null) {
+        setRetryAfterHint(`Reintentá después de: ${String(err.retryAfter)}.`)
       }
     } finally {
       setIsSubmitting(false)
@@ -395,7 +434,25 @@ export default function FacturacionPage() {
             </CardContent>
           </Card>
 
-          {errorMsg ? <Alert variant="error" title="No se pudo completar la facturación" description={errorMsg} /> : null}
+          {errorMsg ? (
+            <Alert
+              variant={errorDetail?.severity === "warning" ? "warning" : "error"}
+              title={errorTitle ?? "No se pudo completar la facturación"}
+              description={
+                <span className="block space-y-2">
+                  <span className="block">{errorMsg}</span>
+                  {errorDetail?.code ? (
+                    <span className="text-muted-foreground block text-xs font-mono">Código: {errorDetail.code}</span>
+                  ) : null}
+                  {errorDetail?.blockBlindReemit ? (
+                    <span className="block text-xs font-medium">
+                      No reemitas con un número nuevo hasta reconciliar con soporte o MultiCUIT.
+                    </span>
+                  ) : null}
+                </span>
+              }
+            />
+          ) : null}
           {retryAfterHint ? <Alert variant="warning" title="Backoff recomendado" description={retryAfterHint} /> : null}
           {successMsg ? <Alert variant="success" title="Facturación realizada" description={successMsg} /> : null}
 
@@ -463,7 +520,18 @@ export default function FacturacionPage() {
                           <TableCell>{sale.client_name || "Consumidor final"}</TableCell>
                           <TableCell>{formatDateTime(sale.sale_date)}</TableCell>
                           <TableCell>
-                            <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
+                            <div className="space-y-1">
+                              <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
+                              {status === "error" && (sale.arca_error_code || sale.arca_error_message) ? (
+                                <p
+                                  className="text-muted-foreground max-w-[220px] text-xs leading-snug"
+                                  title={sale.arca_error_message ?? undefined}
+                                >
+                                  {resolveFacturacionErrorFromSale(sale.arca_error_code, sale.arca_error_message)
+                                    ?.title ?? sale.arca_error_code}
+                                </p>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell>{formatCurrency(sale.total_amount)}</TableCell>
                           <TableCell className="text-right">
@@ -565,6 +633,10 @@ export default function FacturacionPage() {
                       </div>
                     </div>
                     <div>
+                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Vencimiento CAE</div>
+                      <div className="font-mono text-base">{selectedSale.arca_cae_vto || "—"}</div>
+                    </div>
+                    <div>
                       <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">ID comprobante (remoto)</div>
                       <div className="break-all font-mono text-sm">{selectedSale.arca_factura_id || "—"}</div>
                     </div>
@@ -622,6 +694,36 @@ export default function FacturacionPage() {
                     <div className="text-muted-foreground">Monto: {formatCurrency(selectedSale.total_amount)}</div>
                     <div className="text-muted-foreground">Último intento: {formatDateTime(selectedSale.arca_last_attempt_at)}</div>
                     <div className="text-muted-foreground">CAE actual: {selectedSale.arca_cae || "-"}</div>
+{selectedSale.arca_cae_vto ? (
+                      <div className="text-muted-foreground">Vencimiento CAE: {selectedSale.arca_cae_vto}</div>
+                    ) : null}
+
+                  {getArcaStatus(selectedSale) === "error" &&
+                  (selectedSale.arca_error_code || selectedSale.arca_error_message) ? (
+                    <Alert
+                      variant="warning"
+                      title={
+                        resolveFacturacionErrorFromSale(
+                          selectedSale.arca_error_code,
+                          selectedSale.arca_error_message
+                        )?.title ?? "Último intento fallido"
+                      }
+                      description={formatFacturacionErrorForUi(
+                        resolveFacturacionErrorFromSale(
+                          selectedSale.arca_error_code,
+                          selectedSale.arca_error_message
+                        ) ?? resolveFacturacionError({ rawMessage: selectedSale.arca_error_message })
+                      )}
+                    />
+                  ) : null}
+
+                  {errorMsg && isEmitModalOpen ? (
+                    <Alert
+                      variant={errorDetail?.severity === "warning" ? "warning" : "error"}
+                      title={errorTitle ?? "Error al facturar"}
+                      description={errorMsg}
+                    />
+                  ) : null}
                   </div>
 
                   {modalClienteLoading ? (

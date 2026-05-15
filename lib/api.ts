@@ -4,6 +4,14 @@ import {
   getStoredFacturacionPuntoVenta,
   getStoredFacturadorApiKey,
 } from '@/lib/facturacion-settings';
+import {
+  extractFacturacionEmisionFromResponse,
+  extractFacturacionErrorFromPayload,
+  formatFacturacionErrorForUi,
+  isCaeValido,
+  resolveFacturacionError,
+  type FacturacionErrorInfo,
+} from '@/lib/facturacion-errors';
 
 // Función helper para obtener el token de autenticación
 function getAuthToken(): string | null {
@@ -764,6 +772,7 @@ export interface Sale {
   arca_status?: 'pending' | 'success' | 'error' | null
   arca_factura_id?: string | null
   arca_cae?: string | null
+  arca_cae_vto?: string | null
   arca_last_attempt_at?: string | null
   arca_error_code?: string | null
   arca_error_message?: string | null
@@ -891,6 +900,7 @@ export interface FacturarSaleResponseData {
     arca_status?: 'pending' | 'success' | 'error'
     arca_factura_id?: string | null
     arca_cae?: string | null
+    arca_cae_vto?: string | null
     arca_last_attempt_at?: string | null
     arca_error_code?: string | null
     arca_error_message?: string | null
@@ -898,6 +908,8 @@ export interface FacturarSaleResponseData {
   arca?: {
     facturaId?: string
     cae?: string
+    vencimientoCae?: string
+    cae_vto?: string
     idempotencyKey?: string
     response?: unknown
   }
@@ -918,11 +930,13 @@ export type FacturarSaleError = Error & {
   status?: number
   code?: string
   retryAfter?: number | string | null
+  requestId?: string
   data?: FacturarSaleResponseData
   /** Cuerpo JSON parseado completo cuando la API devuelve error */
   responsePayload?: FacturarSaleResponse | Record<string, unknown>
   /** Texto crudo de la respuesta (útil si no es JSON) */
   rawResponseText?: string
+  facturacionError?: FacturacionErrorInfo
 }
 
 export async function facturarSale(id: number, body: FacturarSaleRequest): Promise<FacturarSaleResponse> {
@@ -980,21 +994,33 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
   }
 
   if (!response.ok) {
-    const msg = data?.message || data?.error || `Error ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
+    const extracted = extractFacturacionErrorFromPayload(data, response.status)
+    const resolved = resolveFacturacionError({
+      code: extracted.code ?? (data?.data?.code != null ? String(data.data.code) : undefined),
+      httpStatus: response.status,
+      rawMessage: extracted.message ?? data?.message ?? data?.error,
+      requestId: extracted.requestId,
+      sugerencias: extracted.sugerencias,
+    })
+    const msg = formatFacturacionErrorForUi(resolved, extracted.requestId)
     const err = new Error(msg) as FacturarSaleError
     err.status = response.status
-    err.code = data?.data?.code != null ? String(data.data.code) : undefined
+    err.code = resolved.code
     err.retryAfter = data?.data?.retryAfter
+    err.requestId = extracted.requestId
     err.data = data?.data
     err.responsePayload = data
     err.rawResponseText = rawText.length > 4000 ? `${rawText.slice(0, 4000)}…` : rawText
+    err.facturacionError = resolved
 
     console.error('[FACTURAR] Error HTTP:', {
       status: response.status,
       statusText: response.statusText,
       url,
       saleId: id,
+      code: resolved.code,
       message: msg,
+      requestId: extracted.requestId,
       bodyEnviado: bodyMerged,
       bodyEnviadoJson: bodySerialized,
       respuestaParseada: data,
@@ -1005,10 +1031,23 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
     throw err
   }
 
+  const emision = extractFacturacionEmisionFromResponse(data)
+  if (!isCaeValido(emision?.cae ?? data?.data?.arca?.cae ?? data?.data?.sale?.arca_cae)) {
+    const resolved = resolveFacturacionError({ code: 'EMPTY_CAE', rawMessage: data?.message })
+    const err = new Error(formatFacturacionErrorForUi(resolved)) as FacturarSaleError
+    err.status = response.status
+    err.code = 'EMPTY_CAE'
+    err.responsePayload = data
+    err.facturacionError = resolved
+    console.error('[FACTURAR] Respuesta sin CAE válido:', { saleId: id, data })
+    throw err
+  }
+
   console.log('[FACTURAR] OK:', {
     status: response.status,
     message: data?.message,
     data: data?.data,
+    emision,
     timestamp: data?.timestamp,
   })
 
