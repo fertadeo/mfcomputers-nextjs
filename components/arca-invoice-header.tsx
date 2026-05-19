@@ -26,9 +26,15 @@ export interface ArcaInvoiceHeaderProps {
   copia: FacturaCopia
   emisor: ArcaInvoiceEmisor
   comprobante: GenerateArcaInvoicePdfParams["comprobante"]
+  numeroComprobanteDisplay?: string
 }
 
-export function ArcaInvoiceHeader({ copia, emisor, comprobante }: ArcaInvoiceHeaderProps) {
+export function ArcaInvoiceHeader({
+  copia,
+  emisor,
+  comprobante,
+  numeroComprobanteDisplay,
+}: ArcaInvoiceHeaderProps) {
   const letra = comprobante.letra ?? getLetraComprobanteAfip(comprobante.tipo)
   const codigo = getCodigoComprobanteAfip(comprobante.tipo)
   const cuit = String(emisor.cuit).replace(/\D/g, "")
@@ -133,7 +139,10 @@ export function ArcaInvoiceHeader({ copia, emisor, comprobante }: ArcaInvoiceHea
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "baseline" }}>
             <LabelValue label="Punto de Venta: " value={formatPuntoVentaAfip(comprobante.puntoVenta)} />
-            <LabelValue label="Comp. Nro: " value={formatNumeroComprobanteAfip(comprobante.numero)} />
+            <LabelValue
+              label="Comp. Nro: "
+              value={numeroComprobanteDisplay ?? formatNumeroComprobanteAfip(comprobante.numero)}
+            />
           </div>
           <LabelValue label="Fecha de Emisión: " value={fmtDateAr(comprobante.fechaEmision)} />
           <LabelValue label="CUIT: " value={cuit} />

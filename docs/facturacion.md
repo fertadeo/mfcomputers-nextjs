@@ -159,6 +159,36 @@ Cuando recibe `POST /api/sales/:id/facturar`, MF API:
 
 ---
 
+## Recuperar comprobante para vista previa / PDF (otra sesion u otra API)
+
+El frontend puede armar la plantilla si la venta tiene **CAE** y datos de venta (items, cliente, total).
+
+### Que ya se puede usar sin caché del navegador
+
+- `GET /api/sales` / `GET /api/sales/:id`: `arca_cae`, `arca_cae_vto`, `arca_factura_id`, items.
+- Configuracion local: CUIT emisor, punto de venta por defecto, tipo de comprobante por defecto.
+- Si `GET /api/sales/:id` devuelve `data.arca.response` (JSON guardado al emitir), se extraen **numero**, **puntoVenta**, **tipo** y **qrUrl**.
+
+### Que debe persistir el backend (recomendado)
+
+En `sales` o en la respuesta de detalle:
+
+| Campo | Uso |
+|-------|-----|
+| `arca_punto_venta` | Punto de venta AFIP |
+| `arca_numero` o `arca_comprobante_numero` | Número de comprobante |
+| `arca_tipo` | Tipo WSFE (6 = Factura B, etc.) |
+| `arca_fecha_emision` | Fecha del comprobante |
+| `arca_qr_url` | Opcional; si no, el frontend arma el QR AFIP |
+
+Alternativa: `GET /api/sales/:id/comprobante-arca` que consulte el facturador con `arca_factura_id` y devuelva el payload normalizado (sin exponer API keys al browser).
+
+### Vista previa parcial
+
+Si hay CAE pero falta el número AFIP, la UI muestra la plantilla con aviso (sin QR válido). El PDF completo requiere número confirmado.
+
+---
+
 ## Mensaje final para el equipo frontend
 
 El frontend integra facturacion **solo** contra MF API.

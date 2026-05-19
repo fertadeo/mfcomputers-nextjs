@@ -40,7 +40,7 @@ import {
 import { cacheFacturacionEmision, getCachedFacturacionEmision } from "@/lib/facturacion-emision-cache"
 import { buildArcaInvoicePdfInput } from "@/lib/build-arca-invoice-pdf-input"
 import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
-import { resolveEmisionForSaleView } from "@/lib/resolve-emision-for-sale"
+import { fetchSaleArcaEmision } from "@/lib/fetch-sale-arca-emision"
 import {
   buildDefaultFacturarFormRequest,
   getEmitirConDefaultsGuardados,
@@ -160,6 +160,7 @@ export default function FacturacionPage() {
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
   const [viewInvoiceError, setViewInvoiceError] = useState<string | null>(null)
+  const [viewInvoiceIncomplete, setViewInvoiceIncomplete] = useState(false)
 
   const [modalCliente, setModalCliente] = useState<Cliente | null>(null)
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
@@ -337,6 +338,7 @@ export default function FacturacionPage() {
     if (!isEmitModalOpen || invoiceModalMode !== "view" || !selectedSale) {
       setViewInvoiceData(null)
       setViewInvoiceError(null)
+      setViewInvoiceIncomplete(false)
       setViewInvoiceLoading(false)
       return
     }
@@ -349,20 +351,10 @@ export default function FacturacionPage() {
       setViewInvoiceError(null)
       setViewInvoiceData(null)
 
-      const resolved = resolveEmisionForSaleView(sale)
+      const resolved = await fetchSaleArcaEmision(sale)
       if (!resolved) {
         if (!cancelled) {
           setViewInvoiceError("No hay CAE registrado para esta venta.")
-          setViewInvoiceLoading(false)
-        }
-        return
-      }
-
-      if (resolved.emision.numero == null || resolved.emision.numero < 1) {
-        if (!cancelled) {
-          setViewInvoiceError(
-            "Faltan punto de venta y número AFIP en esta sesión. Emití de nuevo en este navegador o descargá el PDF desde MultiCUIT."
-          )
           setViewInvoiceLoading(false)
         }
         return
@@ -384,9 +376,13 @@ export default function FacturacionPage() {
           facturarPayload: resolved.facturarPayload,
           cliente,
           saleSnapshot: sale,
+          previewAllowMissingNumero: true,
         })
 
-        if (!cancelled) setViewInvoiceData(data)
+        if (!cancelled) {
+          setViewInvoiceData(data)
+          setViewInvoiceIncomplete(resolved.incomplete)
+        }
       } catch (e) {
         if (!cancelled) {
           setViewInvoiceError(
@@ -410,15 +406,31 @@ export default function FacturacionPage() {
     payloadOverride?: FacturarSaleRequest,
     options?: { reportErrorOnPage?: boolean }
   ) => {
-    const cached = getCachedFacturacionEmision(sale.id)
-    const emision = emisionOverride ?? cached?.emision ?? null
+    const resolved =
+      emisionOverride != null
+        ? {
+            emision: emisionOverride,
+            facturarPayload: payloadOverride ?? getCachedFacturacionEmision(sale.id)?.facturarPayload ?? buildDefaultFacturarFormRequest(),
+            incomplete: emisionOverride.numero == null || emisionOverride.numero < 1,
+            sources: ["session"] as const,
+          }
+        : await fetchSaleArcaEmision(sale)
 
-    if (!emision?.cae) {
+    if (!resolved?.emision.cae) {
       const msg =
         "No hay datos de emisión guardados para esta venta. Emití nuevamente en esta sesión o usá el PDF de MultiCUIT."
       if (options?.reportErrorOnPage !== false) setErrorMsg(msg)
       throw new Error(msg)
     }
+
+    if (resolved.incomplete) {
+      const msg =
+        "No se puede generar el PDF: falta el número de comprobante AFIP. Pedí al backend que persista punto de venta y número al emitir."
+      if (options?.reportErrorOnPage !== false) setErrorMsg(msg)
+      throw new Error(msg)
+    }
+
+    const emision = resolved.emision
 
     setIsGeneratingArcaPdf(true)
     try {
@@ -433,7 +445,7 @@ export default function FacturacionPage() {
       await generateArcaInvoicePdfFromBuildArgs({
         saleId: sale.id,
         emision,
-        facturarPayload: payloadOverride ?? cached?.facturarPayload ?? buildDefaultFacturarFormRequest(),
+        facturarPayload: payloadOverride ?? resolved.facturarPayload,
         cliente,
         saleSnapshot: sale,
       })
@@ -828,7 +840,17 @@ export default function FacturacionPage() {
                     ) : viewInvoiceError ? (
                       <Alert variant="warning" title="No se puede mostrar el comprobante" description={viewInvoiceError} />
                     ) : viewInvoiceData ? (
-                      <ArcaInvoiceTemplatePreview data={viewInvoiceData} />
+                      <>
+                        {viewInvoiceIncomplete ? (
+                          <Alert
+                            variant="warning"
+                            className="mb-4"
+                            title="Comprobante parcial"
+                            description="Se muestran venta, ítems y CAE desde la API. Faltan número AFIP y QR exactos: el backend debe guardar punto de venta, tipo y número al emitir, o exponer la respuesta ARCA guardada."
+                          />
+                        ) : null}
+                        <ArcaInvoiceTemplatePreview data={viewInvoiceData} />
+                      </>
                     ) : null}
                   </div>
                   <DialogFooter className="shrink-0 flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center sm:justify-between">

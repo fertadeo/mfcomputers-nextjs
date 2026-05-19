@@ -162,6 +162,8 @@ export interface GenerateArcaInvoicePdfParams {
 
   pagina?: string
 
+  comprobanteIncompleto?: boolean
+
 }
 
 
@@ -584,7 +586,13 @@ async function drawInvoicePage(
 
   const qrSize = 26
 
-  doc.addImage(qrImg, "PNG", margin + 3, footerTop, qrSize, qrSize)
+  if (qrImg) {
+    doc.addImage(qrImg, "PNG", margin + 3, footerTop, qrSize, qrSize)
+  } else {
+    doc.setFontSize(6)
+    doc.setFont("helvetica", "normal")
+    doc.text("QR no disponible", margin + 3, footerTop + qrSize / 2)
+  }
 
 
 
@@ -668,7 +676,7 @@ export async function buildArcaInvoicePdf(
 
   const copias = resolveCopias(params)
 
-  const qrImg = await qrDataUrl(params.qrUrl)
+  const qrImg = params.qrUrl ? await qrDataUrl(params.qrUrl) : ""
 
 
 

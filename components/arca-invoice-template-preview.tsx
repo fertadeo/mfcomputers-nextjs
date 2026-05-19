@@ -82,7 +82,27 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
         margin: "0 auto",
       }}
     >
-      <ArcaInvoiceHeader copia={copia} emisor={data.emisor} comprobante={data.comprobante} />
+      {data.comprobanteIncompleto ? (
+        <div
+          style={{
+            background: "#fff8e6",
+            borderBottom: border,
+            padding: "6px 10px",
+            fontSize: "10px",
+            color: "#664d03",
+          }}
+        >
+          Nº de comprobante y QR no confirmados (faltan datos AFIP en la API).
+        </div>
+      ) : null}
+      <ArcaInvoiceHeader
+        copia={copia}
+        emisor={data.emisor}
+        comprobante={data.comprobante}
+        numeroComprobanteDisplay={
+          data.comprobanteIncompleto ? "—" : undefined
+        }
+      />
 
       <div style={{ borderTop: border, fontSize: "11px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: border }}>
@@ -197,7 +217,26 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
         }}
       >
         <div>
-          <QRCodeSVG value={data.qrUrl} size={90} level="M" />
+          {data.qrUrl ? (
+            <QRCodeSVG value={data.qrUrl} size={90} level="M" />
+          ) : (
+            <div
+              style={{
+                width: 90,
+                height: 90,
+                border: "1px dashed #999",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "8px",
+                color: "#666",
+                textAlign: "center",
+                padding: 4,
+              }}
+            >
+              QR no disponible
+            </div>
+          )}
           <div style={{ fontWeight: 700, marginTop: "4px" }}>ARCA</div>
           <div>Comprobante Autorizado</div>
           <div style={{ fontSize: "8px", maxWidth: "140px", lineHeight: 1.3, marginTop: "2px" }}>

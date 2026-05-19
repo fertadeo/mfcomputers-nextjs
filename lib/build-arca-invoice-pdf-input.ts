@@ -29,6 +29,8 @@ export interface BuildArcaInvoicePdfInputArgs {
   facturarPayload: FacturarSaleRequest
   cliente: Cliente | null
   saleSnapshot?: Sale | null
+  /** Vista previa sin número AFIP: no lanza error; marca comprobante como incompleto. */
+  previewAllowMissingNumero?: boolean
 }
 
 async function resolveProductNames(items: SaleItemResponse[]): Promise<Map<number, string>> {
@@ -53,7 +55,7 @@ function lineSubtotal(item: SaleItemResponse): number {
 export async function buildArcaInvoicePdfInput(
   args: BuildArcaInvoicePdfInputArgs
 ): Promise<GenerateArcaInvoicePdfParams> {
-  const { saleId, emision, facturarPayload, cliente, saleSnapshot } = args
+  const { saleId, emision, facturarPayload, cliente, saleSnapshot, previewAllowMissingNumero } = args
 
   const saleRes = await getSale(saleId)
   const sale = saleRes.data
@@ -67,10 +69,15 @@ export async function buildArcaInvoicePdfInput(
   const tipo = emision.tipo ?? facturarPayload.tipo ?? 6
   const puntoVenta =
     emision.puntoVenta ?? facturarPayload.puntoVenta ?? getStoredFacturacionPuntoVenta() ?? 1
-  const numero = emision.numero
-  if (numero == null || numero < 1) {
+  const numeroMissing = emision.numero == null || emision.numero < 1
+  const numero = numeroMissing
+    ? previewAllowMissingNumero
+      ? 0
+      : null
+    : emision.numero!
+  if (numero == null) {
     throw new Error(
-      "No se encontró el número de comprobante AFIP en la respuesta. Si la factura se emitió en esta sesión, volvé a abrir la venta desde la lista; si no, consultá el comprobante en MultiCUIT."
+      "No se encontró el número de comprobante AFIP. El backend debe persistir punto de venta y número en la venta, o exponer GET /api/sales/:id/comprobante-arca con la respuesta guardada del facturador."
     )
   }
 
@@ -93,18 +100,20 @@ export async function buildArcaInvoicePdfInput(
     ""
 
   const qrUrl =
-    emision.qrUrl ??
-    buildAfipQrUrl({
-      fechaEmision,
-      cuitEmisor: cuitEmisor || "0",
-      puntoVenta,
-      tipoComprobante: tipo,
-      numeroComprobante: numero,
-      importe: total,
-      docTipoReceptor: docTipo,
-      docNroReceptor: docNro,
-      cae: emision.cae,
-    })
+    numeroMissing && previewAllowMissingNumero
+      ? ""
+      : emision.qrUrl ??
+        buildAfipQrUrl({
+          fechaEmision,
+          cuitEmisor: cuitEmisor || "0",
+          puntoVenta,
+          tipoComprobante: tipo,
+          numeroComprobante: numero,
+          importe: total,
+          docTipoReceptor: docTipo,
+          docNroReceptor: docNro,
+          cae: emision.cae,
+        })
 
   const condicionLabels: Record<number, string> = {
     1: "IVA Responsable Inscripto",
@@ -163,5 +172,6 @@ export async function buildArcaInvoicePdfInput(
     condicionVenta: "Contado",
     firmaAutorizada: EMISOR_DEFAULT.firmaAutorizada,
     pagina: "1/1",
+    comprobanteIncompleto: numeroMissing && previewAllowMissingNumero,
   }
 }
