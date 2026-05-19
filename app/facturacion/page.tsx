@@ -25,6 +25,7 @@ import {
   LayoutTemplate,
   RefreshCcw,
   Search,
+  Loader2,
   Send,
 } from "lucide-react"
 import {
@@ -37,7 +38,9 @@ import {
   type Sale,
 } from "@/lib/api"
 import { cacheFacturacionEmision, getCachedFacturacionEmision } from "@/lib/facturacion-emision-cache"
-import { generateArcaInvoicePdfFromBuildArgs } from "@/lib/generate-arca-invoice-pdf"
+import { buildArcaInvoicePdfInput } from "@/lib/build-arca-invoice-pdf-input"
+import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
+import { resolveEmisionForSaleView } from "@/lib/resolve-emision-for-sale"
 import {
   buildDefaultFacturarFormRequest,
   getEmitirConDefaultsGuardados,
@@ -59,6 +62,7 @@ import {
   type FacturacionErrorInfo,
 } from "@/lib/facturacion-errors"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
+import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -153,6 +157,9 @@ export default function FacturacionPage() {
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
   const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
+  const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
+  const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
+  const [viewInvoiceError, setViewInvoiceError] = useState<string | null>(null)
 
   const [modalCliente, setModalCliente] = useState<Cliente | null>(null)
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
@@ -325,6 +332,77 @@ export default function FacturacionPage() {
     // no debe reiniciarse el formulario ni volver a cargar cliente.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar venta seleccionada
   }, [isEmitModalOpen, selectedSaleId, invoiceModalMode])
+
+  useEffect(() => {
+    if (!isEmitModalOpen || invoiceModalMode !== "view" || !selectedSale) {
+      setViewInvoiceData(null)
+      setViewInvoiceError(null)
+      setViewInvoiceLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const sale = selectedSale
+
+    async function loadComprobantePreview() {
+      setViewInvoiceLoading(true)
+      setViewInvoiceError(null)
+      setViewInvoiceData(null)
+
+      const resolved = resolveEmisionForSaleView(sale)
+      if (!resolved) {
+        if (!cancelled) {
+          setViewInvoiceError("No hay CAE registrado para esta venta.")
+          setViewInvoiceLoading(false)
+        }
+        return
+      }
+
+      if (resolved.emision.numero == null || resolved.emision.numero < 1) {
+        if (!cancelled) {
+          setViewInvoiceError(
+            "Faltan punto de venta y número AFIP en esta sesión. Emití de nuevo en este navegador o descargá el PDF desde MultiCUIT."
+          )
+          setViewInvoiceLoading(false)
+        }
+        return
+      }
+
+      try {
+        let cliente = modalCliente
+        if (sale.client_id && (!cliente || cliente.id !== sale.client_id)) {
+          try {
+            cliente = await getClienteById(sale.client_id)
+          } catch {
+            cliente = null
+          }
+        }
+
+        const data = await buildArcaInvoicePdfInput({
+          saleId: sale.id,
+          emision: resolved.emision,
+          facturarPayload: resolved.facturarPayload,
+          cliente,
+          saleSnapshot: sale,
+        })
+
+        if (!cancelled) setViewInvoiceData(data)
+      } catch (e) {
+        if (!cancelled) {
+          setViewInvoiceError(
+            e instanceof Error ? e.message : "No se pudo cargar la vista del comprobante."
+          )
+        }
+      } finally {
+        if (!cancelled) setViewInvoiceLoading(false)
+      }
+    }
+
+    void loadComprobantePreview()
+    return () => {
+      cancelled = true
+    }
+  }, [isEmitModalOpen, invoiceModalMode, selectedSale, modalCliente])
 
   const downloadArcaPdfForSale = async (
     sale: Sale,
@@ -719,12 +797,20 @@ export default function FacturacionPage() {
               if (!open) setInvoiceModalMode("emit")
             }}
           >
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
+            <DialogContent
+              className={
+                invoiceModalMode === "view"
+                  ? "flex max-h-[92vh] max-w-4xl flex-col gap-0 p-0"
+                  : "max-w-2xl"
+              }
+            >
+              <DialogHeader className={invoiceModalMode === "view" ? "shrink-0 border-b px-6 py-4" : undefined}>
                 <DialogTitle>{invoiceModalMode === "view" ? "Comprobante emitido" : "Emitir comprobante"}</DialogTitle>
                 <DialogDescription>
                   {invoiceModalMode === "view"
-                    ? "Datos persistidos por MF API tras la emisión en ARCA."
+                    ? selectedSale
+                      ? `${selectedSale.sale_number} · ${selectedSale.client_name || "Consumidor final"} · CAE ${selectedSale.arca_cae ?? "—"}`
+                      : "Comprobante ARCA / AFIP."
                     : "Backend emite en ARCA y devuelve trazabilidad normalizada."}
                 </DialogDescription>
               </DialogHeader>
@@ -732,87 +818,66 @@ export default function FacturacionPage() {
               {!selectedSale ? (
                 <Alert variant="warning" title="Sin venta seleccionada" description="Seleccioná una venta para habilitar la facturación." />
               ) : invoiceModalMode === "view" ? (
-                <div className="space-y-4">
-                  <Alert variant="success" title="Facturado" description="Esta venta ya tiene comprobante registrado." />
-                  <div className="rounded-lg border p-4 text-sm space-y-3">
-                    <div>
-                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Venta</div>
-                      <div className="font-medium">{selectedSale.sale_number}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Cliente</div>
-                      <div>{selectedSale.client_name || "Consumidor final"}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">CAE</div>
-                      <div className="flex flex-wrap items-center gap-2 font-mono text-base">
-                        {selectedSale.arca_cae || "—"}
-                        {selectedSale.arca_cae ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => void navigator.clipboard.writeText(selectedSale.arca_cae ?? "")}
-                          >
-                            <Copy className="mr-1 h-3.5 w-3.5" />
-                            Copiar
-                          </Button>
-                        ) : null}
+                <>
+                  <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
+                    {viewInvoiceLoading ? (
+                      <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                        <p className="text-sm">Cargando comprobante…</p>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Vencimiento CAE</div>
-                      <div className="font-mono text-base">{selectedSale.arca_cae_vto || "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">ID comprobante (remoto)</div>
-                      <div className="break-all font-mono text-sm">{selectedSale.arca_factura_id || "—"}</div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Monto</div>
-                        <div>{formatCurrency(selectedSale.total_amount)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Último intento</div>
-                        <div>{formatDateTime(selectedSale.arca_last_attempt_at)}</div>
-                      </div>
-                    </div>
+                    ) : viewInvoiceError ? (
+                      <Alert variant="warning" title="No se puede mostrar el comprobante" description={viewInvoiceError} />
+                    ) : viewInvoiceData ? (
+                      <ArcaInvoiceTemplatePreview data={viewInvoiceData} />
+                    ) : null}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="default"
-                      size="sm"
-                      disabled={isGeneratingArcaPdf || !selectedSale.arca_cae}
-                      onClick={() => void downloadArcaPdfForSale(selectedSale, undefined, undefined, { reportErrorOnPage: true })}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {isGeneratingArcaPdf ? "Generando PDF…" : "Descargar PDF ARCA"}
-                    </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <a
-                        href="https://www.afip.gob.ar/fe/consultar/default.asp"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                  <DialogFooter className="shrink-0 flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        disabled={isGeneratingArcaPdf || !selectedSale.arca_cae}
+                        onClick={() => void downloadArcaPdfForSale(selectedSale, undefined, undefined, { reportErrorOnPage: true })}
                       >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Consultar comprobante en AFIP
-                      </a>
+                        {isGeneratingArcaPdf ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="mr-2 h-4 w-4" />
+                        )}
+                        {isGeneratingArcaPdf ? "Generando…" : "Descargar PDF"}
+                      </Button>
+                      {selectedSale.arca_cae ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void navigator.clipboard.writeText(selectedSale.arca_cae ?? "")}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar CAE
+                        </Button>
+                      ) : null}
+                      <Button variant="outline" size="sm" asChild>
+                        <a
+                          href="https://www.afip.gob.ar/fe/consultar/default.asp"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          AFIP
+                        </a>
+                      </Button>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={() => setInvoiceModalMode("emit")}
+                    >
+                      Reemitir…
                     </Button>
-                    <p className="text-muted-foreground w-full text-xs">
-                      El PDF replica el formato AFIP por triplicado (ORIGINAL, DUPLICADO, TRIPLICADO) con CAE y código QR.
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground"
-                    onClick={() => setInvoiceModalMode("emit")}
-                  >
-                    Reemitir o corregir con reintento forzado…
-                  </Button>
-                </div>
+                  </DialogFooter>
+                </>
               ) : (
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3 text-sm space-y-1">
