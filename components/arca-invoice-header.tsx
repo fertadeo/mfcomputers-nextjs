@@ -59,14 +59,14 @@ export function ArcaInvoiceHeader({
           position: "relative",
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
-          minHeight: "102px",
+          minHeight: "108px",
         }}
       >
         <div
           aria-hidden
           style={{
             position: "absolute",
-            top: 0,
+            top: "19px",
             left: 0,
             width: "calc(50% - 28px)",
             borderTop: border,
@@ -76,7 +76,7 @@ export function ArcaInvoiceHeader({
           aria-hidden
           style={{
             position: "absolute",
-            top: 0,
+            top: "19px",
             right: 0,
             width: "calc(50% - 28px)",
             borderTop: border,
@@ -88,7 +88,7 @@ export function ArcaInvoiceHeader({
           style={{
             position: "absolute",
             left: "50%",
-            top: "46px",
+            top: "52px",
             bottom: 0,
             width: "1px",
             background: "#000",
@@ -101,7 +101,7 @@ export function ArcaInvoiceHeader({
             position: "absolute",
             left: "50%",
             top: 0,
-            transform: "translate(-50%, -50%)",
+            transform: "translateX(-50%)",
             zIndex: 2,
             background: "#fff",
             textAlign: "center",

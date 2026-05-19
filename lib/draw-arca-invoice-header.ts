@@ -25,7 +25,8 @@ interface ArcaHeaderComprobante {
   fechaEmision: string
 }
 
-const COPY_BAR_H = 7
+/** Altura de la franja ORIGINAL / DUPLICADO / TRIPLICADO (sin solapar el recuadro de letra). */
+const COPY_BAR_H = 14
 const BODY_H = 34
 const BOX_W = 12
 const BOX_H = 11
@@ -65,7 +66,8 @@ export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
   const headerBottom = sepY + BODY_H
 
   const boxLeft = centerX - BOX_W / 2
-  const boxTop = sepY - BOX_H * 0.62
+  /** Centro del recuadro sobre la línea separadora; el texto de copia queda solo arriba. */
+  const boxTop = sepY - BOX_H / 2
   const centerBlockBottom = boxTop + BOX_H + 4.5
 
   doc.setDrawColor(0, 0, 0)
@@ -73,7 +75,7 @@ export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
   // Barra superior: ORIGINAL / DUPLICADO / TRIPLICADO
   doc.setFontSize(9)
   doc.setFont("helvetica", "bold")
-  doc.text(copia, centerX, startY + 4.8, { align: "center" })
+  doc.text(copia, centerX, startY + COPY_BAR_H * 0.38, { align: "center" })
 
   // Línea bajo la barra de copia (interrumpida por el recuadro central)
   doc.setLineWidth(0.25)

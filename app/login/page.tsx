@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { useAuth } from "@/contexts/AuthContext"
 import { LoginBackground } from "@/components/login-background"
 
@@ -196,8 +197,15 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <footer className="pointer-events-none absolute bottom-4 left-0 right-0 z-10 px-4 text-center text-xs text-white/75 drop-shadow-md">
-        Sistema Aurix - Un desarrollo de Fenec Studio
+      <footer className="pointer-events-none absolute bottom-6 left-0 right-0 z-10 flex justify-center px-6 lg:right-1/2">
+        <Image
+          src="/images/aurix-logo.png"
+          alt="Aurix ERP by FENEC"
+          width={400}
+          height={100}
+          priority
+          className="h-10 w-auto drop-shadow-lg sm:h-12 md:h-14"
+        />
       </footer>
     </div>
   )
