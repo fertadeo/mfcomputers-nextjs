@@ -7,6 +7,7 @@ import {
   type SaleItemResponse,
 } from "@/lib/api"
 import { buildAfipQrUrl } from "@/lib/arca-invoice-afip-qr"
+import { toNumber } from "@/lib/arca-invoice-format"
 import type { GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
 import type { FacturacionEmisionData } from "@/lib/facturacion-errors"
 import {
@@ -49,7 +50,9 @@ async function resolveProductNames(items: SaleItemResponse[]): Promise<Map<numbe
 }
 
 function lineSubtotal(item: SaleItemResponse): number {
-  return item.subtotal ?? item.total_price ?? item.quantity * item.unit_price
+  const fromApi = item.subtotal ?? item.total_price
+  if (fromApi != null) return toNumber(fromApi)
+  return toNumber(item.quantity) * toNumber(item.unit_price)
 }
 
 export async function buildArcaInvoicePdfInput(
@@ -66,25 +69,28 @@ export async function buildArcaInvoicePdfInput(
   }
 
   const names = await resolveProductNames(items)
-  const tipo = emision.tipo ?? facturarPayload.tipo ?? 6
-  const puntoVenta =
-    emision.puntoVenta ?? facturarPayload.puntoVenta ?? getStoredFacturacionPuntoVenta() ?? 1
-  const numeroMissing = emision.numero == null || emision.numero < 1
+  const tipo = toNumber(emision.tipo ?? facturarPayload.tipo, 6)
+  const puntoVenta = toNumber(
+    emision.puntoVenta ?? facturarPayload.puntoVenta ?? getStoredFacturacionPuntoVenta(),
+    1
+  )
+  const numeroParsed = emision.numero != null ? toNumber(emision.numero, NaN) : NaN
+  const numeroMissing = !Number.isFinite(numeroParsed) || numeroParsed < 1
   const numero = numeroMissing
     ? previewAllowMissingNumero
       ? 0
       : null
-    : emision.numero!
+    : numeroParsed
   if (numero == null) {
     throw new Error(
       "No se encontró el número de comprobante AFIP. El backend debe persistir punto de venta y número en la venta, o exponer GET /api/sales/:id/comprobante-arca con la respuesta guardada del facturador."
     )
   }
 
-  const docTipo = facturarPayload.docTipo ?? 99
-  const docNro = facturarPayload.docNro ?? 0
+  const docTipo = toNumber(facturarPayload.docTipo, 99)
+  const docNro = toNumber(facturarPayload.docNro, 0)
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
-  const total = emision.importe ?? sale.total_amount
+  const total = toNumber(emision.importe ?? sale.total_amount)
   const subtotalItems = items.reduce((acc, it) => acc + lineSubtotal(it), 0)
   const subtotal = Math.abs(subtotalItems - total) < 0.02 ? subtotalItems : total
   const ivaContenido = Math.round((total - total / 1.21) * 100) / 100
@@ -153,9 +159,9 @@ export async function buildArcaInvoicePdfInput(
     items: items.map((item) => ({
       codigo: String(item.product_id),
       descripcion: names.get(item.product_id) ?? `Producto #${item.product_id}`,
-      cantidad: item.quantity,
+      cantidad: toNumber(item.quantity),
       unidadMedida: "unidades",
-      precioUnitario: item.unit_price,
+      precioUnitario: toNumber(item.unit_price),
       bonificacionPct: 0,
       importeBonificacion: 0,
       subtotal: lineSubtotal(item),

@@ -1,3 +1,5 @@
+import { toNumber } from "@/lib/arca-invoice-format"
+
 /** Construye la URL del QR AFIP (RG 4290) cuando la API no devolvió qrUrl. */
 export function buildAfipQrUrl(params: {
   fechaEmision: string
@@ -20,7 +22,7 @@ export function buildAfipQrUrl(params: {
     ptoVta: params.puntoVenta,
     tipoCmp: params.tipoComprobante,
     nroCmp: params.numeroComprobante,
-    importe: Math.round(params.importe * 100) / 100,
+    importe: Math.round(toNumber(params.importe) * 100) / 100,
     moneda: params.moneda ?? "PES",
     ctz: params.cotizacion ?? 1,
     tipoDocRec: params.docTipoReceptor,

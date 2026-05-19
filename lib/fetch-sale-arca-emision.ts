@@ -5,6 +5,7 @@ import {
   vencimientoCaeAfipAIso,
 } from "@/lib/facturacion-errors"
 import { getCachedFacturacionEmision } from "@/lib/facturacion-emision-cache"
+import { toNumber } from "@/lib/arca-invoice-format"
 import {
   buildDefaultFacturarFormRequest,
   getStoredFacturacionCuitEmisor,
@@ -55,7 +56,7 @@ function extractEmisionFromSaleRow(sale: Sale | Record<string, unknown>): Factur
     qrUrl: pickString(row.arca_qr_url, row.arca_qrUrl),
     fechaEmision: pickString(row.arca_fecha_emision)?.slice(0, 10) ?? null,
     cuitEmisor: pickString(row.arca_cuit_emisor)?.replace(/\D/g, "") ?? null,
-    importe: pickNumber(row.arca_importe, row.total_amount),
+    importe: toNumber(pickNumber(row.arca_importe, row.total_amount)),
   }
 }
 
@@ -135,7 +136,7 @@ export async function fetchSaleArcaEmision(sale: Sale): Promise<ResolvedSaleArca
       (sale.sale_date ? String(sale.sale_date).slice(0, 10) : null),
     cuitEmisor:
       cached?.emision.cuitEmisor ?? fromRow?.cuitEmisor ?? getStoredFacturacionCuitEmisor() ?? null,
-    importe: cached?.emision.importe ?? fromRow?.importe ?? sale.total_amount,
+    importe: toNumber(cached?.emision.importe ?? fromRow?.importe ?? sale.total_amount),
   }
 
   const sources: ResolvedSaleArcaEmision["sources"] = []
@@ -174,7 +175,8 @@ export async function fetchSaleArcaEmision(sale: Sale): Promise<ResolvedSaleArca
     /* detalle opcional */
   }
 
-  const incomplete = emision.numero == null || emision.numero < 1
+  const nro = emision.numero != null ? toNumber(emision.numero, NaN) : NaN
+  const incomplete = !Number.isFinite(nro) || nro < 1
 
   return { emision, facturarPayload, incomplete, sources }
 }
