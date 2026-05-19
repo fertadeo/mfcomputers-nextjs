@@ -7,6 +7,7 @@ export default function LoginLayout({
 }>) {
   return (
     <div className="min-h-screen">
+      <link rel="preload" as="image" href="/images/bglogin.webp" type="image/webp" />
       {children}
     </div>
   )

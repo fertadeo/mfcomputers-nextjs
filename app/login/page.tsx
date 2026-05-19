@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/AuthContext"
+import { LoginBackground } from "@/components/login-background"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -59,11 +60,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div
-      className="relative min-h-screen flex overflow-hidden bg-cover bg-center bg-no-repeat bg-background"
-      style={{ backgroundImage: "url('/images/bglogin.jpeg')" }}
-    >
-      <div className="w-full lg:w-1/2 lg:ml-auto flex items-center justify-center p-6 min-h-screen overflow-y-auto">
+    <div className="relative min-h-screen flex overflow-hidden bg-background">
+      <LoginBackground />
+      <div className="relative z-10 w-full lg:w-1/2 lg:ml-auto flex items-center justify-center p-6 min-h-screen overflow-y-auto">
         <div className="w-full max-w-md space-y-6 p-6 bg-card rounded-lg shadow-sm border border-border/50">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-foreground mb-2">Iniciar Sesión</h1>
