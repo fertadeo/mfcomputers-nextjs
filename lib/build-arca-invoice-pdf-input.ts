@@ -16,12 +16,9 @@ import {
 } from "@/lib/facturacion-settings"
 
 const EMISOR_DEFAULT = {
-  razonSocial: "FIGUEROA MAXIMILIANO IVAN JESUS",
-  domicilio: "Luther King 1095 - Santa Rosa, La Pampa",
-  condicionIva: "IVA Responsable Inscripto",
-  ingresosBrutos: "2275400",
-  inicioActividades: "03/01/2011",
-  firmaAutorizada: "Figueroa Maximiliano",
+  razonSocial: "CAREAGA MARIA EMILIA",
+  domicilio: "Geronimo Del Barco 2759 - Rio Cuarto, Córdoba",
+  condicionIva: "Responsable Monotributo",
 }
 
 export interface BuildArcaInvoicePdfInputArgs {
@@ -139,8 +136,6 @@ export async function buildArcaInvoicePdfInput(
       domicilio: EMISOR_DEFAULT.domicilio,
       condicionIva: EMISOR_DEFAULT.condicionIva,
       cuit: cuitEmisor,
-      ingresosBrutos: EMISOR_DEFAULT.ingresosBrutos,
-      inicioActividades: EMISOR_DEFAULT.inicioActividades,
     },
     comprobante: {
       tipo,
@@ -176,7 +171,6 @@ export async function buildArcaInvoicePdfInput(
     caeVencimiento: emision.vencimientoCaeIso,
     qrUrl,
     condicionVenta: "Contado",
-    firmaAutorizada: EMISOR_DEFAULT.firmaAutorizada,
     pagina: "1/1",
     comprobanteIncompleto: numeroMissing && previewAllowMissingNumero,
   }

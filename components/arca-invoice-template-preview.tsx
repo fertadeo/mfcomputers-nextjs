@@ -200,12 +200,6 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
         <div style={{ clear: "both" }} />
       </div>
 
-      {data.firmaAutorizada ? (
-        <div style={{ textAlign: "center", padding: "10px 0 6px", fontStyle: "italic", fontSize: "11px" }}>
-          &quot;{data.firmaAutorizada}&quot;
-        </div>
-      ) : null}
-
       <div
         style={{
           display: "grid",

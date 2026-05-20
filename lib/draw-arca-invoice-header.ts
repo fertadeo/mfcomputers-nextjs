@@ -103,15 +103,22 @@ export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
   doc.setFont("helvetica", "normal")
   doc.text(`COD. ${codigo}`, centerX, boxTop + BOX_H + 2.8, { align: "center" })
 
-  const textY0 = sepY + 5.5
   const leftX = margin + 2.5
   const centerGap = 2.5
   const leftW = centerX - BOX_W / 2 - centerGap - leftX
   const rightX = centerX + BOX_W / 2 + centerGap
   const rightW = margin + innerW - rightX - 2.5
+  const textY0 = sepY + 5.5
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(9)
+  doc.text(emisor.razonSocial, leftX + leftW / 2, sepY + 3.2, {
+    align: "center",
+    maxWidth: leftW,
+  })
 
   doc.setFontSize(8)
-  let yL = textY0
+  let yL = textY0 + 3.5
   drawLabelValue(doc, "Razón Social: ", emisor.razonSocial, leftX, yL, leftW)
   yL += 3.8
   drawLabelValue(doc, "Domicilio Comercial: ", emisor.domicilio, leftX, yL, leftW)

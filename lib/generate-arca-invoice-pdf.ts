@@ -568,20 +568,6 @@ async function drawInvoicePage(
 
 
 
-  if (params.firmaAutorizada) {
-
-    doc.setFontSize(9)
-
-    doc.setFont("helvetica", "italic")
-
-    doc.text(`"${params.firmaAutorizada}"`, margin + innerW / 2, yAfter + 3, { align: "center" })
-
-    yAfter += 8
-
-  }
-
-
-
   const footerTop = Math.max(yAfter, bottomY - 38)
 
   const qrSize = 26

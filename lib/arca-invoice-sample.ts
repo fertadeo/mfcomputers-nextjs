@@ -37,12 +37,10 @@ export function getArcaInvoiceSampleParams(): GenerateArcaInvoicePdfParams {
 
   return {
     emisor: {
-      razonSocial: "FIGUEROA MAXIMILIANO IVAN JESUS",
-      domicilio: "Luther King 1095 - Santa Rosa, La Pampa",
-      condicionIva: "IVA Responsable Inscripto",
+      razonSocial: "CAREAGA MARIA EMILIA",
+      domicilio: "Geronimo Del Barco 2759 - Rio Cuarto, Córdoba",
+      condicionIva: "Responsable Monotributo",
       cuit,
-      ingresosBrutos: "2275400",
-      inicioActividades: "03/01/2011",
     },
     comprobante: {
       tipo,
@@ -78,6 +76,5 @@ export function getArcaInvoiceSampleParams(): GenerateArcaInvoicePdfParams {
     caeVencimiento: "2026-05-17",
     qrUrl,
     condicionVenta: "Contado",
-    firmaAutorizada: "Figueroa Maximiliano",
   }
 }

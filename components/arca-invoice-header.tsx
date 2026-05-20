@@ -80,6 +80,18 @@ export function ArcaInvoiceHeader({
         />
 
         <div style={{ borderTop: border, padding: "10px 8px 10px 10px" }}>
+          <div
+            style={{
+              textAlign: "center",
+              fontWeight: 700,
+              fontSize: "12px",
+              lineHeight: 1.25,
+              marginBottom: "6px",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {emisor.razonSocial}
+          </div>
           <LabelValue label="Razón Social: " value={emisor.razonSocial} />
           <LabelValue label="Domicilio Comercial: " value={emisor.domicilio} />
           <LabelValue label="Condición frente al IVA: " value={emisor.condicionIva} />
