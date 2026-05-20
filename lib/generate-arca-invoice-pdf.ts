@@ -20,6 +20,8 @@ import {
 
   formatDocReceptor,
 
+  getArcaItemTableColumnWidthsMm,
+
   moneyAr,
 
   moneyArWithSymbol,
@@ -456,25 +458,19 @@ async function drawInvoicePage(
 
     },
 
-    columnStyles: {
-
-      0: { cellWidth: 12, halign: "left" },
-
-      1: { cellWidth: 48, halign: "left" },
-
-      2: { cellWidth: 14, halign: "right" },
-
-      3: { cellWidth: 16, halign: "center" },
-
-      4: { cellWidth: 22, halign: "right" },
-
-      5: { cellWidth: 14, halign: "right" },
-
-      6: { cellWidth: 16, halign: "right" },
-
-      7: { cellWidth: 22, halign: "right" },
-
-    },
+    columnStyles: (() => {
+      const [w0, w1, w2, w3, w4, w5, w6, w7] = getArcaItemTableColumnWidthsMm(innerW)
+      return {
+        0: { cellWidth: w0, halign: "left" as const },
+        1: { cellWidth: w1, halign: "left" as const },
+        2: { cellWidth: w2, halign: "right" as const },
+        3: { cellWidth: w3, halign: "center" as const },
+        4: { cellWidth: w4, halign: "right" as const },
+        5: { cellWidth: w5, halign: "right" as const },
+        6: { cellWidth: w6, halign: "right" as const },
+        7: { cellWidth: w7, halign: "right" as const },
+      }
+    })(),
 
   })
 

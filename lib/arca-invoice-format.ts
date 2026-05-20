@@ -1,6 +1,21 @@
 /** Formato numérico y estilos compartidos plantilla ARCA (AFIP). */
 export const ARCA_TABLE_HEADER_RGB: [number, number, number] = [230, 230, 230]
 
+/** Proporciones relativas de las 8 columnas de la tabla de ítems. */
+export const ARCA_ITEM_TABLE_COL_WEIGHTS = [12, 48, 14, 16, 22, 14, 16, 22] as const
+
+const ARCA_ITEM_TABLE_COL_WEIGHT_SUM = ARCA_ITEM_TABLE_COL_WEIGHTS.reduce((a, b) => a + b, 0)
+
+/** Anchos en mm (PDF) escalados al ancho útil del comprobante. */
+export function getArcaItemTableColumnWidthsMm(totalWidthMm: number): number[] {
+  return ARCA_ITEM_TABLE_COL_WEIGHTS.map((w) => (w / ARCA_ITEM_TABLE_COL_WEIGHT_SUM) * totalWidthMm)
+}
+
+/** Porcentajes para `colgroup` en la vista previa HTML. */
+export function getArcaItemTableColumnPercents(): string[] {
+  return ARCA_ITEM_TABLE_COL_WEIGHTS.map((w) => `${(w / ARCA_ITEM_TABLE_COL_WEIGHT_SUM) * 100}%`)
+}
+
 /** Normaliza valores de API (string | null) a número finito. */
 export function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value

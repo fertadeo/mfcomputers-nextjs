@@ -9,6 +9,7 @@ import {
 import {
   fmtDateAr,
   formatDocReceptor,
+  getArcaItemTableColumnPercents,
   moneyAr,
   moneyArWithSymbol,
 } from "@/lib/arca-invoice-format"
@@ -129,7 +130,19 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
         </div>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px" }}>
+      <table
+        style={{
+          width: "100%",
+          tableLayout: "fixed",
+          borderCollapse: "collapse",
+          fontSize: "10px",
+        }}
+      >
+        <colgroup>
+          {getArcaItemTableColumnPercents().map((pct, i) => (
+            <col key={i} style={{ width: pct }} />
+          ))}
+        </colgroup>
         <thead>
           <tr style={{ background: headerBg }}>
             {[
