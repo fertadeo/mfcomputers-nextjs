@@ -12,6 +12,8 @@ import {
 
 const border = "1px solid #000"
 const font = "Arial, Helvetica, sans-serif"
+/** Ancho de la columna central (recuadro letra + COD). */
+const CENTER_COL_W = 44
 
 function LabelValue({ label, value }: { label: string; value: string }) {
   return (
@@ -58,31 +60,11 @@ export function ArcaInvoiceHeader({
         style={{
           position: "relative",
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
+          gridTemplateColumns: `minmax(0, 1fr) ${CENTER_COL_W}px minmax(0, 1fr)`,
+          alignItems: "start",
           minHeight: "108px",
         }}
       >
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "19px",
-            left: 0,
-            width: "calc(50% - 28px)",
-            borderTop: border,
-          }}
-        />
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "19px",
-            right: 0,
-            width: "calc(50% - 28px)",
-            borderTop: border,
-          }}
-        />
-
         <div
           aria-hidden
           style={{
@@ -93,57 +75,58 @@ export function ArcaInvoiceHeader({
             width: "1px",
             background: "#000",
             transform: "translateX(-50%)",
+            pointerEvents: "none",
           }}
         />
 
+        <div style={{ borderTop: border, padding: "10px 8px 10px 10px" }}>
+          <LabelValue label="Razón Social: " value={emisor.razonSocial} />
+          <LabelValue label="Domicilio Comercial: " value={emisor.domicilio} />
+          <LabelValue label="Condición frente al IVA: " value={emisor.condicionIva} />
+        </div>
+
         <div
           style={{
-            position: "absolute",
-            left: "50%",
-            top: 0,
-            transform: "translateX(-50%)",
-            zIndex: 2,
-            background: "#fff",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
             textAlign: "center",
-            padding: "0 2px",
+            marginTop: "-19px",
+            paddingBottom: "4px",
+            background: "#fff",
+            zIndex: 2,
           }}
         >
           <div
             style={{
               width: "40px",
               height: "38px",
-              border: "1px solid #000",
+              border,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: "26px",
               fontWeight: 700,
-              margin: "0 auto",
               lineHeight: 1,
+              background: "#fff",
             }}
           >
             {letra}
           </div>
-          <div style={{ fontSize: "9px", marginTop: "2px", lineHeight: 1.2 }}>COD. {codigo}</div>
+          <div style={{ fontSize: "9px", marginTop: "2px", lineHeight: 1.2, whiteSpace: "nowrap" }}>
+            COD. {codigo}
+          </div>
         </div>
 
-        <div style={{ padding: "14px 10px 10px" }}>
-          <LabelValue label="Razón Social: " value={emisor.razonSocial} />
-          <LabelValue label="Domicilio Comercial: " value={emisor.domicilio} />
-          <LabelValue label="Condición frente al IVA: " value={emisor.condicionIva} />
-        </div>
-
-        <div style={{ padding: "14px 10px 10px" }}>
+        <div style={{ borderTop: border, padding: "10px 10px 10px 8px" }}>
           <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px", letterSpacing: "0.02em" }}>
             FACTURA
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "baseline" }}>
-            <LabelValue label="Punto de Venta: " value={formatPuntoVentaAfip(comprobante.puntoVenta)} />
-            <LabelValue
-              label="Comp. Nro: "
-              value={numeroComprobanteDisplay ?? formatNumeroComprobanteAfip(comprobante.numero)}
-            />
-          </div>
+          <LabelValue label="Punto de Venta: " value={formatPuntoVentaAfip(comprobante.puntoVenta)} />
+          <LabelValue
+            label="Comp. Nro: "
+            value={numeroComprobanteDisplay ?? formatNumeroComprobanteAfip(comprobante.numero)}
+          />
           <LabelValue label="Fecha de Emisión: " value={fmtDateAr(comprobante.fechaEmision)} />
           <LabelValue label="CUIT: " value={cuit} />
           <LabelValue label="Ingresos Brutos: " value={emisor.ingresosBrutos ?? "—"} />

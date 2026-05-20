@@ -27,7 +27,7 @@ interface ArcaHeaderComprobante {
 
 /** Altura de la franja ORIGINAL / DUPLICADO / TRIPLICADO (sin solapar el recuadro de letra). */
 const COPY_BAR_H = 14
-const BODY_H = 34
+const BODY_H = 38
 const BOX_W = 12
 const BOX_H = 11
 
@@ -105,9 +105,10 @@ export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
 
   const textY0 = sepY + 5.5
   const leftX = margin + 2.5
-  const leftW = innerW / 2 - 5
-  const rightX = centerX + 2.5
-  const rightW = innerW / 2 - 5
+  const centerGap = 2.5
+  const leftW = centerX - BOX_W / 2 - centerGap - leftX
+  const rightX = centerX + BOX_W / 2 + centerGap
+  const rightW = margin + innerW - rightX - 2.5
 
   doc.setFontSize(8)
   let yL = textY0
@@ -126,8 +127,9 @@ export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
 
   const pv = formatPuntoVentaAfip(comprobante.puntoVenta)
   const nro = formatNumeroComprobanteAfip(comprobante.numero)
-  drawLabelValue(doc, "Punto de Venta: ", pv, rightX, yR, rightW * 0.52)
-  drawLabelValue(doc, "Comp. Nro: ", nro, rightX + rightW * 0.48, yR, rightW * 0.48)
+  drawLabelValue(doc, "Punto de Venta: ", pv, rightX, yR, rightW)
+  yR += 3.8
+  drawLabelValue(doc, "Comp. Nro: ", nro, rightX, yR, rightW)
   yR += 3.8
   drawLabelValue(doc, "Fecha de Emisión: ", fmtDateAr(comprobante.fechaEmision), rightX, yR, rightW)
   yR += 3.8
