@@ -28,6 +28,7 @@ import {
   type ApiErrorWithStatus,
 } from "@/lib/api"
 import { generateSaleReceiptPdf } from "@/lib/generate-sale-receipt-pdf"
+import { saleItemsToReceiptItems, saleItemCatalogProductIds } from "@/lib/sale-items"
 import { SaleDetailModal } from "@/components/sale-detail-modal"
 import { OrderDetailModal } from "@/components/order-detail-modal"
 import { Pagination } from "@/components/ui/pagination"
@@ -285,22 +286,21 @@ export default function VentasPage() {
         toast.error("No hay ítems en esta venta para generar el comprobante.")
         return
       }
-      const productIds = [...new Set(saleData.items.map((i) => i.product_id))]
-      const productNames = await Promise.all(
-        productIds.map(async (id) => {
-          try {
-            const p = await getProductById(id)
-            return { id, name: p.name }
-          } catch {
-            return { id, name: `Producto #${id}` }
-          }
-        })
-      ).then((arr) => Object.fromEntries(arr.map(({ id, name }) => [id, name])))
-      const cartItems = saleData.items.map((item) => ({
-        product: { id: item.product_id, name: productNames[item.product_id] ?? `Producto #${item.product_id}` },
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      }))
+      const productIds = saleItemCatalogProductIds(saleData.items)
+      const productNames =
+        productIds.length > 0
+          ? await Promise.all(
+              productIds.map(async (id) => {
+                try {
+                  const p = await getProductById(id)
+                  return { id, name: p.name }
+                } catch {
+                  return { id, name: `Producto #${id}` }
+                }
+              })
+            ).then((arr) => Object.fromEntries(arr.map(({ id, name }) => [id, name])))
+          : {}
+      const cartItems = saleItemsToReceiptItems(saleData.items, productNames)
       generateSaleReceiptPdf({
         sale: saleData,
         cartItems,

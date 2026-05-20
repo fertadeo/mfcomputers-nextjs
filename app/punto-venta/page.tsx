@@ -21,7 +21,7 @@ import {
   type SaleResponseData,
   type CreateSaleRequest,
 } from "@/lib/api"
-import { Search, Plus, Minus, Trash2, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle, LayoutGrid, LayoutList, Maximize2, Loader2, Check } from "lucide-react"
+import { Search, Plus, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle, LayoutGrid, LayoutList, Maximize2, Loader2, Check } from "lucide-react"
 import Link from "next/link"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
@@ -36,6 +36,15 @@ import {
 import { Alert } from "@/components/ui/alert"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { generateSaleReceiptPdf } from "@/lib/generate-sale-receipt-pdf"
+import type { SaleReceiptCartItem } from "@/lib/generate-sale-receipt-pdf"
+import {
+  getPosCartLineKey,
+  newCustomLineId,
+  type PosCartLine,
+} from "@/lib/pos-cart"
+import { posCartLinesToCreateSaleItems, posCartLinesToReceiptItems } from "@/lib/sale-items"
+import { PosManualItemCard } from "@/components/pos-manual-item-card"
+import { PosCartItemRow } from "@/components/pos-cart-item-row"
 
 const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
   efectivo: "Efectivo",
@@ -46,32 +55,16 @@ const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
 
 const FORMAT_NUM = { maximumFractionDigits: 0, minimumFractionDigits: 0 } as const
 
-/** Formato de precio con punto para miles (ej: 66157 → "66.157") */
-function formatUnitPrice(n: number): string {
-  return n.toLocaleString("es-AR", { maximumFractionDigits: 0 })
-}
-
-function parseUnitPriceInput(value: string): number {
-  const digits = value.replace(/\D/g, "")
-  return digits === "" ? 0 : Math.max(0, parseInt(digits, 10))
-}
-
 function isInactiveWithStock(p: Product): boolean {
   const inactive = p.is_active === false || (typeof p.is_active === "number" && p.is_active === 0)
   return !!inactive && p.stock > 0
-}
-
-interface CartItem {
-  product: Product
-  quantity: number
-  unit_price: number
 }
 
 export default function PuntoVentaPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [searchProduct, setSearchProduct] = useState("")
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [cart, setCart] = useState<PosCartLine[]>([])
   const [clientSearch, setClientSearch] = useState("")
   const [clients, setClients] = useState<Cliente[]>([])
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
@@ -83,7 +76,7 @@ export default function PuntoVentaPage() {
   const [lastSale, setLastSale] = useState<SaleResponseData | null>(null)
   const [lastSalePdfData, setLastSalePdfData] = useState<{
     sale: SaleResponseData
-    cartItems: CartItem[]
+    cartItems: SaleReceiptCartItem[]
     clientName: string
   } | null>(null)
   const [apiKeyMissing, setApiKeyMissing] = useState(false)
@@ -207,40 +200,68 @@ export default function PuntoVentaPage() {
   function addToCartInternal(product: Product, qty = 1) {
     if (product.stock < 1) return
     setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id)
-      if (existing) {
+      const existing = prev.find(
+        (i) => i.kind === "catalog" && i.product.id === product.id
+      )
+      if (existing && existing.kind === "catalog") {
         const newQty = Math.min(existing.quantity + qty, product.stock)
-        if (newQty <= 0) return prev.filter((i) => i.product.id !== product.id)
+        if (newQty <= 0) {
+          return prev.filter(
+            (i) => !(i.kind === "catalog" && i.product.id === product.id)
+          )
+        }
         return prev.map((i) =>
-          i.product.id === product.id ? { ...i, quantity: newQty } : i
+          i.kind === "catalog" && i.product.id === product.id
+            ? { ...i, quantity: newQty }
+            : i
         )
       }
-      return [...prev, { product, quantity: Math.min(qty, product.stock), unit_price: product.price }]
+      return [
+        ...prev,
+        { kind: "catalog", product, quantity: Math.min(qty, product.stock), unit_price: product.price },
+      ]
     })
   }
 
-  function updateCartQuantity(productId: number, delta: number) {
+  function addCustomToCart(payload: { description: string; quantity: number; unit_price: number }) {
+    setCart((prev) => [
+      ...prev,
+      {
+        kind: "custom",
+        lineId: newCustomLineId(),
+        description: payload.description,
+        quantity: payload.quantity,
+        unit_price: payload.unit_price,
+      },
+    ])
+    setError(null)
+  }
+
+  function updateCartQuantity(lineKey: string, delta: number) {
     setCart((prev) => {
-      const item = prev.find((i) => i.product.id === productId)
+      const item = prev.find((i) => getPosCartLineKey(i) === lineKey)
       if (!item) return prev
       const newQty = item.quantity + delta
-      if (newQty <= 0) return prev.filter((i) => i.product.id !== productId)
-      return prev.map((i) =>
-        i.product.id === productId ? { ...i, quantity: newQty } : i
-      )
+      if (newQty <= 0) return prev.filter((i) => getPosCartLineKey(i) !== lineKey)
+      return prev.map((i) => {
+        if (getPosCartLineKey(i) !== lineKey) return i
+        if (i.kind === "catalog") {
+          const capped = Math.min(newQty, i.product.stock)
+          return { ...i, quantity: capped }
+        }
+        return { ...i, quantity: newQty }
+      })
     })
   }
 
-  function removeFromCart(productId: number) {
-    setCart((prev) => prev.filter((i) => i.product.id !== productId))
+  function removeFromCart(lineKey: string) {
+    setCart((prev) => prev.filter((i) => getPosCartLineKey(i) !== lineKey))
   }
 
-  function setCartUnitPrice(productId: number, unit_price: number) {
+  function setCartUnitPrice(lineKey: string, unit_price: number) {
     if (unit_price < 0) return
     setCart((prev) =>
-      prev.map((i) =>
-        i.product.id === productId ? { ...i, unit_price } : i
-      )
+      prev.map((i) => (getPosCartLineKey(i) === lineKey ? { ...i, unit_price } : i))
     )
   }
 
@@ -257,7 +278,14 @@ export default function PuntoVentaPage() {
   async function handleCobrar() {
     const cartSnapshot = [...cart]
     if (cart.length === 0) {
-      setError("Agregá al menos un producto al carrito")
+      setError("Agregá al menos un ítem al carrito")
+      return
+    }
+    const invalidCustom = cart.some(
+      (i) => i.kind === "custom" && !i.description.trim()
+    )
+    if (invalidCustom) {
+      setError("Hay un ítem manual sin descripción")
       return
     }
     if (paymentMethod === "mixto" && !mixtoValid) {
@@ -268,11 +296,7 @@ export default function PuntoVentaPage() {
     setSubmitting(true)
     try {
       const body: CreateSaleRequest = {
-        items: cart.map((i) => ({
-          product_id: i.product.id,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-        })),
+        items: posCartLinesToCreateSaleItems(cart),
         payment_method: paymentMethod,
         client_id: selectedClientId ?? undefined,
         notes: notes.trim() || undefined,
@@ -289,7 +313,7 @@ export default function PuntoVentaPage() {
       setLastSale(sale)
       setLastSalePdfData({
         sale,
-        cartItems: cartSnapshot,
+        cartItems: posCartLinesToReceiptItems(cartSnapshot),
         clientName: clientDisplay,
       })
       setCart([])
@@ -505,6 +529,8 @@ export default function PuntoVentaPage() {
                 </CardContent>
               </Card>
 
+              <PosManualItemCard onAdd={addCustomToCart} disabled={submitting} />
+
               <Card>
                 <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
                   <div>
@@ -564,132 +590,27 @@ export default function PuntoVentaPage() {
                   ) : cartViewMode === "list" ? (
                     <div className="space-y-2 max-h-[220px] overflow-y-auto">
                       {cart.map((item) => (
-                        <div
-                          key={item.product.id}
-                          className="flex items-center justify-between gap-2 py-2 border-b last:border-0"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{item.product.name}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => updateCartQuantity(item.product.id, -1)}
-                              >
-                                <Minus className="h-3 w-3" />
-                              </Button>
-                              <span className="text-sm w-8 text-center">{item.quantity}</span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => updateCartQuantity(item.product.id, 1)}
-                                disabled={item.quantity >= item.product.stock}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <span className="text-xs text-muted-foreground">$</span>
-                                <Input
-                                  type="text"
-                                  inputMode="numeric"
-                                  className="w-24 h-7 text-xs"
-                                  placeholder="0"
-                                  value={item.unit_price === 0 ? "" : formatUnitPrice(Math.round(item.unit_price))}
-                                  onChange={(e) =>
-                                    setCartUnitPrice(item.product.id, parseUnitPriceInput(e.target.value))
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <span className="text-sm font-medium whitespace-nowrap">
-                            ${(item.quantity * item.unit_price).toLocaleString("es-AR", FORMAT_NUM)}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-600"
-                            onClick={() => removeFromCart(item.product.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <PosCartItemRow
+                          key={getPosCartLineKey(item)}
+                          line={item}
+                          view="list"
+                          onUpdateQuantity={updateCartQuantity}
+                          onSetUnitPrice={setCartUnitPrice}
+                          onRemove={removeFromCart}
+                        />
                       ))}
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2 max-h-[280px] overflow-y-auto">
                       {cart.map((item) => (
-                        <div
-                          key={item.product.id}
-                          className="rounded-lg border bg-card p-2 flex flex-col gap-1.5"
-                        >
-                          <div className="relative aspect-square rounded overflow-hidden bg-muted min-h-[60px]">
-                            {item.product.images?.[0] ? (
-                              <Image
-                                src={getProductImageUrl(item.product, { size: 80 })}
-                                alt={item.product.name}
-                                fill
-                                className="object-contain"
-                                sizes="80px"
-                              />
-                            ) : (
-                              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
-                                Sin imagen
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs font-medium truncate leading-tight" title={item.product.name}>
-                            {item.product.name}
-                          </p>
-                          <div className="flex items-center justify-between gap-1">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => updateCartQuantity(item.product.id, -1)}
-                            >
-                              <Minus className="h-2.5 w-2.5" />
-                            </Button>
-                            <span className="text-xs font-medium tabular-nums">{item.quantity}</span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => updateCartQuantity(item.product.id, 1)}
-                              disabled={item.quantity >= item.product.stock}
-                            >
-                              <Plus className="h-2.5 w-2.5" />
-                            </Button>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-muted-foreground">$</span>
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              className="h-6 text-xs w-20"
-                              placeholder="0"
-                              value={item.unit_price === 0 ? "" : formatUnitPrice(Math.round(item.unit_price))}
-                              onChange={(e) =>
-                                setCartUnitPrice(item.product.id, parseUnitPriceInput(e.target.value))
-                              }
-                            />
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold">
-                              ${(item.quantity * item.unit_price).toLocaleString("es-AR", FORMAT_NUM)}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-red-600"
-                              onClick={() => removeFromCart(item.product.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
+                        <PosCartItemRow
+                          key={getPosCartLineKey(item)}
+                          line={item}
+                          view="grid"
+                          onUpdateQuantity={updateCartQuantity}
+                          onSetUnitPrice={setCartUnitPrice}
+                          onRemove={removeFromCart}
+                        />
                       ))}
                     </div>
                   )}
@@ -1014,70 +935,14 @@ export default function PuntoVentaPage() {
                         </thead>
                         <tbody>
                           {cart.map((item) => (
-                            <tr key={item.product.id} className="border-t hover:bg-muted/30">
-                              <td className="p-2">
-                                <div className="relative h-10 w-10 rounded overflow-hidden bg-muted inline-block">
-                                  <Image
-                                    src={getProductImageUrl(item.product, { size: 80 })}
-                                    alt={item.product.name}
-                                    fill
-                                    className="object-cover"
-                                    sizes="40px"
-                                  />
-                                </div>
-                              </td>
-                              <td className="p-2 font-medium">{item.product.name}</td>
-                              <td className="p-2">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => updateCartQuantity(item.product.id, -1)}
-                                  >
-                                    <Minus className="h-3 w-3" />
-                                  </Button>
-                                  <span className="w-8 text-center tabular-nums">{item.quantity}</span>
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => updateCartQuantity(item.product.id, 1)}
-                                    disabled={item.quantity >= item.product.stock}
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </td>
-                              <td className="p-2 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                <span className="text-xs text-muted-foreground">$</span>
-                                <Input
-                                  type="text"
-                                  inputMode="numeric"
-                                  className="w-24 h-8 text-xs inline-block"
-                                  placeholder="0"
-                                  value={item.unit_price === 0 ? "" : formatUnitPrice(Math.round(item.unit_price))}
-                                  onChange={(e) =>
-                                    setCartUnitPrice(item.product.id, parseUnitPriceInput(e.target.value))
-                                  }
-                                />
-                              </div>
-                              </td>
-                              <td className="p-2 text-right font-medium">
-                                ${(item.quantity * item.unit_price).toLocaleString("es-AR", FORMAT_NUM)}
-                              </td>
-                              <td className="p-2 text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-red-600"
-                                  onClick={() => removeFromCart(item.product.id)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </td>
-                            </tr>
+                            <PosCartItemRow
+                              key={getPosCartLineKey(item)}
+                              line={item}
+                              view="table"
+                              onUpdateQuantity={updateCartQuantity}
+                              onSetUnitPrice={setCartUnitPrice}
+                              onRemove={removeFromCart}
+                            />
                           ))}
                         </tbody>
                       </table>

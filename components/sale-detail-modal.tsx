@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import type { SaleResponseData, SalePaymentMethod } from "@/lib/api"
 import { getProductById } from "@/lib/api"
+import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 
 interface SaleDetailModalProps {
@@ -73,7 +74,11 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
       setProductInfoMap({})
       return
     }
-    const ids = [...new Set(sale.items.map((i) => i.product_id))]
+    const ids = saleItemCatalogProductIds(sale.items)
+    if (ids.length === 0) {
+      setProductInfoMap({})
+      return
+    }
     let cancelled = false
     Promise.all(
       ids.map(async (id) => {
@@ -96,7 +101,7 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
     return () => {
       cancelled = true
     }
-  }, [sale?.id, sale?.items?.map((i) => i.product_id).join(",")])
+  }, [sale?.id, sale?.items?.map((i) => `${i.product_id ?? ""}-${i.product_name ?? ""}`).join(",")])
 
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
@@ -232,7 +237,10 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                   </TableHeader>
                 <TableBody>
                   {(sale.items || []).map((item, idx) => {
-                    const info = productInfoMap[item.product_id]
+                    const custom = isSaleCustomItem(item)
+                    const info =
+                      item.product_id != null ? productInfoMap[item.product_id] : undefined
+                    const displayName = getSaleItemDisplayName(item)
                     const subtotal =
                       item.subtotal ??
                       item.total_price ??
@@ -241,7 +249,7 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                       <TableRow key={idx} className="border-b last:border-b-0">
                         <TableCell className="align-top py-3 whitespace-normal w-0">
                           <div className="flex items-start gap-3 min-w-0 w-full overflow-hidden">
-                            {info?.imageUrl ? (
+                            {!custom && info?.imageUrl ? (
                               <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border bg-muted">
                                 <Image
                                   src={info.imageUrl}
@@ -252,15 +260,15 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                                 />
                               </div>
                             ) : (
-                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
-                                <Package className="h-5 w-5" />
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground text-[10px] text-center leading-tight px-0.5">
+                                {custom ? "Manual" : <Package className="h-5 w-5" />}
                               </div>
                             )}
                             <span
                               className="font-medium text-sm block break-words min-w-0"
                               style={{ overflowWrap: "break-word", wordBreak: "break-word" }}
                             >
-                              {info?.name ?? `Producto #${item.product_id}`}
+                              {info?.name && !custom ? info.name : displayName}
                             </span>
                           </div>
                         </TableCell>

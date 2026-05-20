@@ -31,12 +31,24 @@ import {
 import {
   facturarSale,
   getClienteById,
+  getRepairOrders,
+  getSale,
   getSales,
+  resolveSaleIdForRepairOrderFacturacion,
   type Cliente,
   type FacturarSaleRequest,
   type FacturarSaleError,
+  type RepairOrder,
   type Sale,
 } from "@/lib/api"
+import {
+  REPAIR_ORDER_FACTURABLE_STATUSES,
+  billableStats,
+  filterBillables,
+  mergeFacturacionBillables,
+  type ArcaStatus,
+  type BillableRow,
+} from "@/lib/facturacion-billables"
 import { cacheFacturacionEmision, getCachedFacturacionEmision } from "@/lib/facturacion-emision-cache"
 import { buildArcaInvoicePdfInput } from "@/lib/build-arca-invoice-pdf-input"
 import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
@@ -83,11 +95,29 @@ const formatDateTime = (value?: string | null) => {
   return d.toLocaleString("es-AR")
 }
 
-function getArcaStatus(sale: Sale): "pending" | "success" | "error" | "not_issued" {
-  if (sale.arca_status === "pending" || sale.arca_status === "success" || sale.arca_status === "error") {
-    return sale.arca_status
+/** Venta real o vista previa para UI (órdenes de reparación sin venta vinculada aún). */
+function billableToDisplaySale(row: BillableRow | null): Sale | null {
+  if (!row) return null
+  if (row.sale) return row.sale
+  if (row.kind !== "repair_order" || !row.repairOrder) return null
+  const arcaStatus = row.arcaStatus === "not_issued" ? null : row.arcaStatus
+  return {
+    id: row.linkedSaleId ?? 0,
+    sale_number: row.reference,
+    client_id: row.clientId,
+    client_name: row.clientName,
+    total_amount: row.totalAmount,
+    payment_method: "efectivo",
+    sale_date: row.date,
+    arca_status: arcaStatus,
+    arca_cae: row.arcaCae,
+    arca_cae_vto: row.arcaCaeVto,
+    arca_last_attempt_at: row.arcaLastAttemptAt,
+    arca_error_code: row.arcaErrorCode,
+    arca_error_message: row.arcaErrorMessage,
+    created_at: row.repairOrder.created_at,
+    updated_at: row.repairOrder.updated_at,
   }
-  return "not_issued"
 }
 
 /** Solo dígitos para validar CUIT/CUIL/DNI */
@@ -137,12 +167,12 @@ function buildFacturarPayload(form: FacturarSaleRequest, cliente: Cliente | null
 }
 
 export default function FacturacionPage() {
-  const [sales, setSales] = useState<Sale[]>([])
+  const [billables, setBillables] = useState<BillableRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<(typeof ARCA_STATUS_OPTIONS)[number]>("all")
-  const [selectedSaleId, setSelectedSaleId] = useState<number | null>(null)
+  const [selectedBillableKey, setSelectedBillableKey] = useState<string | null>(null)
   const [isEmitModalOpen, setIsEmitModalOpen] = useState(false)
   /** `view` = solo lectura del comprobante ya emitido; `emit` = formulario de facturación */
   const [invoiceModalMode, setInvoiceModalMode] = useState<"emit" | "view">("emit")
@@ -193,12 +223,14 @@ export default function FacturacionPage() {
     setForm(buildDefaultFacturarFormRequest())
     setShowAdvancedEmitForm(!getEmitirConDefaultsGuardados())
     setDefaultsSavedHint(false)
-  }, [isEmitModalOpen, invoiceModalMode, selectedSaleId])
+  }, [isEmitModalOpen, invoiceModalMode, selectedBillableKey])
 
-  const selectedSale = useMemo(
-    () => sales.find((sale) => sale.id === selectedSaleId) ?? null,
-    [sales, selectedSaleId]
+  const selectedBillable = useMemo(
+    () => billables.find((row) => row.key === selectedBillableKey) ?? null,
+    [billables, selectedBillableKey]
   )
+
+  const selectedSale = useMemo(() => billableToDisplaySale(selectedBillable), [selectedBillable])
 
   const creditNotePreview = useMemo(() => {
     if (!creditNoteSale) return null
@@ -222,55 +254,52 @@ export default function FacturacionPage() {
     }
   }, [creditNoteSale])
 
-  const filteredSales = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return sales.filter((sale) => {
-      const status = getArcaStatus(sale)
-      if (statusFilter !== "all" && status !== statusFilter) return false
-      if (!q) return true
-      return (
-        sale.sale_number.toLowerCase().includes(q) ||
-        (sale.client_name ?? "").toLowerCase().includes(q) ||
-        String(sale.id).includes(q)
-      )
-    })
-  }, [sales, query, statusFilter])
+  const filteredBillables = useMemo(
+    () => filterBillables(billables, query, statusFilter as ArcaStatus | "all"),
+    [billables, query, statusFilter]
+  )
 
-  const stats = useMemo(() => {
-    const total = sales.length
-    const success = sales.filter((s) => getArcaStatus(s) === "success").length
-    const pending = sales.filter((s) => getArcaStatus(s) === "pending").length
-    const error = sales.filter((s) => getArcaStatus(s) === "error").length
-    return { total, success, pending, error }
-  }, [sales])
+  const stats = useMemo(() => billableStats(billables), [billables])
 
-  const loadSales = async () => {
+  const loadBillables = async () => {
     setIsLoading(true)
     setErrorMsg(null)
     try {
-      const res = await getSales({ page: 1, limit: 100 })
-      const fetched = res?.data?.sales ?? []
-      setSales(fetched)
-      if (!selectedSaleId && fetched.length > 0) setSelectedSaleId(fetched[0].id)
+      const [salesRes, ...repairResponses] = await Promise.all([
+        getSales({ page: 1, limit: 200 }),
+        ...REPAIR_ORDER_FACTURABLE_STATUSES.map((status) =>
+          getRepairOrders({ status, page: 1, limit: 100 })
+        ),
+      ])
+      const sales = salesRes?.data?.sales ?? []
+      const repairOrders = repairResponses.flatMap((res) => {
+        const data = res.data as { repair_orders?: RepairOrder[] }
+        return data?.repair_orders ?? []
+      })
+      const merged = mergeFacturacionBillables(sales, repairOrders)
+      setBillables(merged)
+      if (!selectedBillableKey && merged.length > 0) setSelectedBillableKey(merged[0].key)
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : "No se pudo obtener ventas para facturación.")
+      setErrorMsg(
+        error instanceof Error ? error.message : "No se pudo obtener ventas y reparaciones para facturación."
+      )
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadSales()
+    void loadBillables()
   }, [])
 
   useEffect(() => {
-    if (!isEmitModalOpen || selectedSaleId == null || invoiceModalMode !== "emit") {
+    if (!isEmitModalOpen || selectedBillableKey == null || invoiceModalMode !== "emit") {
       setModalCliente(null)
       setModalClienteLoading(false)
       return
     }
 
-    const sale = sales.find((s) => s.id === selectedSaleId)
+    const sale = selectedSale
     if (!sale) {
       setModalClienteLoading(false)
       return
@@ -331,8 +360,8 @@ export default function FacturacionPage() {
     }
     // Nota: no incluir `sales` en dependencias: si se refresca el listado con el modal abierto,
     // no debe reiniciarse el formulario ni volver a cargar cliente.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar venta seleccionada
-  }, [isEmitModalOpen, selectedSaleId, invoiceModalMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar comprobante seleccionado
+  }, [isEmitModalOpen, selectedBillableKey, invoiceModalMode, selectedSale])
 
   useEffect(() => {
     if (!isEmitModalOpen || invoiceModalMode !== "view" || !selectedSale) {
@@ -344,17 +373,42 @@ export default function FacturacionPage() {
     }
 
     let cancelled = false
-    const sale = selectedSale
+    const billable = selectedBillable
 
     async function loadComprobantePreview() {
       setViewInvoiceLoading(true)
       setViewInvoiceError(null)
       setViewInvoiceData(null)
 
-      const resolved = await fetchSaleArcaEmision(sale)
+      if (!selectedSale) {
+        if (!cancelled) setViewInvoiceLoading(false)
+        return
+      }
+
+      let saleForArca: Sale = selectedSale
+      if (saleForArca.id < 1 && billable?.linkedSaleId) {
+        try {
+          const saleRes = await getSale(billable.linkedSaleId)
+          saleForArca = { ...(saleRes.data as Sale), client_name: billable.clientName }
+        } catch {
+          if (!cancelled) {
+            setViewInvoiceError("No se pudo cargar la venta vinculada a esta reparación.")
+            setViewInvoiceLoading(false)
+          }
+          return
+        }
+      } else if (saleForArca.id < 1) {
+        if (!cancelled) {
+          setViewInvoiceError("Esta reparación no tiene venta vinculada para mostrar el comprobante.")
+          setViewInvoiceLoading(false)
+        }
+        return
+      }
+
+      const resolved = await fetchSaleArcaEmision(saleForArca)
       if (!resolved) {
         if (!cancelled) {
-          setViewInvoiceError("No hay CAE registrado para esta venta.")
+          setViewInvoiceError("No hay CAE registrado para este comprobante.")
           setViewInvoiceLoading(false)
         }
         return
@@ -362,20 +416,20 @@ export default function FacturacionPage() {
 
       try {
         let cliente = modalCliente
-        if (sale.client_id && (!cliente || cliente.id !== sale.client_id)) {
+        if (saleForArca.client_id && (!cliente || cliente.id !== saleForArca.client_id)) {
           try {
-            cliente = await getClienteById(sale.client_id)
+            cliente = await getClienteById(saleForArca.client_id)
           } catch {
             cliente = null
           }
         }
 
         const data = await buildArcaInvoicePdfInput({
-          saleId: sale.id,
+          saleId: saleForArca.id,
           emision: resolved.emision,
           facturarPayload: resolved.facturarPayload,
           cliente,
-          saleSnapshot: sale,
+          saleSnapshot: saleForArca,
           previewAllowMissingNumero: true,
         })
 
@@ -398,7 +452,7 @@ export default function FacturacionPage() {
     return () => {
       cancelled = true
     }
-  }, [isEmitModalOpen, invoiceModalMode, selectedSale, modalCliente])
+  }, [isEmitModalOpen, invoiceModalMode, selectedSale, selectedBillable, modalCliente])
 
   const downloadArcaPdfForSale = async (
     sale: Sale,
@@ -460,8 +514,8 @@ export default function FacturacionPage() {
   }
 
   const onSubmitFacturar = async () => {
-    if (!selectedSale) {
-      setErrorMsg("Seleccioná una venta antes de facturar.")
+    if (!selectedBillable || !selectedSale) {
+      setErrorMsg("Seleccioná una venta u orden de reparación antes de facturar.")
       return
     }
 
@@ -477,10 +531,23 @@ export default function FacturacionPage() {
     setSuccessMsg(null)
     setRetryAfterHint(null)
     try {
+      let saleId = selectedSale.id
+      let saleForArca = selectedSale
+
+      if (selectedBillable.kind === "repair_order") {
+        saleId = await resolveSaleIdForRepairOrderFacturacion(
+          selectedBillable.id,
+          selectedBillable.linkedSaleId
+        )
+        const saleRes = await getSale(saleId)
+        saleForArca = { ...(saleRes.data as Sale), client_name: selectedSale.client_name }
+      }
+
       const payload = buildFacturarPayload(form, modalCliente)
       console.log("[FACTURAR UI] Emitiendo comprobante:", {
-        saleId: selectedSale.id,
-        saleNumber: selectedSale.sale_number,
+        billableKind: selectedBillable.kind,
+        saleId,
+        reference: selectedBillable.reference,
         clientId: selectedSale.client_id,
         payload,
         payloadJson: JSON.stringify(payload),
@@ -492,7 +559,7 @@ export default function FacturacionPage() {
         },
       })
 
-      const response = await facturarSale(selectedSale.id, payload)
+      const response = await facturarSale(saleId, payload)
       const emision = extractFacturacionEmisionFromResponse(response)
       const cae = emision?.cae ?? response?.data?.arca?.cae ?? response?.data?.sale?.arca_cae
       const vto = emision?.vencimientoCaeIso
@@ -501,12 +568,12 @@ export default function FacturacionPage() {
       if (vto) partes.push(`Vencimiento CAE: ${vto}.`)
       if (emision?.facturaId) partes.push(`ID comprobante: ${emision.facturaId}.`)
       if (emision) {
-        cacheFacturacionEmision(selectedSale.id, emision, payload)
+        cacheFacturacionEmision(saleId, emision, payload)
       }
       setSuccessMsg(partes.join(" "))
       if (emision) {
         try {
-          await downloadArcaPdfForSale(selectedSale, emision, payload, { reportErrorOnPage: false })
+          await downloadArcaPdfForSale(saleForArca, emision, payload, { reportErrorOnPage: false })
           setSuccessMsg((prev) => `${prev ?? ""} PDF ARCA descargado.`.trim())
         } catch (pdfErr) {
           const pdfMsg = pdfErr instanceof Error ? pdfErr.message : "Error al generar PDF"
@@ -514,7 +581,7 @@ export default function FacturacionPage() {
         }
       }
       setIsEmitModalOpen(false)
-      await loadSales()
+      await loadBillables()
     } catch (error: unknown) {
       const err = error as FacturarSaleError
       const isNetwork =
@@ -580,7 +647,7 @@ export default function FacturacionPage() {
                 <LayoutTemplate className="mr-2 h-4 w-4" />
                 Ver plantilla factura
               </Button>
-              <Button variant="outline" onClick={() => void loadSales()} disabled={isLoading}>
+              <Button variant="outline" onClick={() => void loadBillables()} disabled={isLoading}>
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 Actualizar ventas
               </Button>
@@ -667,10 +734,10 @@ export default function FacturacionPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Ventas facturables
+                Ventas y reparaciones facturables
               </CardTitle>
               <CardDescription>
-                Ventas facturadas: ver comprobante, reemitir (solo con confirmación) o anular por error con nota de crédito (cuando el backend lo habilite).
+                Incluye ventas POS y órdenes de reparación en estado Aceptado o Entregado. Facturadas: ver comprobante, reemitir o anular por error con nota de crédito (cuando el backend lo habilite).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -679,7 +746,7 @@ export default function FacturacionPage() {
                   <Search className="text-muted-foreground absolute left-2 top-2.5 h-4 w-4" />
                   <Input
                     className="pl-8"
-                    placeholder="Buscar por venta, cliente o ID"
+                    placeholder="Buscar por venta, reparación, cliente o ID"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
@@ -701,7 +768,7 @@ export default function FacturacionPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Venta</TableHead>
+                    <TableHead>Comprobante</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Estado ARCA</TableHead>
@@ -712,43 +779,54 @@ export default function FacturacionPage() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={6}>Cargando ventas...</TableCell>
+                      <TableCell colSpan={6}>Cargando comprobantes...</TableCell>
                     </TableRow>
-                  ) : filteredSales.length === 0 ? (
+                  ) : filteredBillables.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6}>No hay ventas para los filtros aplicados.</TableCell>
+                      <TableCell colSpan={6}>No hay ventas ni reparaciones para los filtros aplicados.</TableCell>
                     </TableRow>
                   ) : (
-                    filteredSales.map((sale) => {
-                      const status = getArcaStatus(sale)
+                    filteredBillables.map((row) => {
+                      const status = row.arcaStatus
                       return (
-                        <TableRow key={sale.id}>
-                          <TableCell className="font-medium">{sale.sale_number}</TableCell>
-                          <TableCell>{sale.client_name || "Consumidor final"}</TableCell>
-                          <TableCell>{formatDateTime(sale.sale_date)}</TableCell>
+                        <TableRow key={row.key}>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{row.reference}</span>
+                              {row.kind === "repair_order" ? (
+                                <Badge variant="outline" className="text-xs font-normal">
+                                  Reparación
+                                  {row.repairStatusLabel ? ` · ${row.repairStatusLabel}` : ""}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell>{row.clientName}</TableCell>
+                          <TableCell>{formatDateTime(row.date)}</TableCell>
                           <TableCell>
                             <div className="space-y-1">
                               <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
-                              {status === "error" && (sale.arca_error_code || sale.arca_error_message) ? (
+                              {status === "error" && (row.arcaErrorCode || row.arcaErrorMessage) ? (
                                 <p
                                   className="text-muted-foreground max-w-[220px] text-xs leading-snug"
-                                  title={sale.arca_error_message ?? undefined}
+                                  title={row.arcaErrorMessage ?? undefined}
                                 >
-                                  {resolveFacturacionErrorFromSale(sale.arca_error_code, sale.arca_error_message)
-                                    ?.title ?? sale.arca_error_code}
+                                  {resolveFacturacionErrorFromSale(row.arcaErrorCode, row.arcaErrorMessage)
+                                    ?.title ?? row.arcaErrorCode}
                                 </p>
                               ) : null}
                             </div>
                           </TableCell>
-                          <TableCell>{formatCurrency(sale.total_amount)}</TableCell>
+                          <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
                           <TableCell className="text-right">
                             {status === "success" ? (
                               <div className="flex flex-col items-end gap-1.5">
                                 <Button
                                   size="sm"
                                   className="h-8"
+                                  disabled={row.kind === "repair_order" && !row.linkedSaleId}
                                   onClick={() => {
-                                    setSelectedSaleId(sale.id)
+                                    setSelectedBillableKey(row.key)
                                     setInvoiceModalMode("view")
                                     setIsEmitModalOpen(true)
                                   }}
@@ -762,21 +840,23 @@ export default function FacturacionPage() {
                                     size="sm"
                                     className="h-7 text-xs"
                                     onClick={() => {
-                                      setSelectedSaleId(sale.id)
+                                      setSelectedBillableKey(row.key)
                                       setInvoiceModalMode("emit")
                                       setIsEmitModalOpen(true)
                                     }}
                                   >
                                     Reemitir
                                   </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
-                                    onClick={() => setCreditNoteSale(sale)}
-                                  >
-                                    ¿Fue un error?
-                                  </Button>
+                                  {row.sale ? (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
+                                      onClick={() => setCreditNoteSale(row.sale!)}
+                                    >
+                                      ¿Fue un error?
+                                    </Button>
+                                  ) : null}
                                 </div>
                               </div>
                             ) : (
@@ -784,7 +864,7 @@ export default function FacturacionPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                  setSelectedSaleId(sale.id)
+                                  setSelectedBillableKey(row.key)
                                   setInvoiceModalMode("emit")
                                   setIsEmitModalOpen(true)
                                 }}
@@ -828,7 +908,11 @@ export default function FacturacionPage() {
               </DialogHeader>
 
               {!selectedSale ? (
-                <Alert variant="warning" title="Sin venta seleccionada" description="Seleccioná una venta para habilitar la facturación." />
+                <Alert
+                  variant="warning"
+                  title="Sin comprobante seleccionado"
+                  description="Seleccioná una venta u orden de reparación para habilitar la facturación."
+                />
               ) : invoiceModalMode === "view" ? (
                 <>
                   <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
@@ -858,7 +942,11 @@ export default function FacturacionPage() {
                       <Button
                         variant="default"
                         size="sm"
-                        disabled={isGeneratingArcaPdf || !selectedSale.arca_cae}
+                        disabled={
+                          isGeneratingArcaPdf ||
+                          !selectedSale.arca_cae ||
+                          (selectedBillable?.kind === "repair_order" && !selectedBillable.linkedSaleId)
+                        }
                         onClick={() => void downloadArcaPdfForSale(selectedSale, undefined, undefined, { reportErrorOnPage: true })}
                       >
                         {isGeneratingArcaPdf ? (
@@ -904,6 +992,15 @@ export default function FacturacionPage() {
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3 text-sm space-y-1">
                     <div className="font-medium">{selectedSale.sale_number}</div>
+                    {selectedBillable?.kind === "repair_order" ? (
+                      <div className="text-muted-foreground text-sm">
+                        Orden de reparación
+                        {selectedBillable.repairStatusLabel ? ` · ${selectedBillable.repairStatusLabel}` : ""}
+                        {selectedBillable.linkedSaleId
+                          ? ` · Venta vinculada #${selectedBillable.linkedSaleId}`
+                          : " · Se generará la venta POS al emitir"}
+                      </div>
+                    ) : null}
                     <div className="text-muted-foreground">Cliente: {selectedSale.client_name || "Consumidor final"}</div>
                     <div className="text-muted-foreground">CUIT emisor: {emisorCuitMostrar}</div>
                     <div className="text-muted-foreground">
@@ -924,7 +1021,7 @@ export default function FacturacionPage() {
                     ) : null}
                   </div>
 
-                  {getArcaStatus(selectedSale) === "error" &&
+                  {selectedBillable?.arcaStatus === "error" &&
                   (selectedSale.arca_error_code || selectedSale.arca_error_message) ? (
                     <Alert
                       variant="warning"

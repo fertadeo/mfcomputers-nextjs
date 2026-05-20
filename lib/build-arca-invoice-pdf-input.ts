@@ -6,6 +6,7 @@ import {
   type Sale,
   type SaleItemResponse,
 } from "@/lib/api"
+import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
 import { buildAfipQrUrl } from "@/lib/arca-invoice-afip-qr"
 import { toNumber } from "@/lib/arca-invoice-format"
 import type { GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
@@ -33,8 +34,10 @@ export interface BuildArcaInvoicePdfInputArgs {
   previewAllowMissingNumero?: boolean
 }
 
-async function resolveProductNames(items: SaleItemResponse[]): Promise<Map<number, string>> {
-  const ids = [...new Set(items.map((i) => i.product_id))]
+async function resolveCatalogProductNames(
+  items: SaleItemResponse[]
+): Promise<Map<number, string>> {
+  const ids = saleItemCatalogProductIds(items)
   const entries = await Promise.all(
     ids.map(async (id) => {
       try {
@@ -46,6 +49,24 @@ async function resolveProductNames(items: SaleItemResponse[]): Promise<Map<numbe
     })
   )
   return new Map(entries)
+}
+
+function saleItemDescription(
+  item: SaleItemResponse,
+  catalogNames: Map<number, string>
+): string {
+  const fromApi = getSaleItemDisplayName(item)
+  if (isSaleCustomItem(item)) return fromApi
+  if (item.product_id != null && catalogNames.has(item.product_id)) {
+    return catalogNames.get(item.product_id)!
+  }
+  return fromApi
+}
+
+function saleItemCodigo(item: SaleItemResponse): string {
+  if (isSaleCustomItem(item)) return "0"
+  if (item.product_id != null) return String(item.product_id)
+  return "0"
 }
 
 function lineSubtotal(item: SaleItemResponse): number {
@@ -67,7 +88,7 @@ export async function buildArcaInvoicePdfInput(
     throw new Error("La venta no tiene ítems para armar el comprobante PDF.")
   }
 
-  const names = await resolveProductNames(items)
+  const catalogNames = await resolveCatalogProductNames(items)
   const tipo = toNumber(emision.tipo ?? facturarPayload.tipo, 6)
   const puntoVenta = toNumber(
     emision.puntoVenta ?? facturarPayload.puntoVenta ?? getStoredFacturacionPuntoVenta(),
@@ -156,8 +177,8 @@ export async function buildArcaInvoicePdfInput(
       domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || undefined,
     },
     items: items.map((item) => ({
-      codigo: String(item.product_id),
-      descripcion: names.get(item.product_id) ?? `Producto #${item.product_id}`,
+      codigo: saleItemCodigo(item),
+      descripcion: saleItemDescription(item, catalogNames),
       cantidad: toNumber(item.quantity),
       unidadMedida: "unidades",
       precioUnitario: toNumber(item.unit_price),

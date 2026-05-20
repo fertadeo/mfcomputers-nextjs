@@ -637,10 +637,24 @@ export interface ProductResponse {
 // --- Ventas en local (Punto de venta) - POST /api/sales con x-api-key ---
 export type SalePaymentMethod = 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto'
 
-export interface CreateSaleItem {
+/** Línea de catálogo (descuenta stock en backend). */
+export interface CreateSaleCatalogItem {
   product_id: number
   quantity: number
   unit_price: number
+}
+
+/** Línea libre: no crea producto en catálogo; requiere soporte en POST /api/sales. */
+export interface CreateSaleCustomItem {
+  description: string
+  quantity: number
+  unit_price: number
+}
+
+export type CreateSaleItem = CreateSaleCatalogItem | CreateSaleCustomItem
+
+export function isCreateSaleCatalogItem(item: CreateSaleItem): item is CreateSaleCatalogItem {
+  return "product_id" in item && item.product_id != null
 }
 
 export interface CreateSalePaymentDetails {
@@ -661,7 +675,11 @@ export interface CreateSaleRequest {
 }
 
 export interface SaleItemResponse {
-  product_id: number
+  /** Null o ausente en ítems manuales (sin producto de catálogo). */
+  product_id?: number | null
+  /** Texto de línea libre; el backend puede devolverlo como product_name o description. */
+  product_name?: string | null
+  description?: string | null
   quantity: number
   unit_price: number
   subtotal?: number
@@ -6274,6 +6292,25 @@ export interface RepairOrder {
   client?: { id: number; name: string; email?: string; phone?: string }
   items?: RepairOrderItem[]
   balance?: string
+  /** Venta POS vinculada para facturación ARCA (si el backend la creó al aceptar/entregar). */
+  sale_id?: number | null
+  arca_status?: 'pending' | 'success' | 'error' | null
+  arca_factura_id?: string | null
+  arca_cae?: string | null
+  arca_cae_vto?: string | null
+  arca_last_attempt_at?: string | null
+  arca_error_code?: string | null
+  arca_error_message?: string | null
+}
+
+export interface ConvertRepairOrderToSaleBody {
+  payment_method?: SalePaymentMethod
+  notes?: string
+}
+
+export interface ConvertRepairOrderToSaleResult {
+  sale: SaleResponseData
+  repair_order?: RepairOrder
 }
 
 export interface RepairOrderPayment {
@@ -6665,4 +6702,44 @@ export async function createRepairOrderPayment(
     throw err
   }
   return data
+}
+
+/**
+ * Crea o devuelve la venta POS vinculada a una orden de reparación facturable.
+ * Backend: `POST /api/repair-orders/:id/convert-to-sale`
+ */
+export async function convertRepairOrderToSale(
+  id: number | string,
+  body?: ConvertRepairOrderToSaleBody
+): Promise<ConvertRepairOrderToSaleResult> {
+  const apiUrl = getApiUrl()
+  const res = await fetch(`${apiUrl}repair-orders/${id}/convert-to-sale`, {
+    method: 'POST',
+    headers: getRepairOrderHeaders(),
+    body: JSON.stringify(body ?? { payment_method: 'efectivo' }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${res.status}`) as string) as Error & {
+      status?: number
+    }
+    err.status = res.status
+    throw err
+  }
+  const payload = data?.data ?? data
+  const sale = payload?.sale ?? payload
+  if (!sale?.id) {
+    throw new Error((data?.message as string) || 'Error al convertir la orden de reparación a venta')
+  }
+  return { sale, repair_order: payload?.repair_order }
+}
+
+/** Resuelve el ID de venta necesario para `POST /api/sales/:id/facturar`. */
+export async function resolveSaleIdForRepairOrderFacturacion(
+  repairOrderId: number,
+  existingSaleId?: number | null
+): Promise<number> {
+  if (existingSaleId != null && existingSaleId > 0) return existingSaleId
+  const { sale } = await convertRepairOrderToSale(repairOrderId)
+  return sale.id
 }
