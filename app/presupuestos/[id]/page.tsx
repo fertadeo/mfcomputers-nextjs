@@ -15,13 +15,18 @@ import {
   getProducts,
   updateCommercialBudget,
   type CommercialBudgetDetail,
-  type CommercialBudgetLine,
   type Cliente,
   type Product,
   type ApiBudgetError,
 } from "@/lib/api"
 import { commercialBudgetDetailToPdfData } from "@/lib/commercial-budget-pdf-mapper"
+import {
+  budgetDetailDraftLinesToApiItems,
+  linesFromBudgetDetail,
+  type BudgetDetailDraftLine,
+} from "@/lib/budget-lines"
 import { BudgetProductCatalog } from "@/components/budget-product-catalog"
+import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
 import { BudgetConvertSaleDialog } from "@/components/budget-convert-sale-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -87,17 +92,6 @@ function formatDate(iso: string | null) {
   }
 }
 
-function linesFromDetail(items: CommercialBudgetLine[]) {
-  return items.map((i) => ({
-    id: i.id,
-    product_id: i.product_id,
-    product_name: i.product_name,
-    product_code: i.product_code,
-    quantity: i.quantity,
-    unit_price: i.unit_price,
-  }))
-}
-
 export default function PresupuestoDetallePage() {
   const params = useParams()
   const router = useRouter()
@@ -117,9 +111,7 @@ export default function PresupuestoDetallePage() {
   const [clientId, setClientId] = useState<number | null>(null)
   const [clientSearch, setClientSearch] = useState("")
   const [clients, setClients] = useState<Cliente[]>([])
-  const [draftLines, setDraftLines] = useState<
-    { id: number; product_id: number; product_name: string; product_code: string; quantity: number; unit_price: number }[]
-  >([])
+  const [draftLines, setDraftLines] = useState<BudgetDetailDraftLine[]>([])
   const [allowInactiveDraft, setAllowInactiveDraft] = useState(false)
 
   const [products, setProducts] = useState<Product[]>([])
@@ -145,7 +137,7 @@ export default function PresupuestoDetallePage() {
       setNotes(d.notes ?? "")
       setValidUntil(d.valid_until ? d.valid_until.split("T")[0] : "")
       setClientId(d.client_id)
-      setDraftLines(linesFromDetail(d.items || []))
+      setDraftLines(linesFromBudgetDetail(d.items || []))
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string }
       if (err?.status === 401) router.replace("/login")
@@ -201,12 +193,20 @@ export default function PresupuestoDetallePage() {
   }, [clientSearch])
 
   const pdfPayload = useMemo(() => (detail ? commercialBudgetDetailToPdfData(detail) : null), [detail])
-  const lineProductIds = useMemo(() => draftLines.map((l) => l.product_id), [draftLines])
+  const lineProductIds = useMemo(
+    () => draftLines.filter((l) => l.product_id != null).map((l) => l.product_id as number),
+    [draftLines]
+  )
 
   async function saveChanges() {
     if (!detail || !puedeEditar) return
     if (!clientId) {
       toast.error("Cliente requerido")
+      return
+    }
+    const invalidCustom = draftLines.some((l) => l.is_custom && !(l.description || l.product_name).trim())
+    if (invalidCustom) {
+      toast.error("Hay un ítem escrito sin descripción")
       return
     }
     setSaving(true)
@@ -215,15 +215,11 @@ export default function PresupuestoDetallePage() {
         client_id: clientId,
         valid_until: validUntil.trim() || null,
         notes: notes.trim() || null,
-        items: draftLines.map((l) => ({
-          product_id: l.product_id,
-          quantity: Math.max(1, Math.floor(l.quantity)),
-          unit_price: Math.max(0, l.unit_price),
-        })),
+        items: budgetDetailDraftLinesToApiItems(draftLines),
         allow_inactive: allowInactiveDraft,
       })
       setDetail(updated)
-      setDraftLines(linesFromDetail(updated.items || []))
+      setDraftLines(linesFromBudgetDetail(updated.items || []))
       toast.success("Cambios guardados")
     } catch (e: unknown) {
       const err = e as ApiBudgetError
@@ -250,11 +246,39 @@ export default function PresupuestoDetallePage() {
         product_id: p.id,
         product_name: p.name,
         product_code: p.code,
+        description: "",
+        is_custom: false,
         quantity: 1,
         unit_price: Number(p.price) || 0,
       },
     ])
     toast.message("Producto agregado", { description: p.name })
+  }
+
+  function addCustomLine(payload: { description: string; quantity: number; unit_price: number }) {
+    const tempId = -Date.now()
+    setDraftLines((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        product_id: null,
+        product_name: payload.description,
+        product_code: "",
+        description: payload.description,
+        is_custom: true,
+        quantity: payload.quantity,
+        unit_price: payload.unit_price,
+      },
+    ])
+    toast.message("Ítem agregado", { description: payload.description })
+  }
+
+  function updateDraftLine(id: number, patch: Partial<BudgetDetailDraftLine>) {
+    setDraftLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+  }
+
+  function removeDraftLine(id: number) {
+    setDraftLines((prev) => prev.filter((l) => l.id !== id))
   }
 
   function runConfirm() {
@@ -473,7 +497,7 @@ export default function PresupuestoDetallePage() {
             <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
               <div>
                 <CardTitle>Ítems</CardTitle>
-                <CardDescription>Productos cotizados</CardDescription>
+                <CardDescription>Productos del catálogo o ítems escritos</CardDescription>
               </div>
               {editable && (
                 <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => setShowAddProduct((v) => !v)}>
@@ -484,7 +508,7 @@ export default function PresupuestoDetallePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {editable && showAddProduct && (
-                <div className="rounded-lg border p-3 bg-muted/20">
+                <div className="rounded-lg border p-3 bg-muted/20 space-y-4">
                   <BudgetProductCatalog
                     products={products}
                     loading={loadingProducts}
@@ -493,11 +517,18 @@ export default function PresupuestoDetallePage() {
                   />
                 </div>
               )}
+              {editable && (
+                <PosManualItemCard
+                  onAdd={addCustomLine}
+                  addLabel="Agregar ítem escrito"
+                  inputIdPrefix="budget-detail-manual"
+                />
+              )}
               <div className="rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Producto</TableHead>
+                      <TableHead>Descripción</TableHead>
                       <TableHead className="w-28">Cant.</TableHead>
                       <TableHead className="text-right w-32">P. unit.</TableHead>
                       <TableHead className="text-right w-36">Subtotal</TableHead>
@@ -505,18 +536,34 @@ export default function PresupuestoDetallePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(editable ? draftLines : (detail.items || []).map((i) => ({
-                      id: i.id,
-                      product_id: i.product_id,
-                      product_name: i.product_name,
-                      product_code: i.product_code,
-                      quantity: i.quantity,
-                      unit_price: i.unit_price,
-                    }))).map((row) => (
-                      <TableRow key={`${row.product_id}-${row.id}`}>
+                    {(editable ? draftLines : linesFromBudgetDetail(detail.items || [])).map((row) => (
+                      <TableRow key={row.id}>
                         <TableCell>
-                          <div className="font-medium text-sm">{row.product_name}</div>
-                          <div className="text-xs font-mono text-muted-foreground">{row.product_code}</div>
+                          {editable && row.is_custom ? (
+                            <Input
+                              className="h-8 font-medium"
+                              value={row.description || row.product_name}
+                              placeholder="Descripción del ítem"
+                              onChange={(e) =>
+                                updateDraftLine(row.id, {
+                                  description: e.target.value,
+                                  product_name: e.target.value,
+                                })
+                              }
+                            />
+                          ) : (
+                            <>
+                              <div className="font-medium text-sm">
+                                {row.is_custom ? row.description || row.product_name : row.product_name}
+                              </div>
+                              {!row.is_custom && row.product_code && (
+                                <div className="text-xs font-mono text-muted-foreground">{row.product_code}</div>
+                              )}
+                              {row.is_custom && (
+                                <div className="text-xs text-muted-foreground">Ítem escrito</div>
+                              )}
+                            </>
+                          )}
                         </TableCell>
                         <TableCell>
                           {editable ? (
@@ -527,9 +574,7 @@ export default function PresupuestoDetallePage() {
                               value={row.quantity}
                               onChange={(e) => {
                                 const q = Math.max(1, parseInt(e.target.value, 10) || 1)
-                                setDraftLines((prev) =>
-                                  prev.map((l) => (l.product_id === row.product_id ? { ...l, quantity: q } : l))
-                                )
+                                updateDraftLine(row.id, { quantity: q })
                               }}
                             />
                           ) : (
@@ -546,9 +591,7 @@ export default function PresupuestoDetallePage() {
                               value={row.unit_price}
                               onChange={(e) => {
                                 const v = Math.max(0, parseFloat(e.target.value) || 0)
-                                setDraftLines((prev) =>
-                                  prev.map((l) => (l.product_id === row.product_id ? { ...l, unit_price: v } : l))
-                                )
+                                updateDraftLine(row.id, { unit_price: v })
                               }}
                             />
                           ) : (
@@ -564,9 +607,7 @@ export default function PresupuestoDetallePage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              onClick={() =>
-                                setDraftLines((prev) => prev.filter((l) => l.product_id !== row.product_id))
-                              }
+                              onClick={() => removeDraftLine(row.id)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>

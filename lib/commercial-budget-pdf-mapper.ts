@@ -9,17 +9,20 @@ export function commercialBudgetDetailToPdfData(detail: CommercialBudgetDetail):
   const fechaIso = detail.created_at?.split("T")[0] ?? new Date().toISOString().split("T")[0]
   const hasta = detail.valid_until || fechaIso
 
-  const items: BudgetPdfModalData["items"] = detail.items.map((line) => ({
-    id: String(line.id),
-    service: line.product_name,
-    description: line.product_code ? `Código: ${line.product_code}` : "",
-    equipmentType: "Catálogo",
-    equipmentModel: line.product_code || "—",
-    quantity: line.quantity,
-    vat: 0,
-    unitPrice: line.unit_price,
-    subtotal: line.total_price,
-  }))
+  const items: BudgetPdfModalData["items"] = detail.items.map((line) => {
+    const isCustom = line.product_id == null
+    return {
+      id: String(line.id),
+      service: line.product_name,
+      description: isCustom ? "Ítem escrito" : line.product_code ? `Código: ${line.product_code}` : "",
+      equipmentType: isCustom ? "Manual" : "Catálogo",
+      equipmentModel: isCustom ? "—" : line.product_code || "—",
+      quantity: line.quantity,
+      vat: 0,
+      unitPrice: line.unit_price,
+      subtotal: line.total_price,
+    }
+  })
 
   return {
     id: String(detail.id),

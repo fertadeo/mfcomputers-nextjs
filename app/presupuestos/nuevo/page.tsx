@@ -14,6 +14,12 @@ import {
   type Product,
   type ApiBudgetError,
 } from "@/lib/api"
+import {
+  budgetDraftLineItems,
+  budgetDraftLinesToApiItems,
+  newCustomLineKey,
+  type BudgetDraftLine,
+} from "@/lib/budget-lines"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,17 +28,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
 import { BudgetProductCatalog } from "@/components/budget-product-catalog"
-import { BudgetLinesPanel, type BudgetLineItem } from "@/components/budget-lines-panel"
+import { BudgetLinesPanel } from "@/components/budget-lines-panel"
+import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { ArrowLeft, Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_EDITAR: Role[] = ["admin", "gerencia", "ventas"]
-
-interface Line {
-  product: Product
-  quantity: number
-  unit_price: number
-}
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -51,7 +52,7 @@ export default function NuevoPresupuestoPage() {
   const [clientLabel, setClientLabel] = useState("")
 
   const [products, setProducts] = useState<Product[]>([])
-  const [lines, setLines] = useState<Line[]>([])
+  const [lines, setLines] = useState<BudgetDraftLine[]>([])
 
   const [validUntil, setValidUntil] = useState("")
   const [notes, setNotes] = useState("")
@@ -92,35 +93,55 @@ export default function NuevoPresupuestoPage() {
   }, [clientSearch])
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0)
-  const lineProductIds = lines.map((l) => l.product.id)
+  const lineProductIds = lines
+    .filter((l): l is Extract<BudgetDraftLine, { kind: "catalog" }> => l.kind === "catalog")
+    .map((l) => l.product.id)
 
-  const budgetLineItems: BudgetLineItem[] = lines.map((l) => ({
-    key: l.product.id,
-    name: l.product.name,
-    code: l.product.code,
-    quantity: l.quantity,
-    unit_price: l.unit_price,
-    product: l.product,
-  }))
+  const budgetLineItems = budgetDraftLineItems(lines)
 
   function addLine(p: Product) {
-    const existing = lines.find((l) => l.product.id === p.id)
-    if (existing) {
+    const existing = lines.find((l) => l.kind === "catalog" && l.product.id === p.id)
+    if (existing && existing.kind === "catalog") {
       setLines((prev) =>
-        prev.map((l) => (l.product.id === p.id ? { ...l, quantity: l.quantity + 1 } : l))
+        prev.map((l) =>
+          l.kind === "catalog" && l.product.id === p.id ? { ...l, quantity: l.quantity + 1 } : l
+        )
       )
       toast.message("Cantidad actualizada", { description: p.name })
       return
     }
-    setLines((prev) => [...prev, { product: p, quantity: 1, unit_price: Number(p.price) || 0 }])
+    setLines((prev) => [
+      ...prev,
+      { kind: "catalog", key: p.id, product: p, quantity: 1, unit_price: Number(p.price) || 0 },
+    ])
   }
 
-  function updateLine(pid: number, patch: Partial<Pick<Line, "quantity" | "unit_price">>) {
-    setLines((prev) => prev.map((l) => (l.product.id === pid ? { ...l, ...patch } : l)))
+  function addCustomLine(payload: { description: string; quantity: number; unit_price: number }) {
+    setLines((prev) => [
+      ...prev,
+      {
+        kind: "custom",
+        key: newCustomLineKey(),
+        description: payload.description,
+        quantity: payload.quantity,
+        unit_price: payload.unit_price,
+      },
+    ])
+    toast.message("Ítem agregado", { description: payload.description })
   }
 
-  function removeLine(pid: number) {
-    setLines((prev) => prev.filter((l) => l.product.id !== pid))
+  function updateLine(key: number | string, patch: Partial<Pick<BudgetDraftLine, "quantity" | "unit_price">>) {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
+  }
+
+  function updateCustomDescription(key: number | string, description: string) {
+    setLines((prev) =>
+      prev.map((l) => (l.kind === "custom" && l.key === key ? { ...l, description } : l))
+    )
+  }
+
+  function removeLine(key: number | string) {
+    setLines((prev) => prev.filter((l) => l.key !== key))
   }
 
   async function handleSubmit() {
@@ -129,18 +150,19 @@ export default function NuevoPresupuestoPage() {
       return
     }
     if (lines.length === 0) {
-      toast.error("Agregá al menos un producto")
+      toast.error("Agregá al menos un ítem")
+      return
+    }
+    const invalidCustom = lines.some((l) => l.kind === "custom" && !l.description.trim())
+    if (invalidCustom) {
+      toast.error("Hay un ítem escrito sin descripción")
       return
     }
     setSubmitting(true)
     try {
       const created = await createCommercialBudget({
         client_id: clientId,
-        items: lines.map((l) => ({
-          product_id: l.product.id,
-          quantity: Math.max(1, Math.floor(l.quantity)),
-          unit_price: Math.max(0, l.unit_price),
-        })),
+        items: budgetDraftLinesToApiItems(lines),
         valid_until: validUntil.trim() || undefined,
         notes: notes.trim() || undefined,
         allow_inactive: allowInactive,
@@ -239,22 +261,30 @@ export default function NuevoPresupuestoPage() {
           </Card>
 
           <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle>Catálogo</CardTitle>
-                <CardDescription>
-                  Lista, cuadrícula o vista ampliada. También podés usar <strong>Armado de PC</strong>.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <BudgetProductCatalog
-                  products={products}
-                  loading={loadingProducts}
-                  onAddProduct={addLine}
-                  lineProductIds={lineProductIds}
-                />
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Catálogo</CardTitle>
+                  <CardDescription>
+                    Lista, cuadrícula o vista ampliada. También podés usar <strong>Armado de PC</strong>.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <BudgetProductCatalog
+                    products={products}
+                    loading={loadingProducts}
+                    onAddProduct={addLine}
+                    lineProductIds={lineProductIds}
+                  />
+                </CardContent>
+              </Card>
+
+              <PosManualItemCard
+                onAdd={addCustomLine}
+                addLabel="Agregar al presupuesto"
+                inputIdPrefix="budget-manual"
+              />
+            </div>
 
             <Card>
               <CardHeader className="pb-2">
@@ -268,6 +298,7 @@ export default function NuevoPresupuestoPage() {
                   formatMoney={formatMoney}
                   onUpdateQuantity={(key, q) => updateLine(key, { quantity: q })}
                   onUpdateUnitPrice={(key, p) => updateLine(key, { unit_price: p })}
+                  onUpdateName={updateCustomDescription}
                   onRemove={removeLine}
                 />
               </CardContent>

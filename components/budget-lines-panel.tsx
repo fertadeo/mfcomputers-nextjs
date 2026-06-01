@@ -16,21 +16,23 @@ import { cn } from "@/lib/utils"
 import { FileText, LayoutGrid, LayoutList, Maximize2, Minus, Plus, Trash2 } from "lucide-react"
 
 export interface BudgetLineItem {
-  key: number
+  key: number | string
   name: string
   code: string
   quantity: number
   unit_price: number
   product?: Product
+  isCustom?: boolean
 }
 
 interface BudgetLinesPanelProps {
   lines: BudgetLineItem[]
   total: number
   formatMoney: (n: number) => string
-  onUpdateQuantity: (key: number, quantity: number) => void
-  onUpdateUnitPrice: (key: number, unitPrice: number) => void
-  onRemove: (key: number) => void
+  onUpdateQuantity: (key: number | string, quantity: number) => void
+  onUpdateUnitPrice: (key: number | string, unitPrice: number) => void
+  onUpdateName?: (key: number | string, name: string) => void
+  onRemove: (key: number | string) => void
   emptyMessage?: string
   className?: string
 }
@@ -99,6 +101,7 @@ function LinesListBody({
   formatMoney,
   onUpdateQuantity,
   onUpdateUnitPrice,
+  onUpdateName,
   onRemove,
   compact,
 }: Omit<BudgetLinesPanelProps, "total" | "emptyMessage" | "className"> & { compact?: boolean }) {
@@ -112,7 +115,16 @@ function LinesListBody({
           <div className="flex min-w-0 flex-1 gap-2.5">
             <LineImage product={line.product} name={line.name} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium leading-snug line-clamp-2">{line.name}</p>
+              {line.isCustom && onUpdateName ? (
+                <Input
+                  className="h-8 text-sm font-medium mb-1"
+                  value={line.name}
+                  placeholder="Descripción del ítem"
+                  onChange={(e) => onUpdateName(line.key, e.target.value)}
+                />
+              ) : (
+                <p className="text-sm font-medium leading-snug line-clamp-2">{line.name}</p>
+              )}
               <p className="text-xs font-mono text-muted-foreground truncate">{line.code}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button
@@ -183,6 +195,7 @@ function LinesGridBody({
   formatMoney,
   onUpdateQuantity,
   onUpdateUnitPrice,
+  onUpdateName,
   onRemove,
 }: Omit<BudgetLinesPanelProps, "total" | "emptyMessage" | "className">) {
   return (
@@ -207,9 +220,18 @@ function LinesGridBody({
               <div className="h-14 w-14 shrink-0 rounded-md bg-muted" />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium line-clamp-2 leading-tight" title={line.name}>
-                {line.name}
-              </p>
+              {line.isCustom && onUpdateName ? (
+                <Input
+                  className="h-7 text-xs font-medium mb-1"
+                  value={line.name}
+                  placeholder="Descripción"
+                  onChange={(e) => onUpdateName(line.key, e.target.value)}
+                />
+              ) : (
+                <p className="text-xs font-medium line-clamp-2 leading-tight" title={line.name}>
+                  {line.name}
+                </p>
+              )}
               <p className="text-[10px] font-mono text-muted-foreground truncate">{line.code}</p>
             </div>
           </div>
@@ -266,8 +288,9 @@ export function BudgetLinesPanel({
   formatMoney,
   onUpdateQuantity,
   onUpdateUnitPrice,
+  onUpdateName,
   onRemove,
-  emptyMessage = "Agregá productos desde el catálogo.",
+  emptyMessage = "Agregá productos del catálogo o ítems escritos.",
   className,
 }: BudgetLinesPanelProps) {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list")
@@ -276,7 +299,7 @@ export function BudgetLinesPanel({
   const countLabel =
     lines.length === 0
       ? "Sin líneas"
-      : `${lines.length} producto${lines.length !== 1 ? "s" : ""} · ${formatMoney(total)}`
+      : `${lines.length} ítem${lines.length !== 1 ? "s" : ""} · ${formatMoney(total)}`
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -300,6 +323,7 @@ export function BudgetLinesPanel({
           formatMoney={formatMoney}
           onUpdateQuantity={onUpdateQuantity}
           onUpdateUnitPrice={onUpdateUnitPrice}
+          onUpdateName={onUpdateName}
           onRemove={onRemove}
           compact
         />
@@ -309,6 +333,7 @@ export function BudgetLinesPanel({
           formatMoney={formatMoney}
           onUpdateQuantity={onUpdateQuantity}
           onUpdateUnitPrice={onUpdateUnitPrice}
+          onUpdateName={onUpdateName}
           onRemove={onRemove}
         />
       )}
@@ -350,7 +375,18 @@ export function BudgetLinesPanel({
                     <td className="p-2">
                       <LineImage product={line.product} name={line.name} />
                     </td>
-                    <td className="p-2 font-medium">{line.name}</td>
+                    <td className="p-2 font-medium">
+                      {line.isCustom && onUpdateName ? (
+                        <Input
+                          className="h-8"
+                          value={line.name}
+                          placeholder="Descripción del ítem"
+                          onChange={(e) => onUpdateName(line.key, e.target.value)}
+                        />
+                      ) : (
+                        line.name
+                      )}
+                    </td>
                     <td className="p-2 font-mono text-xs text-muted-foreground">{line.code}</td>
                     <td className="p-2">
                       <Input

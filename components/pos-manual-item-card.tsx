@@ -21,9 +21,16 @@ function parseUnitPriceInput(value: string): number {
 export interface PosManualItemCardProps {
   onAdd: (payload: { description: string; quantity: number; unit_price: number }) => void
   disabled?: boolean
+  addLabel?: string
+  inputIdPrefix?: string
 }
 
-export function PosManualItemCard({ onAdd, disabled }: PosManualItemCardProps) {
+export function PosManualItemCard({
+  onAdd,
+  disabled,
+  addLabel = "Agregar al carrito",
+  inputIdPrefix = "pos-manual",
+}: PosManualItemCardProps) {
   const [description, setDescription] = useState("")
   const [quantity, setQuantity] = useState("1")
   const [unitPrice, setUnitPrice] = useState(0)
@@ -64,9 +71,9 @@ export function PosManualItemCard({ onAdd, disabled }: PosManualItemCardProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-2">
-          <Label htmlFor="pos-manual-desc">Descripción</Label>
+          <Label htmlFor={`${inputIdPrefix}-desc`}>Descripción</Label>
           <Input
-            id="pos-manual-desc"
+            id={`${inputIdPrefix}-desc`}
             placeholder="Ej: Instalación de software, cable HDMI..."
             value={description}
             onChange={(e) => {
@@ -78,9 +85,9 @@ export function PosManualItemCard({ onAdd, disabled }: PosManualItemCardProps) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="pos-manual-qty">Cantidad</Label>
+            <Label htmlFor={`${inputIdPrefix}-qty`}>Cantidad</Label>
             <Input
-              id="pos-manual-qty"
+              id={`${inputIdPrefix}-qty`}
               type="number"
               min={1}
               step={1}
@@ -90,11 +97,11 @@ export function PosManualItemCard({ onAdd, disabled }: PosManualItemCardProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pos-manual-price">Precio unitario</Label>
+            <Label htmlFor={`${inputIdPrefix}-price`}>Precio unitario</Label>
             <div className="flex items-center gap-1">
               <span className="text-sm text-muted-foreground">$</span>
               <Input
-                id="pos-manual-price"
+                id={`${inputIdPrefix}-price`}
                 type="text"
                 inputMode="numeric"
                 placeholder="0"
@@ -108,7 +115,7 @@ export function PosManualItemCard({ onAdd, disabled }: PosManualItemCardProps) {
         {localError && <p className="text-xs text-red-600 dark:text-red-400">{localError}</p>}
         <Button type="button" variant="secondary" className="w-full" onClick={handleAdd} disabled={disabled}>
           <Plus className="h-4 w-4 mr-1" />
-          Agregar al carrito
+          {addLabel}
         </Button>
       </CardContent>
     </Card>

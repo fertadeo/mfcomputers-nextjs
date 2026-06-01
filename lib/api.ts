@@ -5926,9 +5926,12 @@ export const COMMERCIAL_BUDGET_STATUS_LABELS: Record<CommercialBudgetStatus, str
 export interface CommercialBudgetLine {
   id: number
   budget_id: number
-  product_id: number
+  /** Null en ítems escritos (sin producto de catálogo). */
+  product_id: number | null
   product_name: string
   product_code: string
+  /** Texto libre cuando product_id es null. */
+  description?: string | null
   quantity: number
   unit_price: number
   total_price: number
@@ -5974,10 +5977,30 @@ export interface CommercialBudgetStatsPayload {
   total_amount_sent: number
 }
 
-export interface CommercialBudgetItemInput {
+/** Línea de catálogo en POST/PATCH /api/budgets */
+export interface CommercialBudgetCatalogItemInput {
   product_id: number
   quantity: number
   unit_price: number
+}
+
+/** Línea libre: descripción escrita, sin producto en catálogo. */
+export interface CommercialBudgetCustomItemInput {
+  description: string
+  quantity: number
+  unit_price: number
+}
+
+export type CommercialBudgetItemInput = CommercialBudgetCatalogItemInput | CommercialBudgetCustomItemInput
+
+export function isCommercialBudgetCatalogItem(
+  item: CommercialBudgetItemInput
+): item is CommercialBudgetCatalogItemInput {
+  return "product_id" in item && item.product_id != null
+}
+
+export function isCommercialBudgetCustomLine(line: CommercialBudgetLine): boolean {
+  return line.product_id == null
 }
 
 export interface CreateCommercialBudgetBody {
