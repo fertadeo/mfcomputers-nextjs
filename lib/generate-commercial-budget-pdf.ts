@@ -71,11 +71,18 @@ export interface CommercialPdfFromModalInput {
   observaciones?: string
 }
 
+function commercialPdfLineProductCode(item: CommercialPdfFromModalInput["items"][number]): string | undefined {
+  const model = item.equipmentModel?.trim()
+  if (model && model !== "—") return model
+  const fromDesc = item.description?.replace(/^Código:\s*/i, "").trim()
+  if (!fromDesc || fromDesc === "—") return undefined
+  return fromDesc
+}
+
 export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalInput): GenerateCommercialBudgetPdfParams {
   const lineItems: CommercialBudgetPdfLineItem[] = data.items.map((it) => ({
     product_name: it.service,
-    product_code:
-      it.equipmentModel?.trim() || it.description?.replace(/^Código:\s*/i, "").trim() || undefined,
+    product_code: commercialPdfLineProductCode(it),
     quantity: it.quantity,
     unit_price: it.unitPrice,
   }))
@@ -98,12 +105,16 @@ export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalIn
 }
 
 export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail): GenerateCommercialBudgetPdfParams {
-  const lineItems: CommercialBudgetPdfLineItem[] = (detail.items || []).map((i) => ({
-    product_name: i.product_name,
-    product_code: i.product_code,
-    quantity: i.quantity,
-    unit_price: i.unit_price,
-  }))
+  const lineItems: CommercialBudgetPdfLineItem[] = (detail.items || []).map((i) => {
+    const isCustom = i.product_id == null
+    const name = (i.description ?? i.product_name ?? "").trim() || i.product_name
+    return {
+      product_name: name,
+      product_code: isCustom ? undefined : i.product_code?.trim() || undefined,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+    }
+  })
 
   return {
     budget_number: detail.budget_number,
@@ -371,35 +382,39 @@ function renderCommercialBudgetPdf(
     doc.line(mx, y, pageW - mx, y)
     y += 18
 
-    const sumX = pageW - mx - 140
-    const valX = pageW - mx - 4
+    const summaryW = 92
+    const summaryLeft = pageW - mx - summaryW
+    const summaryRight = pageW - mx
+    const summaryPad = 8
+    const summaryLineH = 13
 
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(10)
-    doc.setTextColor(...TEXT_BODY)
-    doc.text("Subtotal:", sumX, y, { align: "right" })
-    doc.text(formatMoneyAr(params.subtotal), valX, y, { align: "right" })
-    y += 14
+    function drawSummaryRow(label: string, value: string, bold = false) {
+      doc.setFont("helvetica", bold ? "bold" : "normal")
+      doc.setFontSize(10)
+      doc.setTextColor(...TEXT_BODY)
+      doc.text(label, summaryLeft + summaryPad, y)
+      doc.text(value, summaryRight - summaryPad, y, { align: "right" })
+      y += summaryLineH
+    }
+
+    drawSummaryRow("Subtotal", formatMoneyAr(params.subtotal))
 
     if (params.vat21 > 0) {
-      doc.text("IVA 21%:", sumX, y, { align: "right" })
-      doc.text(formatMoneyAr(params.vat21), valX, y, { align: "right" })
-      y += 14
+      drawSummaryRow("IVA 21%", formatMoneyAr(params.vat21))
     }
     if (params.vat105 > 0) {
-      doc.text("IVA 10,5%:", sumX, y, { align: "right" })
-      doc.text(formatMoneyAr(params.vat105), valX, y, { align: "right" })
-      y += 14
+      drawSummaryRow("IVA 10,5%", formatMoneyAr(params.vat105))
     }
 
-    const totalBoxH = 28
+    const totalBoxH = 24
     doc.setFillColor(...BRAND_BLUE)
-    doc.rect(sumX - 20, y - 4, pageW - mx - (sumX - 20) + 4, totalBoxH, "F")
+    doc.rect(summaryLeft, y, summaryW, totalBoxH, "F")
+    const totalTextY = y + totalBoxH / 2 + 3.5
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
     doc.setTextColor(255, 255, 255)
-    doc.text("TOTAL COTIZADO:", sumX, y + 12, { align: "right" })
-    doc.text(formatMoneyAr(params.total), valX, y + 12, { align: "right" })
+    doc.text("Total", summaryLeft + summaryPad, totalTextY)
+    doc.text(formatMoneyAr(params.total), summaryRight - summaryPad, totalTextY, { align: "right" })
 
     y += totalBoxH + 22
 

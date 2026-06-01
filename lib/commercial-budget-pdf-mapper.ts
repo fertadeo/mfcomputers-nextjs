@@ -11,12 +11,12 @@ export function commercialBudgetDetailToPdfData(detail: CommercialBudgetDetail):
 
   const items: BudgetPdfModalData["items"] = detail.items.map((line) => {
     const isCustom = line.product_id == null
+    const name = (line.description ?? line.product_name ?? "").trim() || line.product_name
     return {
       id: String(line.id),
-      service: line.product_name,
-      description: isCustom ? "Ítem escrito" : line.product_code ? `Código: ${line.product_code}` : "",
-      equipmentType: isCustom ? "Manual" : "Catálogo",
-      equipmentModel: isCustom ? "—" : line.product_code || "—",
+      service: name,
+      description: isCustom ? "" : line.product_code ? `Código: ${line.product_code}` : "",
+      equipmentModel: isCustom ? undefined : line.product_code || undefined,
       quantity: line.quantity,
       vat: 0,
       unitPrice: line.unit_price,
