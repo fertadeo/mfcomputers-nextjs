@@ -35,6 +35,14 @@ import {
 } from "@/components/ui/dialog"
 import { Alert } from "@/components/ui/alert"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  canAddPosCatalogProduct,
+  filterPosCatalogProducts,
+  isPosBackorderOnly,
+  isPosInStock,
+  posCatalogMaxQuantity,
+} from "@/lib/pos-products"
 import { generateSaleReceiptPdf } from "@/lib/generate-sale-receipt-pdf"
 import type { SaleReceiptCartItem } from "@/lib/generate-sale-receipt-pdf"
 import {
@@ -85,6 +93,7 @@ export default function PuntoVentaPage() {
   const [openProductsModal, setOpenProductsModal] = useState(false)
   const [openCartModal, setOpenCartModal] = useState(false)
   const [showInactiveProductAlert, setShowInactiveProductAlert] = useState(false)
+  const [showBackorderProducts, setShowBackorderProducts] = useState(false)
   const [productsModalFilter, setProductsModalFilter] = useState<"all" | "active" | "inactive" | "out_of_stock">("all")
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
   const [addedProductId, setAddedProductId] = useState<number | null>(null)
@@ -140,35 +149,31 @@ export default function PuntoVentaPage() {
     }
   }
 
-  const filteredProducts = useMemo(() => {
-    const term = searchProduct.trim().toLowerCase()
-    const list = term
-      ? products.filter(
-          (p) =>
-            p.name?.toLowerCase().includes(term) ||
-            p.code?.toLowerCase().includes(term) ||
-            p.category_name?.toLowerCase().includes(term)
-        )
-      : products
-    return [...list].sort((a, b) => (a.stock < 1 ? 1 : 0) - (b.stock < 1 ? 1 : 0))
-  }, [products, searchProduct])
+  const filteredProducts = useMemo(
+    () =>
+      filterPosCatalogProducts(products, {
+        includeBackorder: showBackorderProducts,
+        searchTerm: searchProduct,
+      }),
+    [products, searchProduct, showBackorderProducts]
+  )
 
   const productsModalList = useMemo(() => {
     const isActive = (p: Product) => !!p.is_active
     switch (productsModalFilter) {
       case "active":
-        return filteredProducts.filter((p) => isActive(p) && p.stock >= 1)
+        return filteredProducts.filter((p) => isActive(p) && isPosInStock(p))
       case "inactive":
         return filteredProducts.filter((p) => !isActive(p))
       case "out_of_stock":
-        return filteredProducts.filter((p) => p.stock < 1)
+        return filteredProducts.filter((p) => isPosBackorderOnly(p))
       default:
         return filteredProducts
     }
   }, [filteredProducts, productsModalFilter])
 
   function addToCart(product: Product, qty = 1) {
-    if (product.stock < 1) return
+    if (!canAddPosCatalogProduct(product)) return
     if (isInactiveWithStock(product)) {
       setShowInactiveProductAlert(true)
       return
@@ -178,7 +183,7 @@ export default function PuntoVentaPage() {
 
   function handleAddToCartClick(product: Product, e?: React.MouseEvent) {
     e?.stopPropagation()
-    if (product.stock < 1 || addingProductId != null) return
+    if (!canAddPosCatalogProduct(product) || addingProductId != null) return
     if (isInactiveWithStock(product)) {
       setShowInactiveProductAlert(true)
       return
@@ -198,13 +203,14 @@ export default function PuntoVentaPage() {
   }
 
   function addToCartInternal(product: Product, qty = 1) {
-    if (product.stock < 1) return
+    if (!canAddPosCatalogProduct(product)) return
+    const maxQty = posCatalogMaxQuantity(product)
     setCart((prev) => {
       const existing = prev.find(
         (i) => i.kind === "catalog" && i.product.id === product.id
       )
       if (existing && existing.kind === "catalog") {
-        const newQty = Math.min(existing.quantity + qty, product.stock)
+        const newQty = Math.min(existing.quantity + qty, maxQty)
         if (newQty <= 0) {
           return prev.filter(
             (i) => !(i.kind === "catalog" && i.product.id === product.id)
@@ -218,7 +224,7 @@ export default function PuntoVentaPage() {
       }
       return [
         ...prev,
-        { kind: "catalog", product, quantity: Math.min(qty, product.stock), unit_price: product.price },
+        { kind: "catalog", product, quantity: Math.min(qty, maxQty), unit_price: product.price },
       ]
     })
   }
@@ -246,7 +252,7 @@ export default function PuntoVentaPage() {
       return prev.map((i) => {
         if (getPosCartLineKey(i) !== lineKey) return i
         if (i.kind === "catalog") {
-          const capped = Math.min(newQty, i.product.stock)
+          const capped = Math.min(newQty, posCatalogMaxQuantity(i.product))
           return { ...i, quantity: capped }
         }
         return { ...i, quantity: newQty }
@@ -368,7 +374,8 @@ export default function PuntoVentaPage() {
                     </CardTitle>
                     {!loadingProducts && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Mostrando {filteredProducts.length} producto{filteredProducts.length !== 1 ? "s" : ""}.
+                        Mostrando {filteredProducts.length} producto{filteredProducts.length !== 1 ? "s" : ""}
+                        {showBackorderProducts ? " (con stock y por encargo)." : " con stock."}
                       </p>
                     )}
                   </div>
@@ -409,6 +416,16 @@ export default function PuntoVentaPage() {
                     onChange={(e) => setSearchProduct(e.target.value)}
                     className="max-w-md"
                   />
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="pos-show-backorder"
+                      checked={showBackorderProducts}
+                      onCheckedChange={(c) => setShowBackorderProducts(c === true)}
+                    />
+                    <Label htmlFor="pos-show-backorder" className="text-sm font-normal cursor-pointer">
+                      Incluir venta por encargo (sin stock)
+                    </Label>
+                  </div>
                   <div className="max-h-[280px] overflow-y-auto border rounded-md p-2">
                     {loadingProducts ? (
                       <p className="text-sm text-muted-foreground">Cargando productos...</p>
@@ -421,7 +438,7 @@ export default function PuntoVentaPage() {
                             key={p.id}
                             type="button"
                             onClick={() => addToCart(p)}
-                            disabled={p.stock < 1}
+                            disabled={!canAddPosCatalogProduct(p)}
                             className="flex items-center gap-3 w-full p-2 rounded-lg border bg-card hover:bg-muted/50 text-left disabled:opacity-50 disabled:pointer-events-none"
                           >
                             <div className="relative h-10 w-10 shrink-0 rounded overflow-hidden bg-muted">
@@ -436,9 +453,9 @@ export default function PuntoVentaPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-medium truncate">{p.name}</p>
-                                {p.stock < 1 && (
-                                  <Badge variant="destructive" className="text-xs shrink-0">
-                                    Agotado
+                                {isPosBackorderOnly(p) && (
+                                  <Badge variant="outline" className="text-xs shrink-0 border-amber-500 text-amber-700 dark:text-amber-300">
+                                    Por encargo
                                   </Badge>
                                 )}
                                 {isInactiveWithStock(p) && (
@@ -448,7 +465,8 @@ export default function PuntoVentaPage() {
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                ${Number(p.price).toLocaleString("es-AR", FORMAT_NUM)} · Stock {p.stock}
+                                ${Number(p.price).toLocaleString("es-AR", FORMAT_NUM)}
+                                {isPosBackorderOnly(p) ? " · Sin stock" : ` · Stock ${p.stock}`}
                               </p>
                             </div>
                             <Button
@@ -457,7 +475,7 @@ export default function PuntoVentaPage() {
                               variant="outline"
                               className={addedProductId === p.id ? "shrink-0 bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 hover:text-white" : "shrink-0"}
                               onClick={(e) => handleAddToCartClick(p, e)}
-                              disabled={p.stock < 1 || addingProductId === p.id}
+                              disabled={!canAddPosCatalogProduct(p) || addingProductId === p.id}
                             >
                               {addingProductId === p.id ? (
                                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -478,7 +496,7 @@ export default function PuntoVentaPage() {
                             key={p.id}
                             type="button"
                             onClick={(e) => handleAddToCartClick(p, e)}
-                            disabled={p.stock < 1 || addingProductId === p.id}
+                            disabled={!canAddPosCatalogProduct(p) || addingProductId === p.id}
                             className="flex flex-col gap-2 p-2 rounded-lg border bg-card hover:bg-muted/50 text-left disabled:opacity-50 disabled:pointer-events-none"
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -494,9 +512,9 @@ export default function PuntoVentaPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <p className="text-xs font-medium truncate">{p.name}</p>
-                                  {p.stock < 1 && (
-                                    <Badge variant="destructive" className="text-[10px] shrink-0 px-1">
-                                      Agotado
+                                  {isPosBackorderOnly(p) && (
+                                    <Badge variant="outline" className="text-[10px] shrink-0 px-1 border-amber-500 text-amber-700 dark:text-amber-300">
+                                      Encargo
                                     </Badge>
                                   )}
                                   {isInactiveWithStock(p) && (
@@ -506,7 +524,8 @@ export default function PuntoVentaPage() {
                                   )}
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  ${Number(p.price).toLocaleString("es-AR", FORMAT_NUM)} · Stock {p.stock}
+                                  ${Number(p.price).toLocaleString("es-AR", FORMAT_NUM)}
+                                  {isPosBackorderOnly(p) ? " · Sin stock" : ` · Stock ${p.stock}`}
                                 </p>
                               </div>
                             </div>
@@ -813,12 +832,24 @@ export default function PuntoVentaPage() {
                   onChange={(e) => setSearchProduct(e.target.value)}
                   className="max-w-md"
                 />
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="pos-show-backorder-modal"
+                    checked={showBackorderProducts}
+                    onCheckedChange={(c) => setShowBackorderProducts(c === true)}
+                  />
+                  <Label htmlFor="pos-show-backorder-modal" className="text-sm font-normal cursor-pointer">
+                    Incluir venta por encargo (sin stock)
+                  </Label>
+                </div>
                 <Tabs value={productsModalFilter} onValueChange={(v) => setProductsModalFilter(v as "all" | "active" | "inactive" | "out_of_stock")} className="flex-1 flex flex-col min-h-0">
-                  <TabsList className="grid w-full max-w-md grid-cols-4">
+                  <TabsList className="grid w-full max-w-lg grid-cols-4">
                     <TabsTrigger value="all">Todos</TabsTrigger>
-                    <TabsTrigger value="active">Activos</TabsTrigger>
+                    <TabsTrigger value="active">Con stock</TabsTrigger>
                     <TabsTrigger value="inactive">Inactivos</TabsTrigger>
-                    <TabsTrigger value="out_of_stock">Agotados</TabsTrigger>
+                    <TabsTrigger value="out_of_stock" disabled={!showBackorderProducts}>
+                      Por encargo
+                    </TabsTrigger>
                   </TabsList>
                 <div className="border rounded-md overflow-auto flex-1 min-h-[320px] mt-3">
                   {loadingProducts ? (
@@ -855,9 +886,9 @@ export default function PuntoVentaPage() {
                             <td className="p-2 font-mono text-xs">{p.code ?? "—"}</td>
                             <td className="p-2">
                               <span className="font-medium">{p.name}</span>
-                              {p.stock < 1 && (
-                                <Badge variant="destructive" className="ml-1.5 text-xs">
-                                  Agotado
+                              {isPosBackorderOnly(p) && (
+                                <Badge variant="outline" className="ml-1.5 text-xs border-amber-500 text-amber-700 dark:text-amber-300">
+                                  Por encargo
                                 </Badge>
                               )}
                               {isInactiveWithStock(p) && (
@@ -868,7 +899,7 @@ export default function PuntoVentaPage() {
                             </td>
                             <td className="p-2 text-muted-foreground">{p.category_name ?? "—"}</td>
                             <td className="p-2 text-right">${Number(p.price).toLocaleString("es-AR", FORMAT_NUM)}</td>
-                            <td className="p-2 text-right">{p.stock}</td>
+                            <td className="p-2 text-right">{isPosBackorderOnly(p) ? "0 (encargo)" : p.stock}</td>
                             <td className="p-2 text-right">
                               <Button
                                 type="button"
@@ -876,7 +907,7 @@ export default function PuntoVentaPage() {
                                 variant="outline"
                                 className={addedProductId === p.id ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 hover:text-white" : ""}
                                 onClick={() => handleAddToCartClick(p)}
-                                disabled={p.stock < 1 || addingProductId === p.id}
+                                disabled={!canAddPosCatalogProduct(p) || addingProductId === p.id}
                               >
                                 {addingProductId === p.id ? (
                                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />

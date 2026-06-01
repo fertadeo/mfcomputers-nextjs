@@ -7,6 +7,7 @@ import { Minus, Plus, Trash2 } from "lucide-react"
 import Image from "next/image"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import { getPosCartLineKey, getPosCartLineLabel, isPosCustomLine, type PosCartLine } from "@/lib/pos-cart"
+import { posCatalogMaxQuantity } from "@/lib/pos-products"
 
 const FORMAT_NUM = { maximumFractionDigits: 0, minimumFractionDigits: 0 } as const
 
@@ -37,7 +38,7 @@ export function PosCartItemRow({
   const lineKey = getPosCartLineKey(line)
   const label = getPosCartLineLabel(line)
   const custom = isPosCustomLine(line)
-  const maxQty = custom ? undefined : line.product.stock
+  const maxQty = custom ? undefined : posCatalogMaxQuantity(line.product)
   const lineTotal = line.quantity * line.unit_price
 
   const qtyControls = (

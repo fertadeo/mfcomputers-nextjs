@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +20,13 @@ import {
   type CreateSupplierRequest 
 } from "@/lib/api"
 import { toast } from "sonner"
+import {
+  formatCuitDisplay,
+  getArcaPadronDisplayName,
+  getArcaPadronIvaHint,
+  type ArcaPadronResult,
+} from "@/lib/arca-padron"
+import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 
 interface SupplierModalProps {
   isOpen: boolean
@@ -70,6 +77,19 @@ export function SupplierModal({
       resetForm()
     }
   }, [isOpen, supplierId, mode])
+
+  const applyPadron = useCallback((data: ArcaPadronResult) => {
+    const name = getArcaPadronDisplayName(data)
+    const iva = getArcaPadronIvaHint(data)
+    setFormData((prev) => ({
+      ...prev,
+      name: name || prev.name,
+      legal_name: data.razonSocial || data.name || prev.legal_name,
+      trade_name: name || prev.trade_name,
+      id_type: "CUIT",
+      vat_condition: iva || prev.vat_condition,
+    }))
+  }, [])
 
   const loadSupplier = async () => {
     if (!supplierId) return
@@ -343,14 +363,15 @@ export function SupplierModal({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tax_id">CUIT</Label>
-                  <Input
-                    id="tax_id"
-                    placeholder="30-12345678-9"
-                    value={formData.tax_id || ""}
-                    onChange={(e) => handleInputChange('tax_id', e.target.value)}
-                    disabled={isReadOnly}
+                <div className="md:col-span-2">
+                  <ArcaPadronCuitField
+                    entityType="supplier"
+                    cuitValue={formData.tax_id || ""}
+                    onCuitChange={(v) => handleInputChange("tax_id", formatCuitDisplay(v))}
+                    onApplyPadron={applyPadron}
+                    disabled={isReadOnly || isLoading}
+                    inputId="tax_id"
+                    label="CUIT"
                   />
                 </div>
 

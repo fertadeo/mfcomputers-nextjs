@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,8 @@ import {
   IdCard
 } from "lucide-react"
 import { updateCliente } from "@/lib/api"
+import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
+import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { SALES_CHANNEL_CONFIG, SalesChannel } from "@/lib/utils"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 
@@ -133,6 +135,22 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
       setSuccessMessage("")
     }
   }, [cliente, isOpen])
+
+  const applyPadron = useCallback((data: ArcaPadronResult) => {
+    const name = getArcaPadronDisplayName(data)
+    setFormData((prev) => ({
+      ...prev,
+      name: name || prev.name,
+      personeria: data.personeriaSugerida ?? prev.personeria,
+    }))
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next.cuil_cuit
+      delete next.name
+      delete next.personeria
+      return next
+    })
+  }, [])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -379,27 +397,18 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="cuil_cuit" className="flex items-center gap-2">
-                    <IdCard className="h-4 w-4 text-gray-500" />
-                    CUIL / CUIT
-                  </Label>
-                  <Input
-                    id="cuil_cuit"
-                    type="text"
-                    value={formData.cuil_cuit}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      const digits = onlyDigitsCuil(v)
-                      const formatted = digits.length <= 2 ? digits : formatCuilCuitDisplay(v)
-                      handleInputChange("cuil_cuit", formatted)
-                    }}
-                    placeholder="11 dígitos (ej. 20-12345678-9)"
-                    className={errors.cuil_cuit ? "border-red-500" : ""}
-                    maxLength={13}
+                <div className="md:col-span-2">
+                  <ArcaPadronCuitField
+                    entityType="client"
+                    cuitValue={formData.cuil_cuit}
+                    onCuitChange={(v) => handleInputChange("cuil_cuit", v)}
+                    onApplyPadron={applyPadron}
+                    disabled={isLoading}
+                    inputId="cuil_cuit"
+                    label="CUIL / CUIT"
                   />
                   {errors.cuil_cuit && (
-                    <p className="text-sm text-red-500 flex items-center gap-1">
+                    <p className="text-sm text-red-500 flex items-center gap-1 mt-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.cuil_cuit}
                     </p>

@@ -12,6 +12,12 @@ import {
   resolveFacturacionError,
   type FacturacionErrorInfo,
 } from '@/lib/facturacion-errors';
+import {
+  formatArcaPadronError,
+  normalizeArcaPadronPayload,
+  normalizeCuitDigits,
+  type ArcaPadronResult,
+} from '@/lib/arca-padron';
 
 // Función helper para obtener el token de autenticación
 function getAuthToken(): string | null {
@@ -352,6 +358,39 @@ export async function createCliente(clienteData: {
     });
     throw error;
   }
+}
+
+/** Consulta padrón ARCA (MultiCUIT) para autocompletar alta de cliente. */
+export async function getClientArcaPadron(cuit: string): Promise<ArcaPadronResult> {
+  return fetchArcaPadron('clients/padron', cuit);
+}
+
+/** Consulta padrón ARCA (MultiCUIT) para autocompletar alta de proveedor. */
+export async function getSupplierArcaPadron(cuit: string): Promise<ArcaPadronResult> {
+  return fetchArcaPadron('suppliers/padron', cuit);
+}
+
+async function fetchArcaPadron(pathPrefix: string, cuit: string): Promise<ArcaPadronResult> {
+  const digits = normalizeCuitDigits(cuit);
+  if (digits.length !== 11) {
+    throw new Error(formatArcaPadronError(400, { code: 'INVALID_CUIT' }));
+  }
+  const apiUrl = getApiUrl();
+  const response = await fetch(`${apiUrl}${pathPrefix}/${digits}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+  const text = await response.text();
+  let payload: unknown = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    throw new Error(formatArcaPadronError(response.status, payload));
+  }
+  return normalizeArcaPadronPayload(payload);
 }
 
 // Función para eliminar un cliente (soft/hard delete automático)

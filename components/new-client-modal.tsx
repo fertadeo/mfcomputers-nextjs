@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { User, Mail, Phone, MapPin, Building, AlertCircle, CheckCircle } from "lucide-react"
 import { createCliente } from "@/lib/api"
+import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
+import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { SALES_CHANNEL_CONFIG } from "@/lib/utils"
 
 interface NewClientModalProps {
@@ -68,6 +70,15 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
   const [success, setSuccess] = useState(false)
 
   const isManualChannel = formData.sales_channel === "manual"
+
+  const applyPadron = useCallback((data: ArcaPadronResult) => {
+    const name = getArcaPadronDisplayName(data)
+    setFormData((prev) => ({
+      ...prev,
+      name: name || prev.name,
+      personeria: data.personeriaSugerida ?? prev.personeria,
+    }))
+  }, [])
 
   const handleInputChange = (field: keyof NewClientData, value: string) => {
     setFormData(prev => ({
@@ -258,20 +269,14 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cuil_cuit">CUIL / CUIT</Label>
-                  <Input
-                    id="cuil_cuit"
-                    value={formData.cuil_cuit}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      const digits = onlyDigits(v)
-                      const formatted = digits.length <= 2 ? digits : formatCuilCuit(v)
-                      handleInputChange("cuil_cuit", formatted)
-                    }}
-                    placeholder="11 dígitos (ej. 20-12345678-9)"
+                <div className="md:col-span-2">
+                  <ArcaPadronCuitField
+                    entityType="client"
+                    cuitValue={formData.cuil_cuit}
+                    onCuitChange={(v) => handleInputChange("cuil_cuit", v)}
+                    onApplyPadron={applyPadron}
                     disabled={loading || !isManualChannel}
-                    maxLength={13}
+                    inputId="cuil_cuit"
                   />
                 </div>
               </div>
