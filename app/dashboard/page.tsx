@@ -27,7 +27,6 @@ import {
   TrendingDown,
   AlertTriangle,
   CheckCircle,
-  Clock,
   Zap,
   Users,
   ShoppingCart,
@@ -450,25 +449,11 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-turquoise-500 rounded-full"></div>
-                    <span className="text-sm">MercadoLibre</span>
+                    <span className="text-sm">ARCA</span>
                   </div>
                   <Badge variant="default" className="bg-turquoise-500">
                     Activo
                   </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <span className="text-sm">AFIP</span>
-                  </div>
-                  <Badge variant="destructive">Desconectado</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                    <span className="text-sm">Shopify</span>
-                  </div>
-                  <Badge variant="outline">Sincronizando</Badge>
                 </div>
               </div>
               <Button variant="outline" size="sm" className="w-full bg-transparent">
@@ -479,52 +464,6 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Alertas y Notificaciones */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Alertas Importantes
-            </CardTitle>
-            <CardDescription>Notificaciones que requieren atención</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
-                <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium">Stock crítico detectado</div>
-                  <div className="text-xs text-muted-foreground">
-                    {(productStats?.low_stock_count || 0) + (productStats?.out_of_stock_count || 0)} productos por debajo del stock mínimo
-                  </div>
-                </div>
-                <Button variant="outline" size="sm">
-                  Revisar
-                </Button>
-              </div>
-              <div className="flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                <Clock className="h-4 w-4 text-yellow-500 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium">Pedidos atrasados</div>
-                  <div className="text-xs text-muted-foreground">0 pedidos superaron el tiempo estimado de entrega</div>
-                </div>
-                <Button variant="outline" size="sm">
-                  Ver pedidos
-                </Button>
-              </div>
-              <div className="flex items-start gap-3 p-3 bg-turquoise-50 dark:bg-turquoise-950/20 rounded-lg border border-turquoise-200 dark:border-turquoise-800">
-                <Zap className="h-4 w-4 text-turquoise-500 mt-0.5" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium">Integración AFIP desconectada</div>
-                  <div className="text-xs text-muted-foreground">Reconectar para continuar con la facturación</div>
-                </div>
-                <Button variant="outline" size="sm">
-                  Conectar
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </ERPLayout>
   )
