@@ -338,7 +338,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <div className="p-2 bg-turquoise-100 dark:bg-turquoise-900/20 rounded-lg">
@@ -389,28 +389,29 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-gray-500" />
-                    Nombre Completo *
-                  </Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    placeholder="Ej: María González"
-                    className={errors.name ? "border-red-500" : ""}
-                    disabled={isLoading || padronLocked}
-                    readOnly={padronLocked}
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-red-500 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {errors.name}
-                    </p>
-                  )}
-                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="name" className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-gray-500" />
+                  Nombre / Razón social *
+                </Label>
+                <Input
+                  id="name"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
+                  placeholder="Nombre o razón social"
+                  className={`w-full ${errors.name ? "border-red-500" : ""}`}
+                  disabled={isLoading || padronLocked}
+                  readOnly={padronLocked}
+                />
+                {errors.name && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.name}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

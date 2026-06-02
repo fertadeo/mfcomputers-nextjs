@@ -244,7 +244,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
@@ -285,16 +285,6 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nombre Completo *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    placeholder="Nombre o razón social"
-                    disabled={loading || !isManualChannel || padronLocked}
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="personeria">Personería</Label>
                   <Select
                     value={formData.personeria}
@@ -310,6 +300,17 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       <SelectItem value="persona_juridica">Persona jurídica</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="name">Nombre / Razón social *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    placeholder="Nombre o razón social"
+                    disabled={loading || !isManualChannel || padronLocked}
+                    className="w-full"
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <ArcaPadronCuitField
