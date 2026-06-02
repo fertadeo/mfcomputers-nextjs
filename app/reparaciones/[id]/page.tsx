@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +23,7 @@ import {
 import {
   getRepairOrder,
   getClienteById,
+  getClientes,
   getProductById,
   updateRepairOrder,
   sendRepairOrderBudget,
@@ -39,6 +40,7 @@ import {
   type RepairOrderPayment,
 } from "@/lib/api"
 import { RepairOrderAddItemModal } from "@/components/repair-order-add-item-modal"
+import { RepairOrderEditItemModal } from "@/components/repair-order-edit-item-modal"
 import {
   getRepairOrderItemDisplayName,
   isRepairOrderCustomItem,
@@ -73,6 +75,7 @@ import {
   Edit2,
   Trash2,
   Plus,
+  Search,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -200,9 +203,20 @@ async function enrichRepairOrderForDisplay(data: RepairOrder): Promise<RepairOrd
   }
 }
 
+function canManageRepairItems(status: RepairOrderStatus): boolean {
+  return status === "consulta_recibida" || status === "presupuestado"
+}
+
+function canModifyRepairItem(status: RepairOrderStatus, item: RepairOrderItem): boolean {
+  if (status === "entregado" || status === "cancelado") return false
+  if (canManageRepairItems(status)) return true
+  return !item.stock_deducted
+}
+
 export default function RepairOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const id = params?.id as string | undefined
   const [order, setOrder] = useState<RepairOrder | null>(null)
   const [payments, setPayments] = useState<RepairOrderPayment[]>([])
@@ -227,6 +241,10 @@ export default function RepairOrderDetailPage() {
     notes: "",
   })
   const [saving, setSaving] = useState(false)
+  const [editClientId, setEditClientId] = useState<number | null>(null)
+  const [editClientSearch, setEditClientSearch] = useState("")
+  const [editClients, setEditClients] = useState<{ id: number; name: string }[]>([])
+  const [editingItem, setEditingItem] = useState<RepairOrderItem | null>(null)
 
   const loadOrder = async () => {
     if (!id) return
@@ -252,6 +270,9 @@ export default function RepairOrderDetailPage() {
         labor_amount: parseFloat(String(enriched.labor_amount || "0")) || 0,
         notes: enriched.notes || "",
       })
+      setEditClientId(enriched.client_id)
+      setEditClientSearch(enriched.client?.name ?? "")
+      setEditClients([])
     } catch (e: unknown) {
       const err = e as { status?: number }
       if (err?.status === 404) {
@@ -283,6 +304,26 @@ export default function RepairOrderDetailPage() {
     if (order) loadPayments()
   }, [order?.id])
 
+  useEffect(() => {
+    if (!editMode || editClientSearch.trim().length < 2) {
+      setEditClients([])
+      return
+    }
+    const t = setTimeout(() => {
+      getClientes(1, 20, editClientSearch.trim(), "active")
+        .then((r) =>
+          setEditClients(
+            (r.clients || []).map((c: { id: number; name: string }) => ({
+              id: c.id,
+              name: c.name,
+            }))
+          )
+        )
+        .catch(() => setEditClients([]))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [editMode, editClientSearch])
+
   const refreshOrder = () => {
     loadOrder()
     loadPayments()
@@ -292,6 +333,17 @@ export default function RepairOrderDetailPage() {
     order &&
     order.status !== "entregado" &&
     order.status !== "cancelado"
+
+  useEffect(() => {
+    if (
+      searchParams.get("edit") === "1" &&
+      order &&
+      order.status !== "entregado" &&
+      order.status !== "cancelado"
+    ) {
+      setEditMode(true)
+    }
+  }, [searchParams, order?.id, order?.status])
 
   const handleSendBudget = async () => {
     if (!id || !order) return
@@ -356,10 +408,15 @@ export default function RepairOrderDetailPage() {
       toast.error("Indicá la falla declarada por el cliente")
       return
     }
+    if (!editClientId) {
+      toast.error("Seleccioná un cliente")
+      return
+    }
     setSaving(true)
     try {
       const labor = editForm.labor_amount
       await updateRepairOrder(id, {
+        client_id: editClientId,
         equipment_description: buildEquipmentDescriptionString(equipmentFields),
         customer_declared_fault: editForm.customer_declared_fault.trim(),
         diagnosis: editForm.diagnosis || undefined,
@@ -484,7 +541,56 @@ export default function RepairOrderDetailPage() {
                 {REPAIR_ORDER_STATUS_LABELS[status] ?? status}
               </Badge>
             </div>
+            <div className="flex flex-wrap gap-2">
+              {canEdit && !editMode && (
+                <Button variant="default" size="sm" onClick={() => setEditMode(true)}>
+                  <Edit2 className="h-4 w-4 mr-1" /> Editar orden
+                </Button>
+              )}
+              {canEdit && editMode && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (order) {
+                      const eq = parseEquipmentDescriptionString(order.equipment_description || "")
+                      setEquipmentFields({
+                        brandModel: eq.brandModel,
+                        equipmentType: eq.equipmentType,
+                        equipmentTypeOther: eq.equipmentTypeOther,
+                        serialNumber: eq.serialNumber,
+                      })
+                      setEditForm({
+                        customer_declared_fault: order.customer_declared_fault || "",
+                        diagnosis: order.diagnosis || "",
+                        work_description: order.work_description || "",
+                        reception_date: order.reception_date?.slice(0, 10) || "",
+                        delivery_date_estimated: order.delivery_date_estimated?.slice(0, 10) || "",
+                        labor_amount: parseFloat(String(order.labor_amount || "0")) || 0,
+                        notes: order.notes || "",
+                      })
+                      setEditClientId(order.client_id)
+                      setEditClientSearch(order.client?.name ?? "")
+                      setEditClients([])
+                    }
+                    setEditMode(false)
+                  }}
+                >
+                  Cancelar edición
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={handleDownloadReceptionPdf}>
+                <FileDown className="h-4 w-4 mr-1" /> PDF recepción
+              </Button>
+            </div>
           </div>
+
+          {editMode && (
+            <div className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-sm">
+              Estás editando la orden. Guardá los cambios en el formulario de datos o modificá los
+              materiales desde la tabla inferior.
+            </div>
+          )}
 
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
@@ -521,19 +627,46 @@ export default function RepairOrderDetailPage() {
                     )}
                     <p><strong>Mano de obra:</strong> {formatMoney(order.labor_amount)}</p>
                     {order.notes && <p><strong>Notas:</strong> {order.notes}</p>}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Button variant="outline" size="sm" onClick={handleDownloadReceptionPdf}>
-                        <FileDown className="h-4 w-4 mr-1" /> PDF recepción
-                      </Button>
-                      {canEdit && (
-                        <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
-                          <Edit2 className="h-4 w-4 mr-1" /> Editar
-                        </Button>
-                      )}
-                    </div>
                   </>
                 ) : (
                   <form onSubmit={handleSaveEdit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Cliente *</Label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Input
+                          className="pl-9"
+                          placeholder="Buscar cliente activo…"
+                          value={editClientSearch}
+                          onChange={(e) => {
+                            setEditClientSearch(e.target.value)
+                            if (!e.target.value.trim()) setEditClientId(null)
+                          }}
+                        />
+                      </div>
+                      {editClients.length > 0 && (
+                        <ul className="border rounded-md max-h-36 overflow-y-auto divide-y">
+                          {editClients.map((c) => (
+                            <li key={c.id}>
+                              <button
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                                onClick={() => {
+                                  setEditClientId(c.id)
+                                  setEditClientSearch(c.name)
+                                  setEditClients([])
+                                }}
+                              >
+                                {c.name}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {editClientId ? (
+                        <p className="text-xs text-muted-foreground">Cliente ID: {editClientId}</p>
+                      ) : null}
+                    </div>
                     <div className="rounded-lg border p-3 space-y-2">
                       <Label>Equipo</Label>
                       <RepairOrderEquipmentFields
@@ -683,9 +816,10 @@ export default function RepairOrderDetailPage() {
                 Materiales (ítems)
               </CardTitle>
               <CardDescription>
-                Productos del stock utilizados en la reparación
+                Productos del catálogo o ítems manuales. Agregar/editar antes de aceptar el presupuesto;
+                después solo líneas sin stock descontado.
               </CardDescription>
-              {canEdit && status === "consulta_recibida" && (
+              {canEdit && canManageRepairItems(status) && (
                 <Button
                   size="sm"
                   className="mt-2"
@@ -706,7 +840,7 @@ export default function RepairOrderDetailPage() {
                       <TableHead>Cantidad</TableHead>
                       <TableHead>P. unit.</TableHead>
                       <TableHead className="text-right">Total</TableHead>
-                      {canEdit && <TableHead className="w-[80px]"></TableHead>}
+                      {canEdit && <TableHead className="w-[100px] text-right">Acciones</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -725,15 +859,30 @@ export default function RepairOrderDetailPage() {
                         <TableCell>{formatMoney(item.unit_price)}</TableCell>
                         <TableCell className="text-right">{formatMoney(item.total_price)}</TableCell>
                         {canEdit && (
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive"
-                              onClick={() => handleDeleteItem(item.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-0.5">
+                              {canModifyRepairItem(status, item) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Editar cantidad y precio"
+                                  onClick={() => setEditingItem(item)}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {canModifyRepairItem(status, item) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-destructive"
+                                  title="Quitar ítem"
+                                  onClick={() => handleDeleteItem(item.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                       </TableRow>
@@ -858,6 +1007,13 @@ export default function RepairOrderDetailPage() {
           orderId={id}
           isOpen={addItemOpen}
           onClose={() => setAddItemOpen(false)}
+          onSuccess={refreshOrder}
+        />
+        <RepairOrderEditItemModal
+          orderId={id}
+          item={editingItem}
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
           onSuccess={refreshOrder}
         />
         <RepairOrderPaymentModal

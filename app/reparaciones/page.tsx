@@ -22,7 +22,7 @@ import {
 } from "@/lib/api"
 import { getEquipmentListSummary } from "@/lib/repair-order-equipment"
 import { NewRepairOrderModal } from "@/components/new-repair-order-modal"
-import { Wrench, Plus, Search, RefreshCw, Eye, Calendar } from "lucide-react"
+import { Wrench, Plus, Search, RefreshCw, Eye, Edit2, Calendar } from "lucide-react"
 import { toast } from "sonner"
 import { Pagination } from "@/components/ui/pagination"
 
@@ -545,6 +545,17 @@ export default function ReparacionesPage() {
                                     }
                                   >
                                     <WhatsAppGlyph className="h-5 w-5 opacity-40" />
+                                  </Button>
+                                )}
+                                {order.status !== "entregado" && order.status !== "cancelado" && (
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                                    <Link
+                                      href={`/reparaciones/${order.id}?edit=1`}
+                                      title="Editar orden"
+                                      aria-label="Editar orden"
+                                    >
+                                      <Edit2 className="h-4 w-4" />
+                                    </Link>
                                   </Button>
                                 )}
                                 <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
