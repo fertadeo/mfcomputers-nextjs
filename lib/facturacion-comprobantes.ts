@@ -95,3 +95,65 @@ export function formatComprobanteAfipReferencia(
   const letra = getLetraComprobanteAfip(tipo)
   return `${letra} ${formatPuntoVentaAfip(puntoVenta)}-${formatNumeroComprobanteAfip(numero)}`
 }
+
+/** Solo facturas (no notas de crédito) para badges en listados. */
+const FACTURA_TIPOS = [1, 6, 11] as const
+
+export function isFacturaTipoAfip(tipo: number): boolean {
+  return (FACTURA_TIPOS as readonly number[]).includes(tipo)
+}
+
+export interface TipoComprobanteBadgeStyle {
+  shortLabel: string
+  className: string
+}
+
+const TIPO_BADGE_STYLES: Record<number, TipoComprobanteBadgeStyle> = {
+  1: {
+    shortLabel: "Factura A",
+    className:
+      "border-blue-500/40 bg-blue-500/15 text-blue-800 dark:text-blue-200 font-semibold",
+  },
+  6: {
+    shortLabel: "Factura B",
+    className:
+      "border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 font-semibold",
+  },
+  11: {
+    shortLabel: "Factura C",
+    className:
+      "border-violet-500/40 bg-violet-500/15 text-violet-800 dark:text-violet-200 font-semibold",
+  },
+  3: {
+    shortLabel: "NC A",
+    className:
+      "border-blue-400/30 bg-blue-400/10 text-blue-700 dark:text-blue-300 font-medium",
+  },
+  8: {
+    shortLabel: "NC B",
+    className:
+      "border-emerald-400/30 bg-emerald-400/10 text-emerald-700 dark:text-emerald-300 font-medium",
+  },
+  13: {
+    shortLabel: "NC C",
+    className:
+      "border-violet-400/30 bg-violet-400/10 text-violet-700 dark:text-violet-300 font-medium",
+  },
+}
+
+export function getTipoComprobanteBadgeStyle(
+  tipo: number | null | undefined
+): TipoComprobanteBadgeStyle {
+  if (tipo == null || !Number.isFinite(tipo)) {
+    return {
+      shortLabel: "Sin tipo",
+      className: "border-border bg-muted text-muted-foreground",
+    }
+  }
+  return (
+    TIPO_BADGE_STYLES[tipo] ?? {
+      shortLabel: getTipoComprobanteLabel(tipo),
+      className: "border-border bg-muted text-muted-foreground font-medium",
+    }
+  )
+}

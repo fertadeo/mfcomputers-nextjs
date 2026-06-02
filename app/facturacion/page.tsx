@@ -75,6 +75,13 @@ import {
 } from "@/lib/facturacion-errors"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
+import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
+import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
+import {
+  labelCondicionIvaReceptor,
+  resolveFacturacionDesdeCliente,
+  resolveTipoComprobanteFromCondicionIvaReceptor,
+} from "@/lib/facturacion-cliente-fiscal"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -164,6 +171,15 @@ function buildFacturarPayload(form: FacturarSaleRequest, cliente: Cliente | null
   }
 
   return payload
+}
+
+function getBillableEmittedTipo(row: BillableRow): number | null {
+  if (row.arcaStatus !== "success") return null
+  const saleId = row.sale?.id ?? row.linkedSaleId ?? null
+  if (!saleId) return null
+  const cached = getCachedFacturacionEmision(saleId)
+  const tipo = cached?.emision?.tipo ?? cached?.facturarPayload?.tipo
+  return typeof tipo === "number" && Number.isFinite(tipo) ? tipo : null
 }
 
 export default function FacturacionPage() {
@@ -316,6 +332,14 @@ export default function FacturacionPage() {
         if (!sale.client_id) {
           if (!cancelled) {
             setModalCliente(null)
+            const fiscal = resolveFacturacionDesdeCliente(null)
+            setForm((prev) => ({
+              ...prev,
+              docTipo: 99,
+              docNro: 0,
+              condicionIvaReceptor: fiscal.condicionIvaReceptor,
+              tipo: fiscal.tipoComprobante,
+            }))
             console.log("[FACTURAR UI] Venta sin client_id → consumidor final (docTipo 99 / docNro 0).")
           }
           return
@@ -325,12 +349,15 @@ export default function FacturacionPage() {
         if (cancelled) return
         setModalCliente(cliente)
 
+        const fiscal = resolveFacturacionDesdeCliente(cliente)
         const cuil = soloDigitos(cliente.cuil_cuit)
         if (cuil.length === 11) {
           setForm((prev) => ({
             ...prev,
             docTipo: 80,
             docNro: parseInt(cuil, 10),
+            condicionIvaReceptor: fiscal.condicionIvaReceptor,
+            tipo: fiscal.tipoComprobante,
           }))
           console.log("[FACTURAR UI] Cliente con CUIT/CUIL 11 dígitos → docTipo 80, docNro derivado del cliente.")
         } else {
@@ -338,6 +365,8 @@ export default function FacturacionPage() {
             ...prev,
             docTipo: 99,
             docNro: 0,
+            condicionIvaReceptor: fiscal.condicionIvaReceptor,
+            tipo: fiscal.tipoComprobante,
           }))
           console.log(
             "[FACTURAR UI] Cliente sin CUIT válido o venta informal → consumidor final (docTipo 99 / docNro 0)."
@@ -347,7 +376,14 @@ export default function FacturacionPage() {
         console.warn("[FACTURAR UI] No se pudo obtener el cliente; se usa consumidor final (docTipo 99 / docNro 0).", e)
         if (!cancelled) {
           setModalCliente(null)
-          setForm((prev) => ({ ...prev, docTipo: 99, docNro: 0 }))
+          const fiscal = resolveFacturacionDesdeCliente(null)
+          setForm((prev) => ({
+            ...prev,
+            docTipo: 99,
+            docNro: 0,
+            condicionIvaReceptor: fiscal.condicionIvaReceptor,
+            tipo: fiscal.tipoComprobante,
+          }))
         }
       } finally {
         if (!cancelled) setModalClienteLoading(false)
@@ -772,6 +808,7 @@ export default function FacturacionPage() {
                     <TableHead>Cliente</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Estado ARCA</TableHead>
+                    <TableHead>Tipo factura</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -779,15 +816,16 @@ export default function FacturacionPage() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={6}>Cargando comprobantes...</TableCell>
+                      <TableCell colSpan={7}>Cargando comprobantes...</TableCell>
                     </TableRow>
                   ) : filteredBillables.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6}>No hay ventas ni reparaciones para los filtros aplicados.</TableCell>
+                      <TableCell colSpan={7}>No hay ventas ni reparaciones para los filtros aplicados.</TableCell>
                     </TableRow>
                   ) : (
                     filteredBillables.map((row) => {
                       const status = row.arcaStatus
+                      const emittedTipo = getBillableEmittedTipo(row)
                       return (
                         <TableRow key={row.key}>
                           <TableCell className="font-medium">
@@ -816,6 +854,17 @@ export default function FacturacionPage() {
                                 </p>
                               ) : null}
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {status === "success" ? (
+                              emittedTipo != null ? (
+                                <TipoComprobanteBadge tipo={emittedTipo} />
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
                           </TableCell>
                           <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
                           <TableCell className="text-right">
@@ -1052,6 +1101,30 @@ export default function FacturacionPage() {
                     <p className="text-muted-foreground text-sm">Cargando datos fiscales del cliente…</p>
                   ) : null}
 
+                  {!modalClienteLoading && invoiceModalMode === "emit" ? (
+                    <Alert
+                      variant="info"
+                      title="Tipo de factura según condición fiscal"
+                      description={
+                        <div className="space-y-2 text-sm">
+                          <p>
+                            Se emitirá{" "}
+                            <TipoComprobanteBadge tipo={form.tipo} className="align-middle" /> (
+                            {getTipoComprobanteLabel(form.tipo)}) según{" "}
+                            {modalCliente?.tax_condition
+                              ? formatTaxConditionLabel(modalCliente.tax_condition)
+                              : labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)}{" "}
+                            del cliente.
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            Responsable inscripto → Factura A; monotributo → Factura C; consumidor final / exento →
+                            Factura B. Podés ajustar en opciones avanzadas si hace falta.
+                          </p>
+                        </div>
+                      }
+                    />
+                  ) : null}
+
                   {!showAdvancedEmitForm ? (
                     <div className="space-y-3">
                       <Alert
@@ -1059,9 +1132,11 @@ export default function FacturacionPage() {
                         title="Emisión con configuración guardada"
                         description={
                           <div className="space-y-1 text-sm">
-                            <p>
-                              Se emitirá <strong>{getTipoComprobanteLabel(form.tipo)}</strong>, condición IVA receptor{" "}
-                              <strong>{form.condicionIvaReceptor}</strong>, concepto{" "}
+                            <p className="flex flex-wrap items-center gap-2">
+                              Se emitirá <TipoComprobanteBadge tipo={form.tipo} /> (
+                              {getTipoComprobanteLabel(form.tipo)}), condición IVA receptor{" "}
+                              <strong>{form.condicionIvaReceptor}</strong> (
+                              {labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)}), concepto{" "}
                               <strong>{form.concepto === 1 ? "Productos" : form.concepto === 2 ? "Servicios" : "Productos + servicios"}</strong>.
                             </p>
                             <p className="text-muted-foreground text-xs">
@@ -1111,8 +1186,8 @@ export default function FacturacionPage() {
                             </SelectContent>
                           </Select>
                           <p className="text-muted-foreground text-xs">
-                            Para ventas al público con consumidor final suele corresponder{" "}
-                            <strong>Factura B (6)</strong>, no Factura C (11).
+                            El tipo se sugiere automáticamente desde la condición fiscal del cliente; al cambiar la
+                            condición IVA del receptor se actualiza el tipo sugerido.
                           </p>
                         </div>
 
@@ -1120,12 +1195,15 @@ export default function FacturacionPage() {
                           <Label htmlFor="facturar-condicion-iva">Condición IVA receptor</Label>
                           <Select
                             value={String(form.condicionIvaReceptor ?? 5)}
-                            onValueChange={(value) =>
+                            onValueChange={(value) => {
+                              const cond = parseInt(value, 10) || 5
+                              const tipo = resolveTipoComprobanteFromCondicionIvaReceptor(cond)
                               setForm((prev) => ({
                                 ...prev,
-                                condicionIvaReceptor: parseInt(value, 10) || 5,
+                                condicionIvaReceptor: cond,
+                                tipo,
                               }))
-                            }
+                            }}
                           >
                             <SelectTrigger id="facturar-condicion-iva" className="w-full">
                               <SelectValue />

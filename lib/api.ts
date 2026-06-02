@@ -90,6 +90,8 @@ export interface Cliente {
   cuil_cuit?: string | null;
   person_type?: "persona_fisica" | "persona_juridica";
   tax_condition?: "inscripto" | "consumidor_final" | "monotributo" | "responsable_inscripto" | "exento";
+  /** Código AFIP condición IVA receptor (si el backend lo persiste). */
+  condicion_iva_receptor?: number;
 }
 
 export interface ClientesResponse {
