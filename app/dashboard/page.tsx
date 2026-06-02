@@ -18,6 +18,8 @@ import {
 } from "@/lib/api"
 import { fetchMonthlySalesBreakdown, type MonthlySalesBreakdown } from "@/lib/dashboard-monthly-sales"
 import { fetchDashboardInsights, type DashboardInsightsView } from "@/lib/dashboard-insights"
+import { fetchDashboardChartData, type DashboardChartData } from "@/lib/dashboard-chart-data"
+import { DashboardCharts } from "@/components/dashboard-charts"
 import {
   Package,
   DollarSign,
@@ -48,6 +50,7 @@ export default function Dashboard() {
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
   const [monthlySales, setMonthlySales] = useState<MonthlySalesBreakdown | null>(null)
   const [insights, setInsights] = useState<DashboardInsightsView | null>(null)
+  const [chartData, setChartData] = useState<DashboardChartData | null>(null)
 
   // Cargar datos al montar el componente (incl. GET /api/dashboard/stats para gerencia/finanzas)
   useEffect(() => {
@@ -88,6 +91,14 @@ export default function Dashboard() {
 
         const insightsData = await fetchDashboardInsights(productStatsData).catch(() => null)
         if (insightsData) setInsights(insightsData)
+
+        const charts = await fetchDashboardChartData(
+          monthlyData.fromPos,
+          monthlyData.fromOrders,
+          insightsData?.repairPipeline.byStatus ?? {},
+          REPAIR_ORDER_STATUS_LABELS
+        ).catch(() => null)
+        if (charts) setChartData(charts)
       } catch (error) {
         console.error('Error al cargar datos del dashboard:', error)
       } finally {
@@ -296,6 +307,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <DashboardCharts loading={loading} data={chartData} />
 
         {/* Destacados del mes */}
         <div>
