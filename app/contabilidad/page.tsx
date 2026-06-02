@@ -1,11 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
-import { getCashDay } from "@/lib/cash"
 import { PLAN_CUENTAS_DATA, getCuentasMovibles } from "@/lib/plan-cuentas"
 import {
   BookText,
@@ -16,44 +14,14 @@ import {
   BarChart3,
   Table2,
   ArrowRight,
-  DollarSign,
   FileText,
-  Loader2,
   Calendar,
 } from "lucide-react"
 
 export default function ContabilidadPage() {
-  const [cashDay, setCashDay] = useState<{
-    incomes: number
-    expenses: number
-    balance: number
-  } | null>(null)
-  const [cashLoading, setCashLoading] = useState(true)
-
-  useEffect(() => {
-    getCashDay()
-      .then((data) =>
-        setCashDay({
-          incomes: data.incomes,
-          expenses: data.expenses,
-          balance: data.balance,
-        })
-      )
-      .catch(() => setCashDay(null))
-      .finally(() => setCashLoading(false))
-  }, [])
-
   const ejercicioActual = new Date().getFullYear()
   const totalCuentas = PLAN_CUENTAS_DATA.length
   const cuentasMovibles = getCuentasMovibles().length
-
-  const formatMoney = (value: number) =>
-    new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
 
   const modules = [
     {
@@ -161,41 +129,6 @@ export default function ContabilidadPage() {
                 </p>
               </CardContent>
             </Card>
-
-            <Link href="/caja">
-              <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Caja hoy
-                  </CardTitle>
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  {cashLoading ? (
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  ) : cashDay ? (
-                    <>
-                      <div className="text-2xl font-bold">
-                        {formatMoney(cashDay.balance)}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Ingresos {formatMoney(cashDay.incomes)} · Egresos{" "}
-                        {formatMoney(cashDay.expenses)}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-2xl font-bold text-muted-foreground">
-                        —
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Ver módulo Caja
-                      </p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
 
             <Link href="/contabilidad/plan-cuentas">
               <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">

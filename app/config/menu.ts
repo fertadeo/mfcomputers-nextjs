@@ -73,13 +73,14 @@ export const MENU_GROUPS: MenuGroup[] = [
         href: "/dashboard",
         requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas', 'admin', 'manager', 'viewer']
       },
-      { 
-        id: "caja", 
-        label: "Caja", 
-        icon: DollarSign, 
-        href: "/caja",
-        requiredRoles: ['gerencia', 'finanzas', 'admin']
-      },
+      // Módulo Caja oculto temporalmente
+      // {
+      //   id: "caja",
+      //   label: "Caja",
+      //   icon: DollarSign,
+      //   href: "/caja",
+      //   requiredRoles: ['gerencia', 'finanzas', 'admin']
+      // },
     ]
   },
   {
