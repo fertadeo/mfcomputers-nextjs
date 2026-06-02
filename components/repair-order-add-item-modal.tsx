@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getProducts, addRepairOrderItem } from "@/lib/api"
 import type { Product } from "@/lib/api"
+import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { CurrencyFieldInput } from "@/components/currency-field-input"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
@@ -148,7 +149,8 @@ export function RepairOrderAddItemModal({
               Agregar material
             </DialogTitle>
             <DialogDescription className="break-words">
-              Producto del stock a usar en la reparación. El stock se descuenta al aceptar el presupuesto.
+              Producto del catálogo o ítem manual (sin stock). El stock de catálogo se descuenta al aceptar el
+              presupuesto; los ítems manuales no mueven inventario.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="min-w-0 space-y-4">
@@ -316,6 +318,29 @@ export function RepairOrderAddItemModal({
                 </div>
               </div>
             )}
+
+            <PosManualItemCard
+              onAdd={async (payload) => {
+                setLoading(true)
+                setError(null)
+                try {
+                  await addRepairOrderItem(orderId, {
+                    description: payload.description,
+                    quantity: payload.quantity,
+                    unit_price: payload.unit_price,
+                  })
+                  onSuccess()
+                  onClose()
+                } catch (e: unknown) {
+                  setError(e instanceof Error ? e.message : "Error al agregar ítem manual")
+                } finally {
+                  setLoading(false)
+                }
+              }}
+              disabled={loading}
+              addLabel="Agregar ítem manual"
+              inputIdPrefix="repair-add-item-manual"
+            />
 
             <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="min-w-0 space-y-2">

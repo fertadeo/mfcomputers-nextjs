@@ -39,6 +39,11 @@ import {
   type RepairOrderPayment,
 } from "@/lib/api"
 import { RepairOrderAddItemModal } from "@/components/repair-order-add-item-modal"
+import {
+  getRepairOrderItemDisplayName,
+  isRepairOrderCustomItem,
+  repairOrderItemsToPdfLines,
+} from "@/lib/repair-order-items"
 import { RepairOrderPaymentModal } from "@/components/repair-order-payment-modal"
 import { RepairOrderAcceptanceDocumentModal } from "@/components/repair-order-acceptance-document-modal"
 import {
@@ -156,9 +161,17 @@ async function enrichRepairOrderForDisplay(data: RepairOrder): Promise<RepairOrd
     /* mantener datos sin nombre */
   }
   if (!next.items?.length) return next
-  const needProduct = next.items.some((i) => !i.product?.name)
+  const needProduct = next.items.some(
+    (i) => i.product_id != null && i.product_id > 0 && !i.product?.name && !i.product_name?.trim()
+  )
   if (!needProduct) return next
-  const pids = [...new Set(next.items.filter((i) => !i.product?.name).map((i) => i.product_id))]
+  const pids = [
+    ...new Set(
+      next.items
+        .filter((i) => i.product_id != null && i.product_id > 0 && !i.product?.name)
+        .map((i) => i.product_id as number)
+    ),
+  ]
   const productMap: Record<number, NonNullable<RepairOrderItem["product"]>> = {}
   await Promise.all(
     pids.map(async (pid) => {
@@ -178,8 +191,10 @@ async function enrichRepairOrderForDisplay(data: RepairOrder): Promise<RepairOrd
   return {
     ...next,
     items: next.items.map((item) => {
-      if (item.product?.name) return item
-      const p = productMap[item.product_id]
+      if (item.product?.name || isRepairOrderCustomItem(item)) return item
+      const pid = item.product_id
+      if (pid == null) return item
+      const p = productMap[pid]
       return p ? { ...item, product: p } : item
     }),
   }
@@ -390,11 +405,7 @@ export default function RepairOrderDetailPage() {
       diagnosis: order.diagnosis?.trim() || undefined,
       work_description: order.work_description?.trim() || undefined,
       delivery_date_estimated: order.delivery_date_estimated?.slice(0, 10) || undefined,
-      lineItems: (order.items ?? []).map((i) => ({
-        product_name: i.product?.name ?? `Producto #${i.product_id}`,
-        quantity: i.quantity,
-        unit_price: parseFloat(String(i.unit_price)) || 0,
-      })),
+      lineItems: repairOrderItemsToPdfLines(order.items ?? []),
       labor_amount: parseFloat(String(order.labor_amount || "0")) || 0,
     })
   }
@@ -702,8 +713,13 @@ export default function RepairOrderDetailPage() {
                     {items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
-                          {item.product?.name ?? `Producto #${item.product_id}`}
-                          {item.stock_deducted ? " (stock descontado)" : ""}
+                          <span className="font-medium">{getRepairOrderItemDisplayName(item)}</span>
+                          {isRepairOrderCustomItem(item) && (
+                            <span className="block text-xs text-muted-foreground">Ítem manual</span>
+                          )}
+                          {!isRepairOrderCustomItem(item) && item.stock_deducted ? (
+                            <span className="block text-xs text-muted-foreground">Stock descontado</span>
+                          ) : null}
                         </TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>{formatMoney(item.unit_price)}</TableCell>

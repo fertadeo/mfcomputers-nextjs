@@ -6319,13 +6319,39 @@ export const REPAIR_ORDER_STATUS_LABELS: Record<RepairOrderStatus, string> = {
 export interface RepairOrderItem {
   id: number
   repair_order_id: number
-  product_id: number
+  /** Null en ítems manuales (sin producto de catálogo). */
+  product_id: number | null
+  /** Texto libre cuando product_id es null. */
+  product_name?: string | null
+  description?: string | null
   quantity: number
   unit_price: string
   total_price: string
   stock_deducted: number
   created_at: string
   product?: { id: number; name: string; code?: string; stock?: number }
+}
+
+/** Línea de catálogo en POST /api/repair-orders/:id/items */
+export interface RepairOrderCatalogItemInput {
+  product_id: number
+  quantity: number
+  unit_price: number
+}
+
+/** Línea manual: repuesto/servicio puntual sin alta en Productos ni movimiento de stock. */
+export interface RepairOrderCustomItemInput {
+  description: string
+  quantity: number
+  unit_price: number
+}
+
+export type AddRepairOrderItemBody = RepairOrderCatalogItemInput | RepairOrderCustomItemInput
+
+export function isRepairOrderCatalogItemInput(
+  body: AddRepairOrderItemBody
+): body is RepairOrderCatalogItemInput {
+  return "product_id" in body && body.product_id != null
 }
 
 export interface RepairOrder {
@@ -6555,12 +6581,6 @@ export async function getRepairOrderItems(id: number | string): Promise<ApiRespo
     throw err
   }
   return data
-}
-
-export interface AddRepairOrderItemBody {
-  product_id: number
-  quantity: number
-  unit_price: number
 }
 
 export async function addRepairOrderItem(

@@ -37,6 +37,12 @@ import {
   validateRepairEquipmentFields,
   type RepairEquipmentFormValues,
 } from "@/lib/repair-order-equipment"
+import { PosManualItemCard } from "@/components/pos-manual-item-card"
+import {
+  pendingItemDisplayName,
+  pendingItemToAddBody,
+  type RepairOrderPendingItem,
+} from "@/lib/repair-order-items"
 import { cn } from "@/lib/utils"
 
 interface NewRepairOrderModalProps {
@@ -48,13 +54,6 @@ interface NewRepairOrderModalProps {
 interface ClientOption {
   id: number
   name: string
-}
-
-interface PendingItem {
-  product_id: number
-  product_name: string
-  quantity: number
-  unit_price: number
 }
 
 export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrderModalProps) {
@@ -84,7 +83,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
   // Materiales (productos) a utilizar en la reparación
   const [products, setProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
-  const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
+  const [pendingItems, setPendingItems] = useState<RepairOrderPendingItem[]>([])
   const [productSearchQuery, setProductSearchQuery] = useState("")
   const [newItemProductId, setNewItemProductId] = useState<number | "">("")
   const [newItemQuantity, setNewItemQuantity] = useState("1")
@@ -234,6 +233,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     setPendingItems((prev) => [
       ...prev,
       {
+        kind: "catalog",
         product_id: selectedProduct.id,
         product_name: selectedProduct.name,
         quantity: q,
@@ -257,6 +257,22 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     setNewItemProductId("")
     setProductSearchQuery("")
     setNewItemUnitPrice(0)
+  }
+
+  const addPendingManualItem = (payload: {
+    description: string
+    quantity: number
+    unit_price: number
+  }) => {
+    setPendingItems((prev) => [
+      ...prev,
+      {
+        kind: "custom",
+        description: payload.description.trim(),
+        quantity: payload.quantity,
+        unit_price: payload.unit_price,
+      },
+    ])
   }
 
   const removePendingItem = (index: number) => {
@@ -316,11 +332,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       const orderId = order?.id
       if (orderId && pendingItems.length > 0) {
         for (const item of pendingItems) {
-          await addRepairOrderItem(orderId, {
-            product_id: item.product_id,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-          })
+          await addRepairOrderItem(orderId, pendingItemToAddBody(item))
         }
       }
 
@@ -353,7 +365,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
           work_description: formData.work_description.trim() || undefined,
           delivery_date_estimated: formData.delivery_date_estimated.trim() || undefined,
           lineItems: pendingItems.map((i) => ({
-            product_name: i.product_name,
+            product_name: pendingItemDisplayName(i),
             quantity: i.quantity,
             unit_price: i.unit_price,
           })),
@@ -415,7 +427,7 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
           <DialogDescription>
             {step === 1
               ? "Registrá la entrada del equipo. El estado inicial será «Consulta recibida»."
-              : "Agregá los productos del stock que se van a usar. El stock se descuenta cuando el cliente acepte el presupuesto."}
+              : "Agregá productos del catálogo o ítems manuales (sin stock). El stock de catálogo se descuenta cuando el cliente acepte el presupuesto."}
           </DialogDescription>
         </DialogHeader>
 
@@ -801,8 +813,15 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
               </div>
 
               <div className="space-y-3">
+                <PosManualItemCard
+                  onAdd={addPendingManualItem}
+                  disabled={loading}
+                  addLabel="Agregar ítem manual a la orden"
+                  inputIdPrefix="repair-new-manual"
+                />
+
                 <div className="rounded-md border bg-background p-3 space-y-3">
-                  <p className="text-sm font-medium">Agregar material</p>
+                  <p className="text-sm font-medium">Agregar material del catálogo</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs">Cantidad</Label>
@@ -858,11 +877,14 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                         </TableHeader>
                         <TableBody>
                           {pendingItems.map((item, index) => {
-                            const prod = products.find((x) => x.id === item.product_id)
+                            const prod =
+                              item.kind === "catalog"
+                                ? products.find((x) => x.id === item.product_id)
+                                : undefined
                             return (
-                              <TableRow key={`${item.product_id}-${index}`}>
+                              <TableRow key={`${item.kind}-${index}`}>
                                 <TableCell className="w-14">
-                                  {prod && (
+                                  {prod ? (
                                     <span className="relative inline-block w-10 h-10 rounded overflow-hidden bg-muted">
                                       <Image
                                         src={getProductImageUrl(prod, { size: 80 })}
@@ -872,9 +894,16 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                                         sizes="40px"
                                       />
                                     </span>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">Manual</span>
                                   )}
                                 </TableCell>
-                                <TableCell className="font-medium">{item.product_name}</TableCell>
+                                <TableCell className="font-medium">
+                                  {pendingItemDisplayName(item)}
+                                  {item.kind === "custom" && (
+                                    <span className="block text-xs text-muted-foreground">Ítem manual</span>
+                                  )}
+                                </TableCell>
                                 <TableCell>{item.quantity}</TableCell>
                                 <TableCell className="text-right">
                                   ${item.unit_price.toLocaleString("es-AR")}
