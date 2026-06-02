@@ -21,7 +21,7 @@ import {
 import { NewClientModal } from "@/components/new-client-modal"
 import { Pagination } from "@/components/ui/pagination"
 import { getSalesChannelConfig, SalesChannel } from "@/lib/utils"
-import { CuentasCorrientesSummary } from "@/components/cuentas-corrientes-summary"
+import { formatClienteNombreDisplay } from "@/lib/format-client-name"
 import { ClienteActivityModal } from "@/components/cliente-activity-modal"  
 import { CuentaCorrienteStatusBadge } from "@/components/cuenta-corriente-status-badge"
 import { EditClientModal } from "@/components/edit-client-modal"
@@ -219,7 +219,7 @@ export default function ClientesPage() {
       id: apiCliente.code,
       dbId: apiCliente.id,
       salesChannel: apiCliente.sales_channel,
-      nombre: apiCliente.name,
+      nombre: formatClienteNombreDisplay(apiCliente.name),
       email: apiCliente.email,
       telefono: apiCliente.phone,
       ciudad: apiCliente.city,
@@ -578,9 +578,6 @@ export default function ClientesPage() {
             />
           </div>
         )}
-
-        {/* Cuentas Corrientes Summary */}
-        <CuentasCorrientesSummary onRefresh={() => loadData(currentPage, searchTerm, statusFilter, channelFilter)} />
 
         {/* Modal de detalles del cliente */}
         <ClienteDetailModal
