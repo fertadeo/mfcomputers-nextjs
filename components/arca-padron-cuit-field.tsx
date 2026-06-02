@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert } from "@/components/ui/alert"
 import { getClientArcaPadron, getSupplierArcaPadron } from "@/lib/api"
 import {
   formatCuitDisplay,
@@ -15,7 +15,7 @@ import {
   type ArcaPadronEntity,
   type ArcaPadronResult,
 } from "@/lib/arca-padron"
-import { AlertCircle, CheckCircle2, Loader2, Search } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
 
 const DEBOUNCE_MS = 500
@@ -150,36 +150,25 @@ export function ArcaPadronCuitField({
       </p>
 
       {error && (
-        <Alert variant="destructive" className="mt-3">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <Alert variant="error" className="mt-3" title="Error al consultar ARCA" description={error} />
       )}
 
       {lastResult && !error && (
-        <Alert className="mt-3 border-primary/30 bg-primary/5">
-          <CheckCircle2 className="h-4 w-4 text-primary" />
-          <AlertDescription className="space-y-1">
-            <p>
-              <span className="font-medium">ARCA:</span>{" "}
-              {getArcaPadronDisplayName(lastResult) || "—"}
-            </p>
+        <Alert variant="success" className="mt-3" title="Datos de ARCA">
+          <div className="space-y-1">
+            <p>{getArcaPadronDisplayName(lastResult) || "—"}</p>
             {ivaHint && (
-              <p className="text-muted-foreground">
-                Condición IVA sugerida (orientativa): <span className="text-foreground">{ivaHint}</span>
+              <p>
+                Condición IVA sugerida (orientativa): <span className="font-medium">{ivaHint}</span>
               </p>
             )}
             {lastResult.padronParcial && (
-              <p className="text-amber-700 dark:text-amber-400 font-medium">
-                Padrón parcial: revisá y completá los datos antes de guardar.
-              </p>
+              <p className="font-medium">Padrón parcial: revisá y completá los datos antes de guardar.</p>
             )}
             {lastResult.advertencias?.map((w) => (
-              <p key={w} className="text-amber-700 dark:text-amber-400">
-                {w}
-              </p>
+              <p key={w}>{w}</p>
             ))}
-          </AlertDescription>
+          </div>
         </Alert>
       )}
     </div>
