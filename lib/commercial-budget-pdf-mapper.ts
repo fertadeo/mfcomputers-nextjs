@@ -8,6 +8,20 @@ import type { BudgetPdfModalData } from "@/components/budget-pdf-modal"
 export function commercialBudgetDetailToPdfData(detail: CommercialBudgetDetail): BudgetPdfModalData {
   const fechaIso = detail.created_at?.split("T")[0] ?? new Date().toISOString().split("T")[0]
   const hasta = detail.valid_until || fechaIso
+  const detailWithClient = detail as CommercialBudgetDetail & {
+    client_phone?: string | null
+    client_address?: string | null
+    client_city?: string | null
+    client?: {
+      phone?: string | null
+      address?: string | null
+      city?: string | null
+    } | null
+  }
+  const clientPhone = detailWithClient.client_phone ?? detailWithClient.client?.phone ?? undefined
+  const clientAddress = detailWithClient.client_address ?? detailWithClient.client?.address ?? undefined
+  const clientCity = detailWithClient.client_city ?? detailWithClient.client?.city ?? undefined
+  const joinedAddress = [clientAddress, clientCity].filter(Boolean).join(", ")
 
   const items: BudgetPdfModalData["items"] = detail.items.map((line) => {
     const isCustom = line.product_id == null
@@ -29,8 +43,8 @@ export function commercialBudgetDetailToPdfData(detail: CommercialBudgetDetail):
     numero: detail.budget_number,
     cliente: detail.client_name?.trim() || `Cliente #${detail.client_id}`,
     email: detail.client_email ?? undefined,
-    telefono: undefined,
-    direccion: undefined,
+    telefono: clientPhone ?? undefined,
+    direccion: joinedAddress || undefined,
     fecha: fechaIso,
     fechaVencimiento: hasta,
     estado: detail.status,

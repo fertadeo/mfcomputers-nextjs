@@ -22,10 +22,12 @@ export function generateSaleReceiptPdf(params: {
   sale: SaleResponseData
   cartItems: SaleReceiptCartItem[]
   clientName: string
+  clientPhone?: string
+  clientAddress?: string
 }) {
   if (typeof window === "undefined") return
 
-  const { sale, cartItems, clientName } = params
+  const { sale, cartItems, clientName, clientPhone, clientAddress } = params
 
   const doc = new jsPDF("p", "pt", "a4")
 
@@ -113,7 +115,16 @@ export function generateSaleReceiptPdf(params: {
     doc.setFontSize(11)
     doc.setTextColor(51, 65, 85)
     cursorY += 18
-    doc.text(clientName || "Consumidor final", marginX, cursorY)
+    const safeClientName = clientName || "Consumidor final"
+    doc.text(`Nombre: ${safeClientName}`, marginX, cursorY)
+    if (clientAddress?.trim()) {
+      cursorY += 14
+      doc.text(`Dirección: ${clientAddress.trim()}`, marginX, cursorY)
+    }
+    if (clientPhone?.trim()) {
+      cursorY += 14
+      doc.text(`Teléfono: ${clientPhone.trim()}`, marginX, cursorY)
+    }
 
     cursorY += 26
     const tableTop = cursorY

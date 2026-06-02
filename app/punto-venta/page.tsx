@@ -86,6 +86,8 @@ export default function PuntoVentaPage() {
     sale: SaleResponseData
     cartItems: SaleReceiptCartItem[]
     clientName: string
+    clientPhone?: string
+    clientAddress?: string
   } | null>(null)
   const [apiKeyMissing, setApiKeyMissing] = useState(false)
   const [cartViewMode, setCartViewMode] = useState<"list" | "grid">("list")
@@ -321,6 +323,8 @@ export default function PuntoVentaPage() {
         sale,
         cartItems: posCartLinesToReceiptItems(cartSnapshot),
         clientName: clientDisplay,
+        clientPhone: selectedClient?.phone ?? undefined,
+        clientAddress: selectedClient?.address ?? undefined,
       })
       setCart([])
       setNotes("")
@@ -1021,6 +1025,8 @@ export default function PuntoVentaPage() {
                           sale: lastSalePdfData.sale,
                           cartItems: lastSalePdfData.cartItems,
                           clientName: lastSalePdfData.clientName,
+                          clientPhone: lastSalePdfData.clientPhone,
+                          clientAddress: lastSalePdfData.clientAddress,
                         })
                       }
                     >

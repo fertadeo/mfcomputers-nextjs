@@ -105,6 +105,19 @@ export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalIn
 }
 
 export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail): GenerateCommercialBudgetPdfParams {
+  const detailWithClient = detail as CommercialBudgetDetail & {
+    client_phone?: string | null
+    client_address?: string | null
+    client_city?: string | null
+    client?: {
+      phone?: string | null
+      address?: string | null
+      city?: string | null
+    } | null
+  }
+  const clientAddress = detailWithClient.client_address ?? detailWithClient.client?.address ?? undefined
+  const clientCity = detailWithClient.client_city ?? detailWithClient.client?.city ?? undefined
+  const addressLines = [clientAddress, clientCity].filter(Boolean) as string[]
   const lineItems: CommercialBudgetPdfLineItem[] = (detail.items || []).map((i) => {
     const isCustom = i.product_id == null
     const name = (i.description ?? i.product_name ?? "").trim() || i.product_name
@@ -121,7 +134,9 @@ export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail)
     emission_date: detail.created_at.split("T")[0],
     valid_until: detail.valid_until ? detail.valid_until.split("T")[0] : null,
     clientName: detail.client_name?.trim() || `Cliente #${detail.client_id}`,
+    clientPhone: detailWithClient.client_phone ?? detailWithClient.client?.phone ?? undefined,
     clientEmail: detail.client_email ?? undefined,
+    clientAddressLines: addressLines.length ? addressLines : undefined,
     lineItems,
     subtotal: detail.total_amount,
     vat21: 0,

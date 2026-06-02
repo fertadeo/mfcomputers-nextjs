@@ -90,6 +90,26 @@ function getPaymentLabel(m: SalePaymentMethod) {
   return PAYMENT_METHODS.find((p) => p.value === m)?.label ?? m
 }
 
+function pickClientPhone(saleData: SaleResponseData): string | undefined {
+  const raw = saleData as SaleResponseData & {
+    client_phone?: string | null
+    client?: { phone?: string | null } | null
+  }
+  return raw.client_phone?.trim() || raw.client?.phone?.trim() || undefined
+}
+
+function pickClientAddress(saleData: SaleResponseData): string | undefined {
+  const raw = saleData as SaleResponseData & {
+    client_address?: string | null
+    client_city?: string | null
+    client?: { address?: string | null; city?: string | null } | null
+  }
+  const address = raw.client_address?.trim() || raw.client?.address?.trim() || ""
+  const city = raw.client_city?.trim() || raw.client?.city?.trim() || ""
+  const joined = [address, city].filter(Boolean).join(", ")
+  return joined || undefined
+}
+
 export default function VentasPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<"pos" | "pedidos">("pos")
@@ -305,6 +325,8 @@ export default function VentasPage() {
         sale: saleData,
         cartItems,
         clientName: s.client_name ?? "Consumidor final",
+        clientPhone: pickClientPhone(saleData),
+        clientAddress: pickClientAddress(saleData),
       })
       toast.success("Comprobante descargado")
     } catch (e) {
