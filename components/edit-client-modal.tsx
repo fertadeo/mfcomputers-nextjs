@@ -154,6 +154,37 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     })
   }, [])
 
+  const resetPadron = useCallback(() => {
+    setPadronLocked(false)
+    if (!cliente) {
+      setFormData((prev) => ({
+        ...prev,
+        cuil_cuit: "",
+        name: "",
+        personeria: "consumidor_final",
+      }))
+      return
+    }
+    const personeria: Personeria =
+      cliente.personeria === "persona_fisica" ||
+      cliente.personeria === "persona_juridica" ||
+      cliente.personeria === "consumidor_final"
+        ? cliente.personeria
+        : cliente.personType === "Persona Jurídica"
+          ? "persona_juridica"
+          : cliente.personType === "Persona Física"
+            ? "persona_fisica"
+            : "consumidor_final"
+    const cuilRaw = cliente.cuit ?? ""
+    const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+    setFormData((prev) => ({
+      ...prev,
+      name: cliente.nombre,
+      personeria,
+      cuil_cuit: cuilDisplay,
+    }))
+  }, [cliente])
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
@@ -409,6 +440,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     onCuitChange={(v) => handleInputChange("cuil_cuit", v)}
                     onApplyPadron={applyPadron}
                     onPadronLockChange={setPadronLocked}
+                    onPadronReset={resetPadron}
                     disabled={isLoading}
                     inputId="cuil_cuit"
                     label="CUIL / CUIT"

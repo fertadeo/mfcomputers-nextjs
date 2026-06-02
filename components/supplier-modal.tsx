@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -45,6 +45,33 @@ export function SupplierModal({
 }: SupplierModalProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [padronLocked, setPadronLocked] = useState(false)
+  const padronSnapshotRef = useRef<{
+    tax_id: string
+    name: string
+    legal_name: string
+    trade_name: string
+    id_type: CreateSupplierRequest["id_type"]
+    vat_condition: string
+  } | null>(null)
+
+  const capturePadronSnapshot = (data: {
+    tax_id?: string | null
+    name?: string
+    legal_name?: string | null
+    trade_name?: string | null
+    id_type?: CreateSupplierRequest["id_type"]
+    vat_condition?: string | null
+  }) => {
+    padronSnapshotRef.current = {
+      tax_id: data.tax_id || "",
+      name: data.name || "",
+      legal_name: data.legal_name || "",
+      trade_name: data.trade_name || "",
+      id_type: data.id_type,
+      vat_condition: data.vat_condition || "",
+    }
+  }
+
   const [formData, setFormData] = useState<CreateSupplierRequest>({
     code: "",
     name: "",
@@ -97,6 +124,20 @@ export function SupplierModal({
     }))
   }, [])
 
+  const resetPadron = useCallback(() => {
+    setPadronLocked(false)
+    const snap = padronSnapshotRef.current
+    setFormData((prev) => ({
+      ...prev,
+      tax_id: snap?.tax_id ?? "",
+      name: snap?.name ?? "",
+      legal_name: snap?.legal_name ?? "",
+      trade_name: snap?.trade_name ?? "",
+      id_type: snap?.id_type,
+      vat_condition: snap?.vat_condition ?? "",
+    }))
+  }, [])
+
   const loadSupplier = async () => {
     if (!supplierId) return
 
@@ -105,7 +146,7 @@ export function SupplierModal({
       const response = await getSupplier(supplierId)
       if (response.success) {
         const supplier = response.data
-        setFormData({
+        const loaded = {
           code: supplier.code,
           name: supplier.name,
           supplier_type: supplier.supplier_type,
@@ -128,7 +169,9 @@ export function SupplierModal({
           country: supplier.country || "",
           has_account: supplier.has_account ?? true,
           payment_terms: supplier.payment_terms ?? 30
-        })
+        }
+        setFormData(loaded)
+        capturePadronSnapshot(loaded)
         setPadronLocked(false)
       }
     } catch (error) {
@@ -140,7 +183,7 @@ export function SupplierModal({
   }
 
   const resetForm = () => {
-    setFormData({
+    const empty = {
       code: "",
       name: "",
       supplier_type: undefined,
@@ -163,7 +206,9 @@ export function SupplierModal({
       country: "",
       has_account: true,
       payment_terms: 30
-    })
+    }
+    setFormData(empty)
+    capturePadronSnapshot(empty)
     setPadronLocked(false)
   }
 
@@ -380,6 +425,7 @@ export function SupplierModal({
                     onCuitChange={(v) => handleInputChange("tax_id", formatCuitDisplay(v))}
                     onApplyPadron={applyPadron}
                     onPadronLockChange={setPadronLocked}
+                    onPadronReset={resetPadron}
                     disabled={isReadOnly || isLoading}
                     inputId="tax_id"
                     label="CUIT"

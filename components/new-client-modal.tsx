@@ -85,6 +85,16 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
     }))
   }, [])
 
+  const resetPadron = useCallback(() => {
+    setPadronLocked(false)
+    setFormData((prev) => ({
+      ...prev,
+      cuil_cuit: "",
+      name: "",
+      personeria: "consumidor_final",
+    }))
+  }, [])
+
   const handleInputChange = (field: keyof NewClientData, value: string) => {
     setFormData(prev => ({
       ...prev,
@@ -283,6 +293,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     onCuitChange={(v) => handleInputChange("cuil_cuit", v)}
                     onApplyPadron={applyPadron}
                     onPadronLockChange={setPadronLocked}
+                    onPadronReset={resetPadron}
                     disabled={loading || !isManualChannel}
                     inputId="cuil_cuit"
                   />

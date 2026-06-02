@@ -16,7 +16,7 @@ import {
   type ArcaPadronResult,
 } from "@/lib/arca-padron"
 import { ArcaPadronResultSummary } from "@/components/arca-padron-result-summary"
-import { Loader2, Search } from "lucide-react"
+import { Loader2, Search, UserRoundSearch } from "lucide-react"
 import { toast } from "sonner"
 
 const DEBOUNCE_MS = 500
@@ -28,6 +28,8 @@ export interface ArcaPadronCuitFieldProps {
   onApplyPadron: (data: ArcaPadronResult) => void
   /** true cuando ARCA autocompletó: bloquea CUIT y campos vinculados en el formulario padre */
   onPadronLockChange?: (locked: boolean) => void
+  /** Limpia datos de ARCA en el formulario padre para consultar otro CUIT */
+  onPadronReset?: () => void
   disabled?: boolean
   inputId?: string
   label?: string
@@ -40,6 +42,7 @@ export function ArcaPadronCuitField({
   onCuitChange,
   onApplyPadron,
   onPadronLockChange,
+  onPadronReset,
   disabled = false,
   inputId = "arca-padron-cuit",
   label = "CUIL / CUIT",
@@ -134,6 +137,17 @@ export function ArcaPadronCuitField({
     if (error) setError(null)
   }
 
+  const handleSearchAnother = () => {
+    clearDebounce()
+    lastSearchedRef.current = ""
+    setLastResult(null)
+    setError(null)
+    setPadronLocked(false)
+    onPadronLockChange?.(false)
+    onCuitChange("")
+    onPadronReset?.()
+  }
+
   const canSearch = isValidCuitDigits(cuitValue) && !loading && !disabled && !padronLocked
   const inputDisabled = disabled || loading || padronLocked
 
@@ -151,20 +165,33 @@ export function ArcaPadronCuitField({
           maxLength={13}
           className="flex-1"
         />
-        <Button
-          type="button"
-          variant="secondary"
-          className="shrink-0 gap-1.5"
-          disabled={!canSearch}
-          onClick={() => void runSearch(normalizeCuitDigits(cuitValue), "manual")}
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          Buscar en ARCA
-        </Button>
+        {padronLocked ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0 gap-1.5"
+            disabled={disabled || loading}
+            onClick={handleSearchAnother}
+          >
+            <UserRoundSearch className="h-4 w-4" />
+            Buscar otro contribuyente
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            className="shrink-0 gap-1.5"
+            disabled={!canSearch}
+            onClick={() => void runSearch(normalizeCuitDigits(cuitValue), "manual")}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            Buscar en ARCA
+          </Button>
+        )}
       </div>
       <p className="text-xs text-muted-foreground mt-1.5">
         {padronLocked
-          ? "Datos tomados de ARCA. El CUIT y los campos completados no se pueden modificar."
+          ? "Los datos de ARCA quedaron aplicados. Si necesitás otro CUIT, usá «Buscar otro contribuyente»."
           : "Con 11 dígitos se consulta ARCA automáticamente (esperá medio segundo) o usá el botón."}
       </p>
 
