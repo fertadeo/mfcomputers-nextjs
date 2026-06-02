@@ -162,7 +162,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
 
     try {
       const payload = {
-        client_type: formData.client_type,
+        client_type: "minorista" as const,
         sales_channel: formData.sales_channel,
         name: formData.name.trim(),
         email: formData.email.trim(),
@@ -251,23 +251,6 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="client_type">Tipo de Cliente</Label>
-                  <Select
-                    value={formData.client_type}
-                    onValueChange={(value) => handleInputChange("client_type", value)}
-                    disabled={loading || !isManualChannel}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona el tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="minorista">Minorista</SelectItem>
-                      <SelectItem value="mayorista">Mayorista</SelectItem>
-                      <SelectItem value="personalizado">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="sales_channel">Canal de Venta</Label>
                   <Select
