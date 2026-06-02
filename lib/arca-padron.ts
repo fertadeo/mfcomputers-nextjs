@@ -1,3 +1,5 @@
+import { CONDICIONES_IVA_RECEPTOR } from "@/lib/facturacion-comprobantes"
+
 /** Respuesta normalizada de GET /api/clients|suppliers/padron/{cuit} */
 export interface ArcaPadronResult {
   cuit: string
@@ -6,11 +8,39 @@ export interface ArcaPadronResult {
   personeriaSugerida?: "persona_fisica" | "persona_juridica" | "consumidor_final"
   condicionIvaSugerida?: string
   condicionIvaLabel?: string
+  condicionIvaCodigo?: number
   padronParcial?: boolean
   advertencias?: string[]
+  alcancesTecnicos?: string[]
 }
 
 export type ArcaPadronEntity = "client" | "supplier"
+
+export interface ArcaPadronFiscalSummary {
+  label: string
+  shortLabel: string
+  codigoAfip?: number
+  facturacionHint: string
+}
+
+export interface ArcaPadronBusinessSummary {
+  displayName: string
+  cuitFormatted: string
+  personeriaLabel: string | null
+  condicionFiscal: ArcaPadronFiscalSummary | null
+  padronParcial: boolean
+  notas: string[]
+  verificadoEnArca: boolean
+}
+
+export const PERSONERIA_PADRON_LABELS: Record<
+  NonNullable<ArcaPadronResult["personeriaSugerida"]>,
+  string
+> = {
+  persona_fisica: "Persona física",
+  persona_juridica: "Persona jurídica",
+  consumidor_final: "Consumidor final",
+}
 
 export const ARCA_PADRON_ERROR_MESSAGES: Record<string, string> = {
   INVALID_CUIT: "El CUIT debe tener exactamente 11 dígitos.",
@@ -21,6 +51,30 @@ export const ARCA_PADRON_ERROR_MESSAGES: Record<string, string> = {
   PADRON_MULTI_SCOPE_FAILED:
     "El certificado no está autorizado para padrón A13/constancia. Revisá MultiCUIT.",
   FACTURADOR_NOT_CONFIGURED: "El facturador no está configurado en el servidor (URL o API key).",
+}
+
+const FACTURACION_HINTS: Record<number, string> = {
+  1: "Cliente inscripto en IVA: suele corresponder Factura A o B según tu condición y el monto.",
+  4: "IVA exento: confirmá con tu contador el tipo de comprobante antes de emitir.",
+  5: "Consumidor final: en la mayoría de los casos Factura B o ticket fiscal.",
+  6: "Monotributo: habitualmente Factura C o comprobante acorde a tu régimen.",
+  9: "Cliente del exterior: revisá comprobante de exportación / exento.",
+  10: "IVA liberado: validá el tratamiento fiscal con tu asesor.",
+}
+
+function pickString(...values: unknown[]): string | undefined {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return undefined
+}
+
+function pickNumber(...values: unknown[]): number | undefined {
+  for (const v of values) {
+    if (typeof v === "number" && Number.isFinite(v)) return v
+    if (typeof v === "string" && /^\d+$/.test(v.trim())) return parseInt(v, 10)
+  }
+  return undefined
 }
 
 export function normalizeCuitDigits(value: string): string {
@@ -49,6 +103,139 @@ export function normalizePersoneriaSugerida(
   return undefined
 }
 
+function isTechnicalPadronMessage(msg: string): boolean {
+  const m = msg.trim().toLowerCase()
+  if (!m) return true
+  if (/^alcance\s+[\w_]+:\s*contribuyente encontrado/i.test(msg)) return true
+  if (/^scope\s+[\w_]+:/i.test(msg)) return true
+  if (m === "contribuyente encontrado") return true
+  return false
+}
+
+function splitAdvertencias(raw?: string[]): { ownerNotes: string[]; technical: string[] } {
+  const ownerNotes: string[] = []
+  const technical: string[] = []
+  for (const line of raw ?? []) {
+    const t = line.trim()
+    if (!t) continue
+    if (isTechnicalPadronMessage(t)) technical.push(t)
+    else ownerNotes.push(t)
+  }
+  return { ownerNotes, technical }
+}
+
+function inferCondicionFromText(text: string): ArcaPadronFiscalSummary | null {
+  const t = text.toLowerCase()
+  if (!t.trim()) return null
+
+  if (t.includes("monotrib")) return buildFiscalSummary("Responsable Monotributo", 6)
+  if (t.includes("responsable inscript") || /\biva\s*ri\b/.test(t) || t.includes("resp. inscript")) {
+    return buildFiscalSummary("IVA Responsable Inscripto", 1)
+  }
+  if (t.includes("exento") && t.includes("iva")) return buildFiscalSummary("IVA Sujeto Exento", 4)
+  if (t.includes("consumidor final") || t.includes("cons.final")) {
+    return buildFiscalSummary("Consumidor final", 5)
+  }
+  if (t.includes("liberado")) return buildFiscalSummary("IVA Liberado", 10)
+
+  return null
+}
+
+function buildFiscalSummary(
+  label: string,
+  codigoAfip?: number,
+  customHint?: string
+): ArcaPadronFiscalSummary {
+  const short =
+    codigoAfip === 6
+      ? "Monotributo"
+      : codigoAfip === 1
+        ? "Responsable Inscripto"
+        : codigoAfip === 4
+          ? "IVA Exento"
+          : codigoAfip === 5
+            ? "Consumidor final"
+            : label
+
+  return {
+    label,
+    shortLabel: short,
+    codigoAfip,
+    facturacionHint:
+      customHint ??
+      (codigoAfip != null ? FACTURACION_HINTS[codigoAfip] : undefined) ??
+      "Confirmá el tipo de comprobante con tu contador antes de facturar.",
+  }
+}
+
+function resolveCondicionFiscal(data: {
+  label?: string
+  codeRaw?: string
+  codeNum?: number
+  extraText?: string
+}): ArcaPadronFiscalSummary | null {
+  const fromAfipList =
+    data.codeNum != null
+      ? CONDICIONES_IVA_RECEPTOR.find((c) => c.value === data.codeNum)
+      : undefined
+  if (fromAfipList) return buildFiscalSummary(fromAfipList.label, fromAfipList.value)
+
+  const combined = [data.label, data.codeRaw, data.extraText].filter(Boolean).join(" ")
+  const inferred = inferCondicionFromText(combined)
+  if (inferred) return inferred
+
+  const cleanLabel = data.label?.trim()
+  if (cleanLabel) {
+    const again = inferCondicionFromText(cleanLabel)
+    if (again) return again
+    return buildFiscalSummary(cleanLabel)
+  }
+
+  return null
+}
+
+function extractCondicionFromNested(inner: Record<string, unknown>): {
+  label?: string
+  code?: number
+} {
+  const direct = {
+    label: pickString(
+      inner.condicionIvaLabel,
+      inner.condicion_iva_label,
+      inner.condicionIvaDescripcion,
+      inner.condicionFiscal,
+      inner.condicion_fiscal
+    ),
+    code: pickNumber(
+      inner.condicionIvaCodigo,
+      inner.condicion_iva_codigo,
+      inner.condicionIvaReceptor
+    ),
+  }
+  if (direct.label || direct.code) return direct
+
+  const impuestos = inner.impuestos ?? inner.Impuestos
+  if (Array.isArray(impuestos)) {
+    for (const item of impuestos) {
+      if (!item || typeof item !== "object") continue
+      const row = item as Record<string, unknown>
+      const desc = pickString(row.descripcion, row.description, row.impuesto, row.nombre, row.name)
+      const id = pickNumber(row.id, row.codigo, row.code)
+      if (desc?.toLowerCase().includes("iva") || desc?.toLowerCase().includes("monotrib")) {
+        return { label: desc, code: id }
+      }
+    }
+  }
+
+  const datos = inner.datos ?? inner.contribuyente ?? inner.padron
+  if (datos && typeof datos === "object") {
+    const nested = extractCondicionFromNested(datos as Record<string, unknown>)
+    if (nested.label || nested.code) return nested
+  }
+
+  return {}
+}
+
 export function normalizeArcaPadronPayload(raw: unknown): ArcaPadronResult {
   const o =
     raw && typeof raw === "object"
@@ -58,49 +245,58 @@ export function normalizeArcaPadronPayload(raw: unknown): ArcaPadronResult {
     o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>) : o
 
   const cuit = String(inner.cuit ?? inner.Cuit ?? "").replace(/\D/g, "").slice(0, 11)
-  const name = typeof inner.name === "string" ? inner.name : undefined
-  const razonSocial =
-    typeof inner.razonSocial === "string"
-      ? inner.razonSocial
-      : typeof inner.razon_social === "string"
-        ? inner.razon_social
-        : undefined
+  const name = pickString(inner.name, inner.nombre)
+  const razonSocial = pickString(inner.razonSocial, inner.razon_social, inner.razonSocialProveedor)
 
-  const personeriaRaw =
-    (inner.personeriaSugerida as string | undefined) ??
-    (inner.personeria_sugerida as string | undefined)
+  const personeriaRaw = pickString(inner.personeriaSugerida, inner.personeria_sugerida, inner.personeria)
 
-  const condicionIvaSugerida =
-    typeof inner.condicionIvaSugerida === "string"
-      ? inner.condicionIvaSugerida
-      : typeof inner.condicion_iva_sugerida === "string"
-        ? inner.condicion_iva_sugerida
-        : undefined
+  const condicionIvaSugerida = pickString(
+    inner.condicionIvaSugerida,
+    inner.condicion_iva_sugerida,
+    inner.condicionIva,
+    inner.condicion_iva,
+    inner.regimen,
+    inner.regimenFiscal
+  )
 
-  const condicionIvaLabel =
-    typeof inner.condicionIvaLabel === "string"
-      ? inner.condicionIvaLabel
-      : typeof inner.condicion_iva_label === "string"
-        ? inner.condicion_iva_label
-        : typeof inner.condicionIvaSugeridaLabel === "string"
-          ? inner.condicionIvaSugeridaLabel
-          : undefined
+  const condicionIvaLabel = pickString(
+    inner.condicionIvaLabel,
+    inner.condicion_iva_label,
+    inner.condicionIvaSugeridaLabel,
+    inner.condicionIvaDescripcion,
+    inner.condicion_iva_descripcion
+  )
 
-  const advertencias = Array.isArray(inner.advertencias)
+  const nestedCondicion = extractCondicionFromNested(inner)
+
+  const condicionIvaCodigo = pickNumber(
+    inner.condicionIvaCodigo,
+    inner.condicion_iva_codigo,
+    inner.condicionIvaReceptor,
+    inner.codigoCondicionIva,
+    nestedCondicion.code
+  )
+
+  const advertenciasRaw = Array.isArray(inner.advertencias)
     ? inner.advertencias.filter((a): a is string => typeof a === "string")
     : Array.isArray(inner.warnings)
       ? inner.warnings.filter((a): a is string => typeof a === "string")
       : undefined
+
+  const { ownerNotes, technical } = splitAdvertencias(advertenciasRaw)
+  const extraText = [...ownerNotes, ...technical].join(" ")
 
   return {
     cuit,
     name,
     razonSocial,
     personeriaSugerida: normalizePersoneriaSugerida(personeriaRaw),
-    condicionIvaSugerida,
-    condicionIvaLabel,
+    condicionIvaSugerida: condicionIvaSugerida ?? nestedCondicion.label,
+    condicionIvaLabel: condicionIvaLabel ?? nestedCondicion.label,
+    condicionIvaCodigo,
     padronParcial: Boolean(inner.padronParcial ?? inner.padron_parcial),
-    advertencias,
+    advertencias: ownerNotes.length > 0 ? ownerNotes : advertenciasRaw,
+    alcancesTecnicos: technical,
   }
 }
 
@@ -109,10 +305,51 @@ export function getArcaPadronDisplayName(data: ArcaPadronResult): string {
 }
 
 export function getArcaPadronIvaHint(data: ArcaPadronResult): string | null {
-  const label = data.condicionIvaLabel?.trim()
-  const code = data.condicionIvaSugerida?.trim()
-  if (label && code && label !== code) return `${label} (${code})`
-  return label || code || null
+  const fiscal = buildArcaPadronBusinessSummary(data).condicionFiscal
+  if (!fiscal) return null
+  if (fiscal.codigoAfip != null) return `${fiscal.label} (cód. AFIP ${fiscal.codigoAfip})`
+  return fiscal.label
+}
+
+export function buildArcaPadronBusinessSummary(data: ArcaPadronResult): ArcaPadronBusinessSummary {
+  const displayName = getArcaPadronDisplayName(data)
+  const personeriaLabel = data.personeriaSugerida
+    ? PERSONERIA_PADRON_LABELS[data.personeriaSugerida]
+    : null
+
+  const extraText = [...(data.advertencias ?? []), ...(data.alcancesTecnicos ?? [])].join(" ")
+
+  const condicionFiscal = resolveCondicionFiscal({
+    label: data.condicionIvaLabel ?? data.condicionIvaSugerida,
+    codeRaw: data.condicionIvaSugerida,
+    codeNum: data.condicionIvaCodigo,
+    extraText,
+  })
+
+  const notas: string[] = []
+  if (data.padronParcial) {
+    notas.push("ARCA devolvió datos incompletos. Completá email, teléfono y domicilio manualmente.")
+  }
+  for (const line of data.advertencias ?? []) {
+    const t = line.trim()
+    if (t && !notas.includes(t)) notas.push(t)
+  }
+  if (condicionFiscal && !notas.some((n) => n.includes(condicionFiscal.facturacionHint))) {
+    notas.push(condicionFiscal.facturacionHint)
+  }
+  if (!notas.some((n) => n.toLowerCase().includes("contador"))) {
+    notas.push("La condición fiscal es orientativa: confirmala con tu contador antes de emitir.")
+  }
+
+  return {
+    displayName,
+    cuitFormatted: formatCuitDisplay(data.cuit),
+    personeriaLabel,
+    condicionFiscal,
+    padronParcial: Boolean(data.padronParcial),
+    notas,
+    verificadoEnArca: Boolean(displayName || (data.alcancesTecnicos?.length ?? 0) > 0),
+  }
 }
 
 export function formatArcaPadronError(status: number, body: unknown): string {

@@ -1,5 +1,5 @@
 "use client"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
@@ -68,8 +68,13 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [padronLocked, setPadronLocked] = useState(false)
 
   const isManualChannel = formData.sales_channel === "manual"
+
+  useEffect(() => {
+    if (!isOpen) setPadronLocked(false)
+  }, [isOpen])
 
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
@@ -160,6 +165,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
           city: "",
           country: "Argentina"
         })
+        setPadronLocked(false)
       }, 1500)
 
     } catch (err) {
@@ -174,6 +180,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
     if (!loading) {
       setError(null)
       setSuccess(false)
+      setPadronLocked(false)
       onClose()
     }
   }
@@ -249,7 +256,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     value={formData.name}
                     onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="Nombre o razón social"
-                    disabled={loading || !isManualChannel}
+                    disabled={loading || !isManualChannel || padronLocked}
                   />
                 </div>
                 <div className="space-y-2">
@@ -257,7 +264,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   <Select
                     value={formData.personeria}
                     onValueChange={(value: Personeria) => handleInputChange("personeria", value)}
-                    disabled={loading || !isManualChannel}
+                    disabled={loading || !isManualChannel || padronLocked}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -275,6 +282,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     cuitValue={formData.cuil_cuit}
                     onCuitChange={(v) => handleInputChange("cuil_cuit", v)}
                     onApplyPadron={applyPadron}
+                    onPadronLockChange={setPadronLocked}
                     disabled={loading || !isManualChannel}
                     inputId="cuil_cuit"
                   />

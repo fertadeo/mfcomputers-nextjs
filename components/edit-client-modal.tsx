@@ -104,6 +104,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [successMessage, setSuccessMessage] = useState("")
+  const [padronLocked, setPadronLocked] = useState(false)
 
   // Cargar datos del cliente cuando se abre el modal
   useEffect(() => {
@@ -133,6 +134,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
       })
       setErrors({})
       setSuccessMessage("")
+      setPadronLocked(false)
     }
   }, [cliente, isOpen])
 
@@ -316,6 +318,8 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="Ej: María González"
                     className={errors.name ? "border-red-500" : ""}
+                    disabled={isLoading || padronLocked}
+                    readOnly={padronLocked}
                   />
                   {errors.name && (
                     <p className="text-sm text-red-500 flex items-center gap-1">
@@ -379,6 +383,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   <Select
                     value={formData.personeria}
                     onValueChange={(value: Personeria) => handleInputChange("personeria", value)}
+                    disabled={isLoading || padronLocked}
                   >
                     <SelectTrigger className={errors.personeria ? "border-red-500" : ""}>
                       <SelectValue placeholder="Seleccionar personería" />
@@ -403,6 +408,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     cuitValue={formData.cuil_cuit}
                     onCuitChange={(v) => handleInputChange("cuil_cuit", v)}
                     onApplyPadron={applyPadron}
+                    onPadronLockChange={setPadronLocked}
                     disabled={isLoading}
                     inputId="cuil_cuit"
                     label="CUIL / CUIT"

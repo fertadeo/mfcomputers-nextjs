@@ -9,12 +9,13 @@ import { getClientArcaPadron, getSupplierArcaPadron } from "@/lib/api"
 import {
   formatCuitDisplay,
   getArcaPadronDisplayName,
-  getArcaPadronIvaHint,
+  buildArcaPadronBusinessSummary,
   isValidCuitDigits,
   normalizeCuitDigits,
   type ArcaPadronEntity,
   type ArcaPadronResult,
 } from "@/lib/arca-padron"
+import { ArcaPadronResultSummary } from "@/components/arca-padron-result-summary"
 import { Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
 
@@ -25,6 +26,8 @@ export interface ArcaPadronCuitFieldProps {
   cuitValue: string
   onCuitChange: (formatted: string) => void
   onApplyPadron: (data: ArcaPadronResult) => void
+  /** true cuando ARCA autocompletó: bloquea CUIT y campos vinculados en el formulario padre */
+  onPadronLockChange?: (locked: boolean) => void
   disabled?: boolean
   inputId?: string
   label?: string
@@ -36,6 +39,7 @@ export function ArcaPadronCuitField({
   cuitValue,
   onCuitChange,
   onApplyPadron,
+  onPadronLockChange,
   disabled = false,
   inputId = "arca-padron-cuit",
   label = "CUIL / CUIT",
@@ -44,6 +48,7 @@ export function ArcaPadronCuitField({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<ArcaPadronResult | null>(null)
+  const [padronLocked, setPadronLocked] = useState(false)
   const lastSearchedRef = useRef<string>("")
   const searchingRef = useRef(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -70,15 +75,23 @@ export function ArcaPadronCuitField({
         setLastResult(data)
         onApplyPadron(data)
         onCuitChange(formatCuitDisplay(data.cuit || digits))
+        setPadronLocked(true)
+        onPadronLockChange?.(true)
         const displayName = getArcaPadronDisplayName(data)
+        const summary = buildArcaPadronBusinessSummary(data)
         if (source === "manual") {
           toast.success("Datos de ARCA aplicados", {
-            description: displayName || `CUIT ${formatCuitDisplay(digits)}`,
+            description:
+              summary.condicionFiscal?.shortLabel != null
+                ? `${displayName || summary.cuitFormatted} · ${summary.condicionFiscal.shortLabel}`
+                : displayName || `CUIT ${formatCuitDisplay(digits)}`,
           })
         }
       } catch (e) {
         lastSearchedRef.current = ""
         setLastResult(null)
+        setPadronLocked(false)
+        onPadronLockChange?.(false)
         const msg = e instanceof Error ? e.message : "Error al consultar ARCA"
         setError(msg)
         if (source === "manual") toast.error(msg)
@@ -87,7 +100,7 @@ export function ArcaPadronCuitField({
         setLoading(false)
       }
     },
-    [entityType, onApplyPadron, onCuitChange]
+    [entityType, onApplyPadron, onCuitChange, onPadronLockChange]
   )
 
   useEffect(() => {
@@ -108,18 +121,21 @@ export function ArcaPadronCuitField({
       setError(null)
       setLastResult(null)
       lastSearchedRef.current = ""
+      setPadronLocked(false)
+      onPadronLockChange?.(false)
     }
-  }, [cuitValue])
+  }, [cuitValue, onPadronLockChange])
 
   const handleCuitInput = (raw: string) => {
+    if (padronLocked) return
     const digits = normalizeCuitDigits(raw)
     const formatted = digits.length <= 2 ? digits : formatCuitDisplay(raw)
     onCuitChange(formatted)
     if (error) setError(null)
   }
 
-  const ivaHint = lastResult ? getArcaPadronIvaHint(lastResult) : null
-  const canSearch = isValidCuitDigits(cuitValue) && !loading && !disabled
+  const canSearch = isValidCuitDigits(cuitValue) && !loading && !disabled && !padronLocked
+  const inputDisabled = disabled || loading || padronLocked
 
   return (
     <div className={className}>
@@ -130,7 +146,8 @@ export function ArcaPadronCuitField({
           value={cuitValue}
           onChange={(e) => handleCuitInput(e.target.value)}
           placeholder="11 dígitos (ej. 20-12345678-9)"
-          disabled={disabled || loading}
+          disabled={inputDisabled}
+          readOnly={padronLocked}
           maxLength={13}
           className="flex-1"
         />
@@ -146,31 +163,16 @@ export function ArcaPadronCuitField({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground mt-1.5">
-        Con 11 dígitos se consulta ARCA automáticamente (esperá medio segundo) o usá el botón.
+        {padronLocked
+          ? "Datos tomados de ARCA. El CUIT y los campos completados no se pueden modificar."
+          : "Con 11 dígitos se consulta ARCA automáticamente (esperá medio segundo) o usá el botón."}
       </p>
 
       {error && (
         <Alert variant="error" className="mt-3" title="Error al consultar ARCA" description={error} />
       )}
 
-      {lastResult && !error && (
-        <Alert variant="success" className="mt-3" title="Datos de ARCA">
-          <div className="space-y-1">
-            <p>{getArcaPadronDisplayName(lastResult) || "—"}</p>
-            {ivaHint && (
-              <p>
-                Condición IVA sugerida (orientativa): <span className="font-medium">{ivaHint}</span>
-              </p>
-            )}
-            {lastResult.padronParcial && (
-              <p className="font-medium">Padrón parcial: revisá y completá los datos antes de guardar.</p>
-            )}
-            {lastResult.advertencias?.map((w) => (
-              <p key={w}>{w}</p>
-            ))}
-          </div>
-        </Alert>
-      )}
+      {lastResult && !error && <ArcaPadronResultSummary result={lastResult} />}
     </div>
   )
 }

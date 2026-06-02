@@ -21,9 +21,9 @@ import {
 } from "@/lib/api"
 import { toast } from "sonner"
 import {
+  buildArcaPadronBusinessSummary,
   formatCuitDisplay,
   getArcaPadronDisplayName,
-  getArcaPadronIvaHint,
   type ArcaPadronResult,
 } from "@/lib/arca-padron"
 import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
@@ -44,6 +44,7 @@ export function SupplierModal({
   mode 
 }: SupplierModalProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [padronLocked, setPadronLocked] = useState(false)
   const [formData, setFormData] = useState<CreateSupplierRequest>({
     code: "",
     name: "",
@@ -78,16 +79,21 @@ export function SupplierModal({
     }
   }, [isOpen, supplierId, mode])
 
+  useEffect(() => {
+    if (!isOpen) setPadronLocked(false)
+  }, [isOpen])
+
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
-    const iva = getArcaPadronIvaHint(data)
+    const summary = buildArcaPadronBusinessSummary(data)
+    const ivaLabel = summary.condicionFiscal?.label
     setFormData((prev) => ({
       ...prev,
       name: name || prev.name,
       legal_name: data.razonSocial || data.name || prev.legal_name,
       trade_name: name || prev.trade_name,
       id_type: "CUIT",
-      vat_condition: iva || prev.vat_condition,
+      vat_condition: ivaLabel || prev.vat_condition,
     }))
   }, [])
 
@@ -123,6 +129,7 @@ export function SupplierModal({
           has_account: supplier.has_account ?? true,
           payment_terms: supplier.payment_terms ?? 30
         })
+        setPadronLocked(false)
       }
     } catch (error) {
       console.error("Error al cargar proveedor:", error)
@@ -157,6 +164,7 @@ export function SupplierModal({
       has_account: true,
       payment_terms: 30
     })
+    setPadronLocked(false)
   }
 
   const handleInputChange = (field: keyof CreateSupplierRequest, value: string | number | boolean | undefined) => {
@@ -300,7 +308,8 @@ export function SupplierModal({
                     placeholder="Razón Social S.A."
                     value={formData.legal_name || ""}
                     onChange={(e) => handleInputChange('legal_name', e.target.value)}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || padronLocked}
+                    readOnly={padronLocked}
                   />
                 </div>
 
@@ -311,7 +320,8 @@ export function SupplierModal({
                     placeholder="Nombre de Fantasía"
                     value={formData.trade_name || ""}
                     onChange={(e) => handleInputChange('trade_name', e.target.value)}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || padronLocked}
+                    readOnly={padronLocked}
                   />
                 </div>
               </div>
@@ -346,7 +356,7 @@ export function SupplierModal({
                   <Select
                     value={formData.id_type || ""}
                     onValueChange={(value) => handleInputChange('id_type', value as any)}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || padronLocked}
                   >
                     <SelectTrigger id="id_type">
                       <SelectValue placeholder="Seleccionar tipo" />
@@ -369,6 +379,7 @@ export function SupplierModal({
                     cuitValue={formData.tax_id || ""}
                     onCuitChange={(v) => handleInputChange("tax_id", formatCuitDisplay(v))}
                     onApplyPadron={applyPadron}
+                    onPadronLockChange={setPadronLocked}
                     disabled={isReadOnly || isLoading}
                     inputId="tax_id"
                     label="CUIT"
@@ -395,7 +406,8 @@ export function SupplierModal({
                     placeholder="Responsable Inscripto"
                     value={formData.vat_condition || ""}
                     onChange={(e) => handleInputChange('vat_condition', e.target.value)}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || padronLocked}
+                    readOnly={padronLocked}
                   />
                 </div>
 
@@ -481,7 +493,8 @@ export function SupplierModal({
                     placeholder="Nombre de la empresa"
                     value={formData.name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || padronLocked}
+                    readOnly={padronLocked}
                     maxLength={100}
                     required
                   />
