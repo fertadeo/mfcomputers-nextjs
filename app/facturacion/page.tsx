@@ -75,6 +75,7 @@ import {
 } from "@/lib/facturacion-errors"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
+import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import {
@@ -82,6 +83,10 @@ import {
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
 } from "@/lib/facturacion-cliente-fiscal"
+import {
+  loadFacturacionPreviewLines,
+  type FacturacionPreviewLine,
+} from "@/lib/facturacion-preview-lines"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -210,6 +215,10 @@ export default function FacturacionPage() {
 
   const [modalCliente, setModalCliente] = useState<Cliente | null>(null)
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
+  const [isConfirmEmitOpen, setIsConfirmEmitOpen] = useState(false)
+  const [confirmLines, setConfirmLines] = useState<FacturacionPreviewLine[]>([])
+  const [confirmLinesLoading, setConfirmLinesLoading] = useState(false)
+  const [confirmLinesError, setConfirmLinesError] = useState<string | null>(null)
 
   const [emisorCuitMostrar, setEmisorCuitMostrar] = useState<string>(() => {
     const stored = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
@@ -232,14 +241,14 @@ export default function FacturacionPage() {
         "Configurá el CUIT en Configuración → Facturación ARCA, variable NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR o FACTURADOR_CUIT_EMISOR en el servidor."
       )
     }
-  }, [isEmitModalOpen, invoiceModalMode])
+  }, [isEmitModalOpen, isConfirmEmitOpen, invoiceModalMode])
 
   useEffect(() => {
-    if (!isEmitModalOpen || invoiceModalMode !== "emit") return
+    if ((!isEmitModalOpen && !isConfirmEmitOpen) || invoiceModalMode !== "emit") return
     setForm(buildDefaultFacturarFormRequest())
     setShowAdvancedEmitForm(!getEmitirConDefaultsGuardados())
     setDefaultsSavedHint(false)
-  }, [isEmitModalOpen, invoiceModalMode, selectedBillableKey])
+  }, [isEmitModalOpen, isConfirmEmitOpen, invoiceModalMode, selectedBillableKey])
 
   const selectedBillable = useMemo(
     () => billables.find((row) => row.key === selectedBillableKey) ?? null,
@@ -309,7 +318,11 @@ export default function FacturacionPage() {
   }, [])
 
   useEffect(() => {
-    if (!isEmitModalOpen || selectedBillableKey == null || invoiceModalMode !== "emit") {
+    if (
+      (!isEmitModalOpen && !isConfirmEmitOpen) ||
+      selectedBillableKey == null ||
+      invoiceModalMode !== "emit"
+    ) {
       setModalCliente(null)
       setModalClienteLoading(false)
       return
@@ -397,7 +410,73 @@ export default function FacturacionPage() {
     // Nota: no incluir `sales` en dependencias: si se refresca el listado con el modal abierto,
     // no debe reiniciarse el formulario ni volver a cargar cliente.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar comprobante seleccionado
-  }, [isEmitModalOpen, selectedBillableKey, invoiceModalMode, selectedSale])
+  }, [isEmitModalOpen, isConfirmEmitOpen, selectedBillableKey, invoiceModalMode, selectedSale])
+
+  const requestEmitConfirmation = () => {
+    if (!selectedBillable || !selectedSale) {
+      setErrorMsg("Seleccioná una venta u orden de reparación antes de facturar.")
+      return
+    }
+
+    if ((form.concepto === 2 || form.concepto === 3) && (!form.fechaServicioDesde || !form.fechaServicioHasta)) {
+      setErrorMsg("Para concepto 2 o 3 tenés que indicar fecha de servicio desde y hasta (YYYY-MM-DD).")
+      setIsEmitModalOpen(true)
+      setShowAdvancedEmitForm(true)
+      return
+    }
+
+    setErrorMsg(null)
+    setErrorTitle(null)
+    setErrorDetail(null)
+    setIsConfirmEmitOpen(true)
+  }
+
+  const startEmitFromTable = (rowKey: string) => {
+    setSelectedBillableKey(rowKey)
+    setInvoiceModalMode("emit")
+    setIsEmitModalOpen(false)
+    setErrorMsg(null)
+    setIsConfirmEmitOpen(true)
+  }
+
+  useEffect(() => {
+    if (!isConfirmEmitOpen || !selectedBillable) return
+
+    let cancelled = false
+    setConfirmLinesLoading(true)
+    setConfirmLinesError(null)
+
+    void (async () => {
+      try {
+        const lines = await loadFacturacionPreviewLines(selectedBillable)
+        if (cancelled) return
+        setConfirmLines(lines)
+        if (lines.length === 0) {
+          setConfirmLinesError("No hay ítems para mostrar en el comprobante.")
+        }
+      } catch (e) {
+        if (cancelled) return
+        const msg = e instanceof Error ? e.message : "No se pudo cargar el detalle del comprobante."
+        setConfirmLinesError(msg)
+        setConfirmLines([])
+      } finally {
+        if (!cancelled) setConfirmLinesLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recargar al abrir confirmación o cambiar fila
+  }, [isConfirmEmitOpen, selectedBillableKey, invoiceModalMode])
+
+  useEffect(() => {
+    if (!isConfirmEmitOpen) {
+      setConfirmLines([])
+      setConfirmLinesError(null)
+      setConfirmLinesLoading(false)
+    }
+  }, [isConfirmEmitOpen])
 
   useEffect(() => {
     if (!isEmitModalOpen || invoiceModalMode !== "view" || !selectedSale) {
@@ -616,6 +695,7 @@ export default function FacturacionPage() {
           setSuccessMsg((prev) => `${prev ?? ""} (PDF no descargado: ${pdfMsg})`.trim())
         }
       }
+      setIsConfirmEmitOpen(false)
       setIsEmitModalOpen(false)
       await loadBillables()
     } catch (error: unknown) {
@@ -888,11 +968,7 @@ export default function FacturacionPage() {
                                     variant="outline"
                                     size="sm"
                                     className="h-7 text-xs"
-                                    onClick={() => {
-                                      setSelectedBillableKey(row.key)
-                                      setInvoiceModalMode("emit")
-                                      setIsEmitModalOpen(true)
-                                    }}
+                                    onClick={() => startEmitFromTable(row.key)}
                                   >
                                     Reemitir
                                   </Button>
@@ -912,11 +988,7 @@ export default function FacturacionPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  setSelectedBillableKey(row.key)
-                                  setInvoiceModalMode("emit")
-                                  setIsEmitModalOpen(true)
-                                }}
+                                onClick={() => startEmitFromTable(row.key)}
                               >
                                 Emitir comprobante
                               </Button>
@@ -1353,17 +1425,37 @@ export default function FacturacionPage() {
                       Cancelar
                     </Button>
                     <Button
-                      onClick={onSubmitFacturar}
+                      onClick={requestEmitConfirmation}
                       disabled={isSubmitting || !selectedSale || modalClienteLoading}
                     >
                       <Send className="mr-2 h-4 w-4" />
-                      {isSubmitting ? "Facturando..." : "Facturar"}
+                      Revisar y confirmar emisión
                     </Button>
                   </>
                 )}
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <FacturacionEmitConfirmDialog
+            open={isConfirmEmitOpen}
+            onOpenChange={(open) => {
+              setIsConfirmEmitOpen(open)
+              if (!open && !isEmitModalOpen) setErrorMsg(null)
+            }}
+            billable={selectedBillable}
+            sale={selectedSale}
+            cliente={modalCliente}
+            clienteLoading={modalClienteLoading}
+            form={form}
+            lines={confirmLines}
+            linesLoading={confirmLinesLoading}
+            linesError={confirmLinesError}
+            emisorCuitLabel={emisorCuitMostrar}
+            isSubmitting={isSubmitting}
+            onConfigure={() => setIsEmitModalOpen(true)}
+            onConfirm={() => void onSubmitFacturar()}
+          />
 
           <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>
             <DialogContent className="max-w-lg">
