@@ -6,7 +6,6 @@ import {
   UserCheck,
   ShoppingCart,
   ClipboardList,
-  Store,
   FileText,
   BarChart3,
   Calculator,
@@ -174,13 +173,14 @@ export const MENU_GROUPS: MenuGroup[] = [
         href: "/reparaciones",
         requiredRoles: ['gerencia', 'ventas', 'admin']
       },
-      { 
-        id: "tienda", 
-        label: "Tienda", 
-        icon: Store, 
-        href: "/tienda",
-        requiredRoles: ['gerencia', 'ventas', 'admin']
-      },
+      // Módulo Tienda oculto del menú
+      // {
+      //   id: "tienda",
+      //   label: "Tienda",
+      //   icon: Store,
+      //   href: "/tienda",
+      //   requiredRoles: ['gerencia', 'ventas', 'admin']
+      // },
     ]
   },
   {
