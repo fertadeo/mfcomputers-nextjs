@@ -1,42 +1,41 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
+import Link from "next/link"
 import { ERPLayout } from "@/components/erp-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { useRole } from "@/app/hooks/useRole"
 import {
   getClienteStats,
   getProductStats,
-  getPurchaseStats,
   getDashboardStats,
-  getProducts,
+  REPAIR_ORDER_STATUS_LABELS,
   type ProductStats,
-  type PurchaseStats,
   type DashboardStats,
-  type Product,
+  type RepairOrderStatus,
 } from "@/lib/api"
-import { getCashDay } from "@/lib/cash"
 import { fetchMonthlySalesBreakdown, type MonthlySalesBreakdown } from "@/lib/dashboard-monthly-sales"
+import { fetchDashboardInsights, type DashboardInsightsView } from "@/lib/dashboard-insights"
 import {
   Package,
   DollarSign,
   ClipboardList,
   TrendingUp,
-  TrendingDown,
   AlertTriangle,
-  CheckCircle,
   Zap,
   Users,
   ShoppingCart,
   Bell,
-  Eye,
   ArrowUpRight,
   Calendar,
   Shield,
   Loader2,
+  Trophy,
+  Wrench,
+  Crown,
+  AlertCircle,
 } from "lucide-react"
 
 export default function Dashboard() {
@@ -46,11 +45,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [clienteStats, setClienteStats] = useState<{ total_clients: number; active_clients: string } | null>(null)
   const [productStats, setProductStats] = useState<ProductStats | null>(null)
-  const [cashDay, setCashDay] = useState<{ incomes: number; expenses: number; balance: number } | null>(null)
-  const [purchaseStats, setPurchaseStats] = useState<PurchaseStats | null>(null)
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
   const [monthlySales, setMonthlySales] = useState<MonthlySalesBreakdown | null>(null)
-  const [allProducts, setAllProducts] = useState<Product[] | null>(null)
+  const [insights, setInsights] = useState<DashboardInsightsView | null>(null)
 
   // Cargar datos al montar el componente (incl. GET /api/dashboard/stats para gerencia/finanzas)
   useEffect(() => {
@@ -58,33 +55,24 @@ export default function Dashboard() {
       try {
         setLoading(true)
         
-        const [clientesData, productosData, cajaData, comprasData, dashboardData, productsData] = await Promise.allSettled([
+        const [clientesData, productosData, dashboardData] = await Promise.allSettled([
           getClienteStats().catch(() => null),
           getProductStats().catch(() => null),
-          getCashDay().catch(() => null),
-          getPurchaseStats().catch(() => null),
           getDashboardStats().catch(() => null),
-          // active_only=false para que coincida con los KPIs de Productos (activos)
-          getProducts(1, 10000, false).catch(() => null),
         ])
+
+        let productStatsData: ProductStats | null = null
 
         if (clientesData.status === 'fulfilled' && clientesData.value) {
           setClienteStats(clientesData.value)
         }
         
-        if (productosData.status === 'fulfilled' && productosData.value) {
-          setProductStats(productosData.value)
-        }
-        
-        if (cajaData.status === 'fulfilled' && cajaData.value) {
-          setCashDay(cajaData.value)
-        }
-        
-        if (comprasData.status === 'fulfilled' && comprasData.value) {
-          setPurchaseStats(comprasData.value.data ?? null)
+        if (productosData.status === "fulfilled" && productosData.value) {
+          productStatsData = productosData.value
+          setProductStats(productStatsData)
         }
 
-        if (dashboardData.status === 'fulfilled' && dashboardData.value?.data) {
+        if (dashboardData.status === "fulfilled" && dashboardData.value?.data) {
           setDashboardStats(dashboardData.value.data)
         }
 
@@ -98,12 +86,8 @@ export default function Dashboard() {
         }))
         setMonthlySales(monthlyData)
 
-        if (productsData.status === "fulfilled" && productsData.value) {
-          const data = productsData.value as Product[] | { products?: Product[] }
-          const list =
-            Array.isArray(data) ? data : Array.isArray((data as any).products) ? (data as any).products : []
-          setAllProducts(list)
-        }
+        const insightsData = await fetchDashboardInsights(productStatsData).catch(() => null)
+        if (insightsData) setInsights(insightsData)
       } catch (error) {
         console.error('Error al cargar datos del dashboard:', error)
       } finally {
@@ -114,32 +98,12 @@ export default function Dashboard() {
     loadDashboardData()
   }, [])
 
-  // Inventario calculado igual que en Gestión de Productos (solo productos activos con stock físico o por encargo)
-  const activeInventoryStats = useMemo(() => {
-    if (!allProducts || !allProducts.length) return null
-    const active = allProducts.filter((p) => p.is_active && (p.stock > 0 || !!p.allow_backorders))
-    const withPhysical = active.filter((p) => p.stock > 0)
-    const stockValue = active.reduce((sum, p) => sum + Number(p.price || 0) * (p.stock || 0), 0)
-    const stockQuantity = active.reduce((sum, p) => sum + (p.stock || 0), 0)
-    const lowStock = withPhysical.filter((p) => p.stock <= (p.min_stock ?? 0)).length
-    const outOfStock = active.filter((p) => p.stock === 0).length
-    return {
-      totalStockValue: stockValue,
-      totalStockQuantity: stockQuantity,
-      lowStockCount: lowStock,
-      outOfStockCount: outOfStock,
-    }
-  }, [allProducts])
-
-  // Valor total de compras pendientes, seguro a 0 cuando no hay datos
-  const purchaseTotalAmount = (() => {
-    const raw = purchaseStats?.total_amount
-    if (typeof raw === "number") return raw
+  const inventoryValue = (() => {
+    const raw = productStats?.total_stock_value
     if (raw == null) return 0
-    const parsed = parseFloat(String(raw).replace(/[^\d.-]/g, "") || "0")
-    return Number.isNaN(parsed) ? 0 : parsed
+    return parseFloat(String(raw).replace(/[^\d.-]/g, "") || "0") || 0
   })()
-  
+
   return (
     <ERPLayout activeItem="dashboard">
       <div className="space-y-6">
@@ -194,7 +158,7 @@ export default function Dashboard() {
                 ) : (
                   <>
                     <div className="text-2xl font-bold text-turquoise-600">
-                      ${(dashboardStats?.dailySales ?? cashDay?.incomes ?? 0).toLocaleString('es-AR')}
+                      ${(dashboardStats?.dailySales ?? 0).toLocaleString("es-AR")}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <TrendingUp className="h-3 w-3 text-turquoise-500" />
@@ -223,7 +187,7 @@ export default function Dashboard() {
               ) : (
                 <>
                   <div className="text-2xl font-bold">
-                    {dashboardStats?.activeOrders ?? purchaseStats?.pending_purchases ?? 0}
+                    {dashboardStats?.activeOrders ?? 0}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <ClipboardList className="h-3 w-3 text-turquoise-500" />
@@ -289,20 +253,12 @@ export default function Dashboard() {
               ) : (
                 <>
                   <div className="text-2xl font-bold text-turquoise-600">
-                    $
-                    {(activeInventoryStats?.totalStockValue ??
-                      (productStats?.total_stock_value != null
-                        ? parseFloat(String(productStats.total_stock_value).replace(/[^\d.-]/g, "") || "0")
-                        : 0)
-                    ).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                    ${inventoryValue.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                     <Package className="h-3 w-3 text-turquoise-500" />
-                    {(activeInventoryStats?.totalStockQuantity ??
-                      productStats?.total_stock_quantity ??
-                      0
-                    ).toLocaleString("es-AR")}{" "}
-                    unidades en inventario
+                    {(productStats?.total_stock_quantity ?? 0).toLocaleString("es-AR")} unidades (
+                    {productStats?.active_products ?? "—"} activos)
                   </div>
                 </>
               )}
@@ -341,85 +297,210 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Caja y Compras */}
+        {/* Destacados del mes */}
+        <div>
+          <h2 className="text-lg font-semibold mb-3">Destacados del mes</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  Mayor precio unitario vendido
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : insights?.topProduct ? (
+                  <>
+                    <p className="font-semibold line-clamp-2">{insights.topProduct.product_name}</p>
+                    <p className="text-2xl font-bold text-turquoise-600 mt-1">
+                      ${insights.topProduct.unit_price.toLocaleString("es-AR")}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {insights.topProduct.source === "pos" ? "POS" : "WooCommerce"}
+                      {insights.topProduct.reference_label
+                        ? ` · ${insights.topProduct.reference_label}`
+                        : ""}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sin líneas de venta con precio en el mes</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-turquoise-500" />
+                  Reparación más elevada
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : insights?.topRepair ? (
+                  <>
+                    <p className="font-semibold">{insights.topRepair.client_name}</p>
+                    <p className="text-2xl font-bold text-turquoise-600 mt-1">
+                      ${insights.topRepair.total_amount.toLocaleString("es-AR")}
+                    </p>
+                    <Link
+                      href={`/reparaciones/${insights.topRepair.id}`}
+                      className="text-xs text-turquoise-500 hover:underline mt-2 inline-flex items-center gap-1"
+                    >
+                      {insights.topRepair.repair_number}
+                      <ArrowUpRight className="h-3 w-3" />
+                    </Link>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sin reparaciones registradas en el mes</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-amber-500" />
+                  Mejor cliente del mes
+                </CardTitle>
+                <CardDescription>Ventas POS + pedidos + reparaciones</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : insights?.topClient ? (
+                  <>
+                    <p className="font-semibold line-clamp-2">{insights.topClient.client_name}</p>
+                    <p className="text-2xl font-bold text-turquoise-600 mt-1">
+                      ${insights.topClient.total_amount.toLocaleString("es-AR")}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      POS: ${insights.topClient.from_pos.toLocaleString("es-AR")} · Pedidos:{" "}
+                      ${insights.topClient.from_orders.toLocaleString("es-AR")} · Taller:{" "}
+                      ${insights.topClient.from_repairs.toLocaleString("es-AR")}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sin movimientos por cliente en el mes</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          {insights && !insights.fromApi && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Calculado en el navegador. Cuando el backend exponga{" "}
+              <code className="text-xs">GET /api/dashboard/insights</code> será más rápido y preciso (ver{" "}
+              <code className="text-xs">docs/dashboard-insights-backend.md</code>).
+            </p>
+          )}
+        </div>
+
+        {/* Atención hoy + Taller */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Caja del Día
+              <CardTitle className="flex items-center gap-2 text-base">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+                Atención hoy
               </CardTitle>
-              <CardDescription>Ingresos y egresos de hoy</CardDescription>
+              <CardDescription>Pendientes que requieren acción</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-4">
+                <div className="flex justify-center py-4">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
+              ) : insights?.alerts.length ? (
+                <ul className="space-y-3">
+                  {insights.alerts.map((alert) => (
+                    <li key={alert.id}>
+                      <Link
+                        href={alert.href ?? "#"}
+                        className="flex items-center justify-between gap-2 rounded-md border p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{alert.title}</p>
+                          {alert.description && (
+                            <p className="text-xs text-muted-foreground">{alert.description}</p>
+                          )}
+                        </div>
+                        <Badge
+                          variant={
+                            alert.severity === "danger"
+                              ? "destructive"
+                              : alert.severity === "warning"
+                                ? "outline"
+                                : "secondary"
+                          }
+                        >
+                          {alert.count}
+                        </Badge>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Ingresos</span>
-                    <span className="text-lg font-semibold text-turquoise-600">
-                      ${cashDay?.incomes?.toLocaleString() || '0'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Egresos</span>
-                    <span className="text-lg font-semibold text-red-600">
-                      ${cashDay?.expenses?.toLocaleString() || '0'}
-                    </span>
-                  </div>
-                  <div className="border-t pt-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">Balance</span>
-                      <span className="text-xl font-bold text-turquoise-600">
-                        ${cashDay?.balance?.toLocaleString() || '0'}
-                      </span>
-                    </div>
-                  </div>
-                </>
+                <p className="text-sm text-muted-foreground py-2">Nada urgente por ahora</p>
               )}
-              <Button variant="outline" size="sm" className="w-full bg-transparent">
-                <Eye className="h-4 w-4 mr-2" />
-                Ver detalle
-              </Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5" />
-                Compras Pendientes
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Wrench className="h-5 w-5" />
+                Taller de reparaciones
               </CardTitle>
-              <CardDescription>Órdenes de compra a proveedores</CardDescription>
+              <CardDescription>Órdenes abiertas y ticket del mes</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {loading ? (
-                <div className="flex items-center justify-center py-4">
+                <div className="flex justify-center py-4">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : (
                 <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Órdenes Pendientes</span>
-                    <Badge variant="outline">0</Badge>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-2xl font-bold">{insights?.repairPipeline.openCount ?? 0}</div>
+                      <div className="text-xs text-muted-foreground">Órdenes abiertas</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-turquoise-600">
+                        ${(insights?.repairPipeline.amountInWorkshop ?? 0).toLocaleString("es-AR")}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Monto en taller</div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Valor Total</span>
-                    <span className="font-semibold">$0</span>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Ticket promedio (mes)</span>
+                    <span className="font-medium">
+                      ${(insights?.repairPipeline.monthAverageTicket ?? 0).toLocaleString("es-AR", {
+                        maximumFractionDigits: 0,
+                      })}
+                    </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total compras</span>
-                    <Badge variant="secondary">0</Badge>
-                  </div>
+                  {insights?.repairPipeline.byStatus &&
+                    Object.keys(insights.repairPipeline.byStatus).length > 0 && (
+                      <div className="space-y-1 border-t pt-3">
+                        {Object.entries(insights.repairPipeline.byStatus).map(([status, count]) => (
+                          <div key={status} className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {REPAIR_ORDER_STATUS_LABELS[status as RepairOrderStatus] ?? status}
+                            </span>
+                            <Badge variant="outline">{count}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  <Button variant="outline" size="sm" className="w-full bg-transparent" asChild>
+                    <Link href="/reparaciones">Ver reparaciones</Link>
+                  </Button>
                 </>
               )}
-              <Button variant="outline" size="sm" className="w-full bg-transparent">
-                <Eye className="h-4 w-4 mr-2" />
-                Ver órdenes
-              </Button>
             </CardContent>
           </Card>
         </div>

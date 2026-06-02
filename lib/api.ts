@@ -1151,6 +1151,89 @@ export async function getDashboardStats(): Promise<{ success: boolean; message: 
   return data
 }
 
+/** Destacado: línea con mayor precio unitario vendido en el período (ver docs/dashboard-insights-backend.md) */
+export interface DashboardTopProductByUnitPrice {
+  product_id?: number | null
+  product_name: string
+  unit_price: number
+  source: 'pos' | 'woocommerce'
+  reference_type?: string
+  reference_id?: number
+  reference_label?: string
+}
+
+export interface DashboardTopRepairOrder {
+  id: number
+  repair_number: string
+  client_id?: number
+  client_name: string
+  total_amount: number
+  status?: string
+  reception_date?: string
+}
+
+export interface DashboardTopClient {
+  client_id: number | null
+  client_name: string
+  total_amount: number
+  from_pos: number
+  from_orders: number
+  from_repairs: number
+}
+
+export interface DashboardInsightAlert {
+  id: string
+  severity: 'info' | 'warning' | 'danger'
+  title: string
+  count: number
+  href?: string
+  description?: string
+}
+
+export interface DashboardRepairPipeline {
+  by_status: Record<string, number>
+  open_count: number
+  month_average_ticket: number
+  amount_in_workshop: number
+}
+
+export interface DashboardInsightsPayload {
+  period: { date_from: string; date_to: string }
+  highlights: {
+    top_product_by_unit_price: DashboardTopProductByUnitPrice | null
+    top_repair_order: DashboardTopRepairOrder | null
+    top_client: DashboardTopClient | null
+  }
+  alerts: DashboardInsightAlert[]
+  repair_pipeline: DashboardRepairPipeline
+}
+
+export async function getDashboardInsights(params?: {
+  date_from?: string
+  date_to?: string
+}): Promise<{
+  success: boolean
+  message: string
+  data: DashboardInsightsPayload
+  timestamp: string
+}> {
+  const apiUrl = getApiUrl()
+  const q = new URLSearchParams()
+  if (params?.date_from) q.set('date_from', params.date_from)
+  if (params?.date_to) q.set('date_to', params.date_to)
+  const url = `${apiUrl}dashboard/insights${q.toString() ? `?${q.toString()}` : ''}`
+  const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const err = new Error((data?.message || data?.error || `Error ${response.status}`) as string) as Error & {
+      status?: number
+    }
+    err.status = response.status
+    throw err
+  }
+  return data
+}
+
 // Función para crear un nuevo producto
 export async function createProduct(productData: CreateProductData): Promise<any> {
   try {
