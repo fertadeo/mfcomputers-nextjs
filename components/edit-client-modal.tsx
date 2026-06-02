@@ -31,6 +31,7 @@ import {
   isTaxConditionAllowedForPersoneria,
   normalizeTaxConditionFromApi,
   taxConditionFromArcaPadron,
+  inferPersoneriaFromArcaPadron,
 } from "@/lib/client-tax-condition"
 import { SALES_CHANNEL_CONFIG, SalesChannel } from "@/lib/utils"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
@@ -159,10 +160,14 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
 
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
-    const suggestedTax = taxConditionFromArcaPadron(data)
-    setPadronSuggestedTax(suggestedTax)
+    let suggestedTax: ClientTaxCondition | undefined
     setFormData((prev) => {
-      const nextPersoneria = data.personeriaSugerida ?? prev.personeria
+      const nextPersoneria =
+        inferPersoneriaFromArcaPadron(data) ?? data.personeriaSugerida ?? prev.personeria
+      suggestedTax = taxConditionFromArcaPadron({
+        ...data,
+        personeriaSugerida: nextPersoneria,
+      })
       let tax_condition = suggestedTax ?? prev.tax_condition
       if (!isTaxConditionAllowedForPersoneria(nextPersoneria, tax_condition)) {
         tax_condition = defaultTaxConditionForPersoneria(nextPersoneria)
@@ -174,6 +179,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
         tax_condition,
       }
     })
+    setPadronSuggestedTax(suggestedTax)
     setErrors((prev) => {
       const next = { ...prev }
       delete next.cuil_cuit
@@ -479,19 +485,6 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <ClientTaxConditionField
-                    personeria={formData.personeria}
-                    value={formData.tax_condition}
-                    onChange={(tax_condition) =>
-                      setFormData((prev) => ({ ...prev, tax_condition }))
-                    }
-                    disabled={isLoading}
-                    padronSuggested={padronSuggestedTax}
-                    error={errors.tax_condition}
-                  />
-                </div>
-
                 <div className="md:col-span-2">
                   <ArcaPadronCuitField
                     entityType="client"
@@ -510,6 +503,20 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                       {errors.cuil_cuit}
                     </p>
                   )}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <ClientTaxConditionField
+                    key={`${formData.personeria}-${formData.tax_condition}`}
+                    personeria={formData.personeria}
+                    value={formData.tax_condition}
+                    onChange={(tax_condition) =>
+                      setFormData((prev) => ({ ...prev, tax_condition }))
+                    }
+                    disabled={isLoading || padronLocked}
+                    padronSuggested={padronSuggestedTax}
+                    error={errors.tax_condition}
+                  />
                 </div>
               </div>
             </CardContent>

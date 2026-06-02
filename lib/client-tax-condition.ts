@@ -97,12 +97,42 @@ export function afipCondicionFromTaxCondition(
 }
 
 /**
+ * Personería sugerida cuando el backend no envía `personeriaSugerida`
+ * (p. ej. solo razón social + condición IVA).
+ */
+export function inferPersoneriaFromArcaPadron(
+  data: ArcaPadronResult
+): ClientPersoneria | undefined {
+  if (data.personeriaSugerida) return data.personeriaSugerida
+  if (data.razonSocial?.trim()) return "persona_juridica"
+
+  const cuit = (data.cuit ?? "").replace(/\D/g, "")
+  if (cuit.length >= 2) {
+    const prefix = cuit.slice(0, 2)
+    if (["30", "33", "34"].includes(prefix)) return "persona_juridica"
+    if (["20", "23", "27"].includes(prefix)) return "persona_fisica"
+  }
+
+  const displayName = (data.razonSocial || data.name || "").trim()
+  if (
+    /\b(s\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|asociacion|fundacion|cooperativa|sociedad|ltda)\b/i.test(
+      displayName
+    )
+  ) {
+    return "persona_juridica"
+  }
+  if (data.name?.trim() && !data.razonSocial?.trim()) return "persona_fisica"
+
+  return undefined
+}
+
+/**
  * Condición fiscal del cliente a partir de la respuesta del padrón ARCA.
  */
 export function taxConditionFromArcaPadron(data: ArcaPadronResult): ClientTaxCondition | undefined {
   const summary = buildArcaPadronBusinessSummary(data)
   const code = summary.condicionFiscal?.codigoAfip
-  const personeria = data.personeriaSugerida
+  const personeria = inferPersoneriaFromArcaPadron(data) ?? data.personeriaSugerida
 
   if (code === 6) return "monotributo"
   if (code === 5) return "consumidor_final"

@@ -18,6 +18,7 @@ import {
   defaultTaxConditionForPersoneria,
   isTaxConditionAllowedForPersoneria,
   taxConditionFromArcaPadron,
+  inferPersoneriaFromArcaPadron,
 } from "@/lib/client-tax-condition"
 import { SALES_CHANNEL_CONFIG } from "@/lib/utils"
 
@@ -87,10 +88,14 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
 
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
-    const suggestedTax = taxConditionFromArcaPadron(data)
-    setPadronSuggestedTax(suggestedTax)
+    let suggestedTax: ClientTaxCondition | undefined
     setFormData((prev) => {
-      const nextPersoneria = data.personeriaSugerida ?? prev.personeria
+      const nextPersoneria =
+        inferPersoneriaFromArcaPadron(data) ?? data.personeriaSugerida ?? prev.personeria
+      suggestedTax = taxConditionFromArcaPadron({
+        ...data,
+        personeriaSugerida: nextPersoneria,
+      })
       let tax_condition = suggestedTax ?? prev.tax_condition
       if (!isTaxConditionAllowedForPersoneria(nextPersoneria, tax_condition)) {
         tax_condition = defaultTaxConditionForPersoneria(nextPersoneria)
@@ -102,6 +107,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
         tax_condition,
       }
     })
+    setPadronSuggestedTax(suggestedTax)
   }, [])
 
   const resetPadron = useCallback(() => {
@@ -147,6 +153,13 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
     // Si ingresaron email, validar formato
     if (formData.email.trim() && !formData.email.includes("@")) {
       setError("El email debe tener un formato válido")
+      return false
+    }
+    if (
+      formData.cuil_cuit.trim() &&
+      !isTaxConditionAllowedForPersoneria(formData.personeria, formData.tax_condition)
+    ) {
+      setError("Seleccioná la condición frente al IVA acorde a la personería")
       return false
     }
     return true
@@ -298,17 +311,6 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <ClientTaxConditionField
-                    personeria={formData.personeria}
-                    value={formData.tax_condition}
-                    onChange={(tax_condition) =>
-                      setFormData((prev) => ({ ...prev, tax_condition }))
-                    }
-                    disabled={loading || !isManualChannel}
-                    padronSuggested={padronSuggestedTax}
-                  />
-                </div>
                 <div className="md:col-span-2">
                   <ArcaPadronCuitField
                     entityType="client"
@@ -319,6 +321,18 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                     onPadronReset={resetPadron}
                     disabled={loading || !isManualChannel}
                     inputId="cuil_cuit"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <ClientTaxConditionField
+                    key={`${formData.personeria}-${formData.tax_condition}`}
+                    personeria={formData.personeria}
+                    value={formData.tax_condition}
+                    onChange={(tax_condition) =>
+                      setFormData((prev) => ({ ...prev, tax_condition }))
+                    }
+                    disabled={loading || !isManualChannel || padronLocked}
+                    padronSuggested={padronSuggestedTax}
                   />
                 </div>
               </div>
