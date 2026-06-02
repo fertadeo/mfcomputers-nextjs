@@ -11,6 +11,14 @@ import { User, Mail, Phone, MapPin, Building, AlertCircle, CheckCircle } from "l
 import { createCliente } from "@/lib/api"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
+import { ClientTaxConditionField } from "@/components/client-tax-condition-field"
+import {
+  type ClientTaxCondition,
+  type ClientPersoneria,
+  defaultTaxConditionForPersoneria,
+  isTaxConditionAllowedForPersoneria,
+  taxConditionFromArcaPadron,
+} from "@/lib/client-tax-condition"
 import { SALES_CHANNEL_CONFIG } from "@/lib/utils"
 
 interface NewClientModalProps {
@@ -20,13 +28,12 @@ interface NewClientModalProps {
   onSuccess?: (created?: { id: number; name: string }) => void
 }
 
-type Personeria = "persona_fisica" | "persona_juridica" | "consumidor_final"
-
 interface NewClientData {
   client_type: "minorista" | "mayorista" | "personalizado"
   sales_channel: "woocommerce_minorista" | "woocommerce_mayorista" | "mercadolibre" | "sistema_mf" | "manual" | "otro"
   name: string
-  personeria: Personeria
+  personeria: ClientPersoneria
+  tax_condition: ClientTaxCondition
   cuil_cuit: string
   email: string
   phone: string
@@ -57,6 +64,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
     sales_channel: "manual",
     name: "",
     personeria: "consumidor_final",
+    tax_condition: "consumidor_final",
     cuil_cuit: "",
     email: "",
     phone: "",
@@ -69,6 +77,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [padronLocked, setPadronLocked] = useState(false)
+  const [padronSuggestedTax, setPadronSuggestedTax] = useState<ClientTaxCondition | undefined>()
 
   const isManualChannel = formData.sales_channel === "manual"
 
@@ -78,29 +87,46 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
 
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
-    setFormData((prev) => ({
-      ...prev,
-      name: name || prev.name,
-      personeria: data.personeriaSugerida ?? prev.personeria,
-    }))
+    const suggestedTax = taxConditionFromArcaPadron(data)
+    setPadronSuggestedTax(suggestedTax)
+    setFormData((prev) => {
+      const nextPersoneria = data.personeriaSugerida ?? prev.personeria
+      let tax_condition = suggestedTax ?? prev.tax_condition
+      if (!isTaxConditionAllowedForPersoneria(nextPersoneria, tax_condition)) {
+        tax_condition = defaultTaxConditionForPersoneria(nextPersoneria)
+      }
+      return {
+        ...prev,
+        name: name || prev.name,
+        personeria: nextPersoneria,
+        tax_condition,
+      }
+    })
   }, [])
 
   const resetPadron = useCallback(() => {
     setPadronLocked(false)
+    setPadronSuggestedTax(undefined)
     setFormData((prev) => ({
       ...prev,
       cuil_cuit: "",
       name: "",
       personeria: "consumidor_final",
+      tax_condition: "consumidor_final",
     }))
   }, [])
 
   const handleInputChange = (field: keyof NewClientData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-    // Limpiar errores cuando el usuario empiece a escribir
+    setFormData((prev) => {
+      const next = { ...prev, [field]: value } as NewClientData
+      if (field === "personeria") {
+        const p = value as ClientPersoneria
+        if (!isTaxConditionAllowedForPersoneria(p, next.tax_condition)) {
+          next.tax_condition = defaultTaxConditionForPersoneria(p)
+        }
+      }
+      return next
+    })
     if (error) setError(null)
   }
 
@@ -145,6 +171,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
         city: formData.city.trim(),
         country: formData.country.trim(),
         personeria: formData.personeria,
+        tax_condition: formData.tax_condition,
         cuil_cuit: formData.cuil_cuit.trim() ? onlyDigits(formData.cuil_cuit) : null
       }
       console.log('📡 [NEW CLIENT] Enviando datos:', payload)
@@ -168,6 +195,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
           sales_channel: "manual",
           name: "",
           personeria: "consumidor_final",
+          tax_condition: "consumidor_final",
           cuil_cuit: "",
           email: "",
           phone: "",
@@ -176,6 +204,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
           country: "Argentina"
         })
         setPadronLocked(false)
+        setPadronSuggestedTax(undefined)
       }, 1500)
 
     } catch (err) {
@@ -273,7 +302,7 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                   <Label htmlFor="personeria">Personería</Label>
                   <Select
                     value={formData.personeria}
-                    onValueChange={(value: Personeria) => handleInputChange("personeria", value)}
+                    onValueChange={(value: ClientPersoneria) => handleInputChange("personeria", value)}
                     disabled={loading || !isManualChannel || padronLocked}
                   >
                     <SelectTrigger>
@@ -285,6 +314,17 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
                       <SelectItem value="persona_juridica">Persona jurídica</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <ClientTaxConditionField
+                    personeria={formData.personeria}
+                    value={formData.tax_condition}
+                    onChange={(tax_condition) =>
+                      setFormData((prev) => ({ ...prev, tax_condition }))
+                    }
+                    disabled={loading || !isManualChannel}
+                    padronSuggested={padronSuggestedTax}
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <ArcaPadronCuitField

@@ -18,6 +18,8 @@ import {
   normalizeCuitDigits,
   type ArcaPadronResult,
 } from '@/lib/arca-padron';
+import type { ClientTaxCondition } from '@/lib/client-tax-condition';
+import { afipCondicionFromTaxCondition } from '@/lib/client-tax-condition';
 
 // Función helper para obtener el token de autenticación
 function getAuthToken(): string | null {
@@ -311,6 +313,8 @@ export async function createCliente(clienteData: {
   country: string;
   personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
   cuil_cuit?: string | null;
+  tax_condition?: ClientTaxCondition;
+  condicion_iva_receptor?: number;
 }): Promise<any> {
   const apiUrl = getApiUrl();
   const fullUrl = `${apiUrl}clients`;
@@ -319,13 +323,26 @@ export async function createCliente(clienteData: {
   console.log('🌐 [API] URL completa:', fullUrl);
   console.log('📋 [API] Datos del cliente:', clienteData);
 
+  const body: Record<string, unknown> = { ...clienteData }
+  if (clienteData.tax_condition) {
+    body.tax_condition = clienteData.tax_condition
+    body.condicion_iva_receptor =
+      clienteData.condicion_iva_receptor ?? afipCondicionFromTaxCondition(clienteData.tax_condition)
+  }
+  if (clienteData.personeria != null && clienteData.personeria !== "consumidor_final") {
+    body.person_type = clienteData.personeria
+  }
+  if (clienteData.cuil_cuit != null && clienteData.cuil_cuit !== "") {
+    body.primary_tax_id = clienteData.cuil_cuit
+  }
+
   try {
     console.log('📡 [API] Enviando request POST a:', fullUrl);
     
     const response = await fetch(fullUrl, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(clienteData)
+      body: JSON.stringify(body)
     });
 
     console.log('📥 [API] Respuesta de creación recibida:', {
@@ -465,6 +482,8 @@ export async function updateCliente(id: number, clienteData: {
   country: string;
   personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
   cuil_cuit?: string | null;
+  tax_condition?: ClientTaxCondition;
+  condicion_iva_receptor?: number;
 }): Promise<any> {
   try {
     const apiUrl = getApiUrl();
@@ -487,6 +506,11 @@ export async function updateCliente(id: number, clienteData: {
     }
     if (clienteData.cuil_cuit != null && clienteData.cuil_cuit !== "") {
       body.primary_tax_id = clienteData.cuil_cuit
+    }
+    if (clienteData.tax_condition) {
+      body.tax_condition = clienteData.tax_condition
+      body.condicion_iva_receptor =
+        clienteData.condicion_iva_receptor ?? afipCondicionFromTaxCondition(clienteData.tax_condition)
     }
     
     console.log('🔄 [API] Actualizando cliente:', {

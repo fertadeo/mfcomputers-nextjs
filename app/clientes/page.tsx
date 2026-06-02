@@ -12,20 +12,11 @@ import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, A
 import { useState, useEffect } from "react"
 import { getClientes, getClienteStats, deleteCliente } from "@/lib/api"
 import { toast } from "sonner"
-
-const TAX_CONDITION_LABELS: Record<string, string> = {
-  responsable_inscripto: "Responsable Inscripto",
-  inscripto: "Inscripto",
-  consumidor_final: "Consumidor Final",
-  monotributo: "Monotributo",
-  exento: "Exento"
-}
-
-const formatTaxConditionLabel = (value?: string, fallback: string = "N/A") => {
-  if (!value) return fallback
-  const normalized = value.toLowerCase().replace(/\s+/g, '_')
-  return TAX_CONDITION_LABELS[normalized] ?? value
-}
+import {
+  formatTaxConditionLabel,
+  normalizeTaxConditionFromApi,
+  type ClientTaxCondition,
+} from "@/lib/client-tax-condition"
 
 import { NewClientModal } from "@/components/new-client-modal"
 import { Pagination } from "@/components/ui/pagination"
@@ -56,6 +47,7 @@ interface ClienteUI {
   personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
   personType?: "Persona Física" | "Persona Jurídica" | "Consumidor final";
   taxCondition?: string;
+  taxConditionCode?: ClientTaxCondition;
   ccEnabled?: boolean;
   ccLimit?: number;
   ccBalance?: number;
@@ -214,6 +206,7 @@ export default function ClientesPage() {
       ? apiCliente.personeria
       : (apiCliente.person_type === 'persona_fisica' ? 'persona_fisica' : apiCliente.person_type === 'persona_juridica' ? 'persona_juridica' : 'consumidor_final')
     const personType = personeria === 'persona_fisica' ? 'Persona Física' : personeria === 'persona_juridica' ? 'Persona Jurídica' : 'Consumidor final'
+    const taxConditionCode = normalizeTaxConditionFromApi(apiCliente.tax_condition)
     const taxCondition = formatTaxConditionLabel(
       apiCliente.tax_condition,
       personType === 'Persona Jurídica' ? 'Responsable Inscripto' : 'Consumidor Final'
@@ -242,6 +235,7 @@ export default function ClientesPage() {
       personeria,
       personType,
       taxCondition,
+      taxConditionCode,
       ccEnabled,
       ccLimit,
       ccBalance,

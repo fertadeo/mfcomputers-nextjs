@@ -23,10 +23,17 @@ import {
 import { updateCliente } from "@/lib/api"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
+import { ClientTaxConditionField } from "@/components/client-tax-condition-field"
+import {
+  type ClientTaxCondition,
+  type ClientPersoneria,
+  defaultTaxConditionForPersoneria,
+  isTaxConditionAllowedForPersoneria,
+  normalizeTaxConditionFromApi,
+  taxConditionFromArcaPadron,
+} from "@/lib/client-tax-condition"
 import { SALES_CHANNEL_CONFIG, SalesChannel } from "@/lib/utils"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
-
-type Personeria = "persona_fisica" | "persona_juridica" | "consumidor_final"
 
 interface ClienteUI {
   id: string
@@ -43,9 +50,10 @@ interface ClienteUI {
   direccion?: string
   cuit?: string
   cuitSecundario?: string
-  personeria?: Personeria
+  personeria?: ClientPersoneria
   personType?: "Persona Física" | "Persona Jurídica"
   taxCondition?: string
+  taxConditionCode?: ClientTaxCondition
   fechaRegistro?: string
   descuento?: number
   limiteCredito?: number
@@ -61,7 +69,8 @@ interface EditClientData {
   address: string
   city: string
   country: string
-  personeria: Personeria
+  personeria: ClientPersoneria
+  tax_condition: ClientTaxCondition
   cuil_cuit: string
 }
 
@@ -98,6 +107,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     city: "",
     country: "Argentina",
     personeria: "consumidor_final",
+    tax_condition: "consumidor_final",
     cuil_cuit: ""
   })
 
@@ -105,11 +115,12 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [successMessage, setSuccessMessage] = useState("")
   const [padronLocked, setPadronLocked] = useState(false)
+  const [padronSuggestedTax, setPadronSuggestedTax] = useState<ClientTaxCondition | undefined>()
 
   // Cargar datos del cliente cuando se abre el modal
   useEffect(() => {
     if (cliente && isOpen) {
-      const personeria: Personeria =
+      const personeria: ClientPersoneria =
         cliente.personeria === "persona_fisica" || cliente.personeria === "persona_juridica" || cliente.personeria === "consumidor_final"
           ? cliente.personeria
           : cliente.personType === "Persona Jurídica"
@@ -117,6 +128,10 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
           : cliente.personType === "Persona Física"
           ? "persona_fisica"
           : "consumidor_final"
+      const tax_condition =
+        cliente.taxConditionCode ??
+        normalizeTaxConditionFromApi(cliente.taxCondition) ??
+        defaultTaxConditionForPersoneria(personeria)
       const cuilRaw = cliente.cuit ?? ""
       const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
 
@@ -130,42 +145,59 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
         city: cliente.ciudad,
         country: "Argentina",
         personeria,
+        tax_condition: isTaxConditionAllowedForPersoneria(personeria, tax_condition)
+          ? tax_condition
+          : defaultTaxConditionForPersoneria(personeria),
         cuil_cuit: cuilDisplay
       })
       setErrors({})
       setSuccessMessage("")
       setPadronLocked(false)
+      setPadronSuggestedTax(undefined)
     }
   }, [cliente, isOpen])
 
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
-    setFormData((prev) => ({
-      ...prev,
-      name: name || prev.name,
-      personeria: data.personeriaSugerida ?? prev.personeria,
-    }))
+    const suggestedTax = taxConditionFromArcaPadron(data)
+    setPadronSuggestedTax(suggestedTax)
+    setFormData((prev) => {
+      const nextPersoneria = data.personeriaSugerida ?? prev.personeria
+      let tax_condition = suggestedTax ?? prev.tax_condition
+      if (!isTaxConditionAllowedForPersoneria(nextPersoneria, tax_condition)) {
+        tax_condition = defaultTaxConditionForPersoneria(nextPersoneria)
+      }
+      return {
+        ...prev,
+        name: name || prev.name,
+        personeria: nextPersoneria,
+        tax_condition,
+      }
+    })
     setErrors((prev) => {
       const next = { ...prev }
       delete next.cuil_cuit
       delete next.name
       delete next.personeria
+      delete next.tax_condition
       return next
     })
   }, [])
 
   const resetPadron = useCallback(() => {
     setPadronLocked(false)
+    setPadronSuggestedTax(undefined)
     if (!cliente) {
       setFormData((prev) => ({
         ...prev,
         cuil_cuit: "",
         name: "",
         personeria: "consumidor_final",
+        tax_condition: "consumidor_final",
       }))
       return
     }
-    const personeria: Personeria =
+    const personeria: ClientPersoneria =
       cliente.personeria === "persona_fisica" ||
       cliente.personeria === "persona_juridica" ||
       cliente.personeria === "consumidor_final"
@@ -177,10 +209,17 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
             : "consumidor_final"
     const cuilRaw = cliente.cuit ?? ""
     const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+    const tax_condition =
+      cliente.taxConditionCode ??
+      normalizeTaxConditionFromApi(cliente.taxCondition) ??
+      defaultTaxConditionForPersoneria(personeria)
     setFormData((prev) => ({
       ...prev,
       name: cliente.nombre,
       personeria,
+      tax_condition: isTaxConditionAllowedForPersoneria(personeria, tax_condition)
+        ? tax_condition
+        : defaultTaxConditionForPersoneria(personeria),
       cuil_cuit: cuilDisplay,
     }))
   }, [cliente])
@@ -233,6 +272,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
         city: formData.city.trim(),
         country: formData.country.trim(),
         personeria: formData.personeria,
+        tax_condition: formData.tax_condition,
         cuil_cuit: formData.cuil_cuit.trim() ? onlyDigitsCuil(formData.cuil_cuit) : null
       }
       console.log('📝 [EDIT] Enviando datos de actualización:', { clienteId: cliente.dbId, payload })
@@ -262,10 +302,16 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   }
 
   const handleInputChange = (field: keyof EditClientData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    setFormData((prev) => {
+      const next = { ...prev, [field]: value } as EditClientData
+      if (field === "personeria") {
+        const p = value as ClientPersoneria
+        if (!isTaxConditionAllowedForPersoneria(p, next.tax_condition)) {
+          next.tax_condition = defaultTaxConditionForPersoneria(p)
+        }
+      }
+      return next
+    })
     
     // Limpiar error del campo cuando el usuario empiece a escribir
     if (errors[field]) {
@@ -413,7 +459,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   </Label>
                   <Select
                     value={formData.personeria}
-                    onValueChange={(value: Personeria) => handleInputChange("personeria", value)}
+                    onValueChange={(value: ClientPersoneria) => handleInputChange("personeria", value)}
                     disabled={isLoading || padronLocked}
                   >
                     <SelectTrigger className={errors.personeria ? "border-red-500" : ""}>
@@ -431,6 +477,19 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                       {errors.personeria}
                     </p>
                   )}
+                </div>
+
+                <div className="space-y-2">
+                  <ClientTaxConditionField
+                    personeria={formData.personeria}
+                    value={formData.tax_condition}
+                    onChange={(tax_condition) =>
+                      setFormData((prev) => ({ ...prev, tax_condition }))
+                    }
+                    disabled={isLoading}
+                    padronSuggested={padronSuggestedTax}
+                    error={errors.tax_condition}
+                  />
                 </div>
 
                 <div className="md:col-span-2">
