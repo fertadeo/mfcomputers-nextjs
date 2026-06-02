@@ -5,6 +5,7 @@ import {
   getRepairOrders,
   getRepairOrderStats,
   getProductStats,
+  getClienteById,
   type DashboardInsightsPayload,
   type DashboardInsightAlert,
   type DashboardTopProductByUnitPrice,
@@ -41,6 +42,61 @@ function toNumber(value: unknown): number {
     return Number.isFinite(n) ? n : 0
   }
   return 0
+}
+
+const CLIENT_PLACEHOLDER_RE = /^Cliente\s*#\d+$/i
+
+function needsClientNameResolution(name: string | undefined | null, clientId?: number | null): boolean {
+  if (clientId == null || clientId <= 0) return false
+  const n = (name ?? "").trim()
+  return !n || n === "—" || n === "Cliente" || CLIENT_PLACEHOLDER_RE.test(n)
+}
+
+async function resolveClientNamesByIds(ids: number[]): Promise<Map<number, string>> {
+  const unique = [...new Set(ids.filter((id) => id > 0))]
+  const map = new Map<number, string>()
+  if (!unique.length) return map
+
+  const results = await Promise.allSettled(unique.map((id) => getClienteById(id)))
+  results.forEach((result, index) => {
+    if (result.status !== "fulfilled") return
+    const name = result.value.name?.trim()
+    if (name) map.set(unique[index], name)
+  })
+  return map
+}
+
+async function enrichInsightsWithClientNames(view: DashboardInsightsView): Promise<DashboardInsightsView> {
+  const idsToResolve: number[] = []
+  if (
+    view.topRepair?.client_id != null &&
+    needsClientNameResolution(view.topRepair.client_name, view.topRepair.client_id)
+  ) {
+    idsToResolve.push(view.topRepair.client_id)
+  }
+  if (
+    view.topClient?.client_id != null &&
+    needsClientNameResolution(view.topClient.client_name, view.topClient.client_id)
+  ) {
+    idsToResolve.push(view.topClient.client_id)
+  }
+
+  const names = await resolveClientNamesByIds(idsToResolve)
+  if (!names.size) return view
+
+  let topRepair = view.topRepair
+  let topClient = view.topClient
+
+  if (topRepair?.client_id != null) {
+    const resolved = names.get(topRepair.client_id)
+    if (resolved) topRepair = { ...topRepair, client_name: resolved }
+  }
+  if (topClient?.client_id != null) {
+    const resolved = names.get(topClient.client_id)
+    if (resolved) topClient = { ...topClient, client_name: resolved }
+  }
+
+  return { ...view, topRepair, topClient }
 }
 
 function pickRecord(obj: Record<string, unknown>, ...keys: string[]): unknown {
@@ -473,7 +529,7 @@ export async function fetchDashboardInsights(
   try {
     const res = await getDashboardInsights({ date_from: dateFrom, date_to: dateTo })
     if (res.data?.highlights) {
-      return normalizeApiPayload(res.data)
+      return enrichInsightsWithClientNames(normalizeApiPayload(res.data))
     }
   } catch (e) {
     const status = (e as Error & { status?: number })?.status
@@ -491,5 +547,6 @@ export async function fetchDashboardInsights(
     }
   }
 
-  return computeInsightsClientSide(dateFrom, dateTo, stats)
+  const computed = await computeInsightsClientSide(dateFrom, dateTo, stats)
+  return enrichInsightsWithClientNames(computed)
 }
