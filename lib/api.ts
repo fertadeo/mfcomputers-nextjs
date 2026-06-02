@@ -866,6 +866,13 @@ export interface DashboardStats {
   dailySales: number
   dailySalesFromOrders?: number
   dailySalesFromPos?: number
+  /** Monto total del mes (POS + pedidos) si el backend lo expone */
+  monthlySales?: number
+  monthly_sales?: number
+  monthlySalesFromPos?: number
+  monthly_sales_from_pos?: number
+  monthlySalesFromOrders?: number
+  monthly_sales_from_orders?: number
   activeOrders?: number
   activeClients?: number
   criticalProducts?: number

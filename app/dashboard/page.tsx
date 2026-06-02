@@ -19,6 +19,7 @@ import {
   type Product,
 } from "@/lib/api"
 import { getCashDay } from "@/lib/cash"
+import { fetchMonthlySalesBreakdown, type MonthlySalesBreakdown } from "@/lib/dashboard-monthly-sales"
 import {
   Package,
   DollarSign,
@@ -48,6 +49,7 @@ export default function Dashboard() {
   const [cashDay, setCashDay] = useState<{ incomes: number; expenses: number; balance: number } | null>(null)
   const [purchaseStats, setPurchaseStats] = useState<PurchaseStats | null>(null)
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  const [monthlySales, setMonthlySales] = useState<MonthlySalesBreakdown | null>(null)
   const [allProducts, setAllProducts] = useState<Product[] | null>(null)
 
   // Cargar datos al montar el componente (incl. GET /api/dashboard/stats para gerencia/finanzas)
@@ -85,6 +87,16 @@ export default function Dashboard() {
         if (dashboardData.status === 'fulfilled' && dashboardData.value?.data) {
           setDashboardStats(dashboardData.value.data)
         }
+
+        const monthlyData = await fetchMonthlySalesBreakdown(
+          dashboardData.status === "fulfilled" ? dashboardData.value?.data ?? null : null
+        ).catch(() => ({
+          total: 0,
+          fromPos: 0,
+          fromOrders: 0,
+          fromAggregatedApi: false,
+        }))
+        setMonthlySales(monthlyData)
 
         if (productsData.status === "fulfilled" && productsData.value) {
           const data = productsData.value as Product[] | { products?: Product[] }
@@ -303,11 +315,28 @@ export default function Dashboard() {
               <ShoppingCart className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-turquoise-600">0</div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                <TrendingUp className="h-3 w-3 text-turquoise-500" />
-                Sin datos disponibles
-              </div>
+              {loading ? (
+                <div className="flex items-center justify-center py-2">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-turquoise-600">
+                    ${(monthlySales?.total ?? 0).toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                    <TrendingUp className="h-3 w-3 text-turquoise-500" />
+                    {monthlySales && monthlySales.total > 0 ? (
+                      <span>
+                        POS: ${monthlySales.fromPos.toLocaleString("es-AR")} · WooCommerce:{" "}
+                        ${monthlySales.fromOrders.toLocaleString("es-AR")}
+                      </span>
+                    ) : (
+                      <span>Sin ventas registradas este mes</span>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
