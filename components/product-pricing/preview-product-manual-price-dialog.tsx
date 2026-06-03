@@ -106,15 +106,15 @@ export function PreviewProductManualPriceDialog({
   return (
     <>
       <Dialog open={open && !confirmOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Editar precio</DialogTitle>
-            <DialogDescription className="font-mono text-xs">{product.code}</DialogDescription>
+        <DialogContent className="w-[calc(100%-1.5rem)] max-w-md max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-lg">Editar precio</DialogTitle>
+            <DialogDescription className="font-mono text-xs break-all">{product.code}</DialogDescription>
           </DialogHeader>
 
-          <p className="text-sm font-medium truncate">{product.name}</p>
+          <p className="text-sm font-medium line-clamp-3">{product.name}</p>
 
-          <div className="grid gap-4 rounded-lg border bg-muted/40 p-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 rounded-lg border bg-muted/40 p-3 sm:p-4 grid-cols-1 sm:grid-cols-2">
             <div className="space-y-1">
               <Label className="text-muted-foreground text-xs">Precio actual</Label>
               <p className="text-lg font-semibold tabular-nums">{formatArs(product.current_price)}</p>
@@ -134,6 +134,8 @@ export function PreviewProductManualPriceDialog({
               type="number"
               min={0}
               step="0.01"
+              inputMode="decimal"
+              className="h-11 text-base sm:text-sm"
               value={priceInput}
               onChange={(e) => setPriceInput(e.target.value)}
               autoFocus
@@ -150,12 +152,18 @@ export function PreviewProductManualPriceDialog({
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => onOpenChange(false)}
+            >
               Cancelar
             </Button>
             <Button
               type="button"
+              className="w-full sm:w-auto"
               onClick={handleRequestSave}
               disabled={parsedNewPrice == null || !priceChanged}
             >
@@ -166,9 +174,12 @@ export function PreviewProductManualPriceDialog({
       </Dialog>
 
       <Dialog open={confirmOpen} onOpenChange={(isOpen) => !isOpen && !saving && setConfirmOpen(false)}>
-        <DialogContent className="max-w-sm sm:max-w-md z-[100]" showCloseButton={false}>
-          <DialogHeader>
-            <div className="flex items-start gap-3">
+        <DialogContent
+          className="w-[calc(100%-1.5rem)] max-w-sm sm:max-w-md z-[100] p-4 sm:p-6"
+          showCloseButton={false}
+        >
+          <DialogHeader className="text-left">
+            <div className="flex flex-col sm:flex-row items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
                 <AlertCircle className="h-5 w-5" />
               </div>
@@ -195,16 +206,22 @@ export function PreviewProductManualPriceDialog({
               </div>
             </div>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:gap-0">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => setConfirmOpen(false)}
               disabled={saving}
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={() => void handleConfirmSave()} disabled={saving}>
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => void handleConfirmSave()}
+              disabled={saving}
+            >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Sí, guardar precio
             </Button>

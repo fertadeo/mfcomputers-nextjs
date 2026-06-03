@@ -1,19 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { AlertCircle, DollarSign, Loader2, RefreshCw } from "lucide-react"
 import { useToast } from "@/contexts/ToastContext"
+import { PricingProductPreviewList } from "@/components/product-pricing/pricing-product-preview-list"
+import { cn } from "@/lib/utils"
 import {
   applyDollarPriceAdjustmentWithMessage,
   formatArs,
@@ -33,6 +27,11 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
   const [applying, setApplying] = useState(false)
   const [syncWoo, setSyncWoo] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const allSampleIds = useMemo(
+    () => new Set(info?.sample_preview.map((p) => p.id) ?? []),
+    [info?.sample_preview]
+  )
 
   const loadRate = useCallback(async () => {
     setLoading(true)
@@ -107,20 +106,27 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
     : "Aplicar ajuste por dólar"
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <DollarSign className="h-5 w-5" />
-          Ajuste por variación del dólar (ARS)
+    <Card className="overflow-hidden">
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+          <DollarSign className="h-5 w-5 shrink-0" />
+          <span className="min-w-0">Ajuste por variación del dólar (ARS)</span>
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-sm">
           Cotización Argentina vía DolarAPI. La aplicación es manual: no hay actualización automática
           en segundo plano.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadRate()} disabled={loading}>
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6 pt-0 sm:pt-0">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => void loadRate()}
+            disabled={loading}
+          >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Actualizar cotización
           </Button>
@@ -128,6 +134,7 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
             type="button"
             variant="secondary"
             size="sm"
+            className="w-full sm:w-auto"
             onClick={() => void loadExtendedPreview()}
             disabled={loading || !!error}
           >
@@ -148,7 +155,7 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
             Obteniendo cotización…
           </div>
         ) : info ? (
-          <>
+          <div className={cn("space-y-4 sm:space-y-6", info && "pb-20 sm:pb-0")}>
             {info.is_first_adjustment && (
               <p className="text-sm rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
                 La primera vez que confirmes solo se guardará la cotización de referencia; los
@@ -156,79 +163,114 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
               </p>
             )}
 
-            <dl className="grid gap-3 sm:grid-cols-2 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Tipo de dólar</dt>
-                <dd className="font-medium">{info.quote.dollar_label}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Cotización actual (venta)</dt>
-                <dd className="font-medium tabular-nums">{formatArs(info.current_rate)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Última referencia guardada</dt>
-                <dd className="font-medium tabular-nums">
-                  {info.reference_rate != null ? formatArs(info.reference_rate) : "— (primera vez)"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Incremento estimado</dt>
-                <dd className="font-medium tabular-nums">
-                  {info.increment_percent.toFixed(2)}%
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Productos estimados</dt>
-                <dd className="font-medium tabular-nums">{info.products_affected_estimate}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Fuente / actualizado</dt>
-                <dd className="text-xs text-muted-foreground">
-                  {info.quote.source} ·{" "}
-                  {new Date(info.quote.fetched_at).toLocaleString("es-AR")}
-                </dd>
-              </div>
+            <dl className="grid gap-3 grid-cols-1 sm:grid-cols-2 text-sm">
+              {[
+                { label: "Tipo de dólar", value: info.quote.dollar_label, mono: false },
+                {
+                  label: "Cotización actual (venta)",
+                  value: formatArs(info.current_rate),
+                  mono: true,
+                },
+                {
+                  label: "Última referencia guardada",
+                  value:
+                    info.reference_rate != null
+                      ? formatArs(info.reference_rate)
+                      : "— (primera vez)",
+                  mono: true,
+                },
+                {
+                  label: "Incremento estimado",
+                  value: `${info.increment_percent.toFixed(2)}%`,
+                  mono: true,
+                },
+                {
+                  label: "Productos estimados",
+                  value: String(info.products_affected_estimate),
+                  mono: true,
+                },
+                {
+                  label: "Fuente / actualizado",
+                  value: `${info.quote.source} · ${new Date(info.quote.fetched_at).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}`,
+                  mono: false,
+                  small: true,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-lg border bg-muted/20 p-3 sm:bg-transparent sm:border-0 sm:p-0"
+                >
+                  <dt className="text-muted-foreground text-xs">{item.label}</dt>
+                  <dd
+                    className={cn(
+                      "font-medium mt-0.5 break-words",
+                      item.mono && "tabular-nums",
+                      item.small && "text-xs text-muted-foreground font-normal"
+                    )}
+                  >
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
             </dl>
 
             {info.sample_preview.length > 0 && (
-              <div className="overflow-x-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead className="text-right">Actual</TableHead>
-                      <TableHead className="text-right">Nuevo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {info.sample_preview.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-mono text-xs">{row.code}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{row.name}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatArs(row.current_price)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">
-                          {formatArs(row.new_price)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Muestra de precios</p>
+                <div className="max-h-[min(50vh,24rem)] overflow-y-auto">
+                  <PricingProductPreviewList
+                    products={info.sample_preview}
+                    includedProductIds={allSampleIds}
+                    allIncluded
+                    someIncluded={false}
+                    onToggleAll={() => {}}
+                    onToggleProduct={() => {}}
+                    readOnly
+                  />
+                </div>
               </div>
             )}
 
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <Checkbox checked={syncWoo} onCheckedChange={(v) => setSyncWoo(v === true)} />
-              Sincronizar con WooCommerce al aplicar
+            <label className="flex min-h-10 items-start gap-3 text-sm cursor-pointer rounded-lg border p-3 sm:border-0 sm:p-0">
+              <Checkbox
+                className="mt-0.5"
+                checked={syncWoo}
+                onCheckedChange={(v) => setSyncWoo(v === true)}
+              />
+              <span>Sincronizar con WooCommerce al aplicar</span>
             </label>
 
-            <Button type="button" onClick={() => void runApply()} disabled={!info || loading || applying}>
+            <Button
+              type="button"
+              className="hidden sm:inline-flex w-full sm:w-auto"
+              onClick={() => void runApply()}
+              disabled={loading || applying}
+            >
               {applying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {applyLabel}
             </Button>
-          </>
+
+            {/* Barra fija móvil */}
+            <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+              <div className="mx-auto max-w-7xl">
+                {info.increment_percent !== 0 && !info.is_first_adjustment && (
+                  <p className="text-xs text-center text-muted-foreground mb-2 tabular-nums">
+                    +{info.increment_percent.toFixed(2)}% · ~{info.products_affected_estimate} productos
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  className="w-full"
+                  size="lg"
+                  onClick={() => void runApply()}
+                  disabled={loading || applying}
+                >
+                  {applying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {applyLabel}
+                </Button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </CardContent>
     </Card>

@@ -7,21 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Loader2, Pencil, Percent, RefreshCw, X } from "lucide-react"
+import { Loader2, Percent, RefreshCw, X } from "lucide-react"
+import { PricingCategoryList } from "@/components/product-pricing/pricing-category-list"
+import { PricingProductPreviewList } from "@/components/product-pricing/pricing-product-preview-list"
+import { cn } from "@/lib/utils"
 import { useToast } from "@/contexts/ToastContext"
 import { getProducts, type Product } from "@/lib/api"
 import { PreviewProductManualPriceDialog } from "@/components/product-pricing/preview-product-manual-price-dialog"
 import {
   applyCategoryPriceAdjustmentWithMessage,
-  formatArs,
   getPricingCategories,
   previewCategoryPriceAdjustment,
   roundPrice,
@@ -317,36 +311,35 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Percent className="h-5 w-5" />
+    <Card className="overflow-hidden">
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+          <Percent className="h-5 w-5 shrink-0" />
           Ajuste por categoría
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-sm">
           Elegí categorías y un porcentaje (positivo aumenta, negativo descuenta). Los precios se
           redondean a 2 decimales.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 sm:space-y-6 p-4 sm:p-6 pt-0 sm:pt-0">
         {error && (
           <p className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/5 p-3">
             {error}
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void loadCategories()}
-            disabled={loadingCategories}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loadingCategories ? "animate-spin" : ""}`} />
-            Recargar categorías
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => void loadCategories()}
+          disabled={loadingCategories}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${loadingCategories ? "animate-spin" : ""}`} />
+          Recargar categorías
+        </Button>
 
         {selectionTags.length > 0 && (
           <div className="space-y-2">
@@ -379,62 +372,22 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
             Cargando categorías…
           </div>
         ) : (
-          <div className="rounded-md border max-h-64 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={allNumericSelected}
-                      onCheckedChange={(v) => toggleAll(v === true)}
-                      aria-label="Seleccionar todas las categorías"
-                    />
-                  </TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead className="text-right">Productos</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {numericCategories.map((row) => {
-                  const id = row.category_id as number
-                  return (
-                    <TableRow key={id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.has(id)}
-                          onCheckedChange={(v) => toggleCategory(id, v === true)}
-                          aria-label={`Seleccionar ${row.category_name}`}
-                        />
-                      </TableCell>
-                      <TableCell>{row.category_name}</TableCell>
-                      <TableCell className="text-right tabular-nums">{row.product_count}</TableCell>
-                    </TableRow>
-                  )
-                })}
-                {uncategorizedRow && uncategorizedRow.product_count > 0 && (
-                  <TableRow>
-                    <TableCell>
-                      <Checkbox
-                        checked={includeUncategorized}
-                        onCheckedChange={(v) => {
-                          setIncludeUncategorized(v === true)
-                          clearPreviewState()
-                        }}
-                        aria-label="Incluir sin categoría"
-                      />
-                    </TableCell>
-                    <TableCell>{uncategorizedRow.category_name}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {uncategorizedRow.product_count}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          <PricingCategoryList
+            numericCategories={numericCategories}
+            uncategorizedRow={uncategorizedRow}
+            selectedIds={selectedIds}
+            includeUncategorized={includeUncategorized}
+            allNumericSelected={allNumericSelected}
+            onToggleAll={toggleAll}
+            onToggleCategory={toggleCategory}
+            onToggleUncategorized={(checked) => {
+              setIncludeUncategorized(checked)
+              clearPreviewState()
+            }}
+          />
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
+        <div className="grid gap-4 sm:grid-cols-2 sm:max-w-xl">
           <div className="space-y-2">
             <Label htmlFor="pricing-percentage">Porcentaje (%)</Label>
             <Input
@@ -451,15 +404,25 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <Checkbox checked={syncWoo} onCheckedChange={(v) => setSyncWoo(v === true)} />
-          Sincronizar con WooCommerce al aplicar
+        <label className="flex min-h-10 items-start gap-3 text-sm cursor-pointer rounded-lg border p-3 sm:border-0 sm:p-0">
+          <Checkbox
+            className="mt-0.5"
+            checked={syncWoo}
+            onCheckedChange={(v) => setSyncWoo(v === true)}
+          />
+          <span>Sincronizar con WooCommerce al aplicar</span>
         </label>
 
-        <div className="flex flex-wrap gap-2">
+        <div
+          className={cn(
+            "flex flex-col gap-2 sm:flex-row sm:flex-wrap",
+            preview && "pb-20 sm:pb-0"
+          )}
+        >
           <Button
             type="button"
             variant="secondary"
+            className="w-full sm:w-auto"
             onClick={() => void runPreview()}
             disabled={loadingPreview || loadingCategories || !hasSelection || !percentageValid}
           >
@@ -468,6 +431,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
           </Button>
           <Button
             type="button"
+            className="w-full sm:w-auto"
             onClick={() => void runApply()}
             disabled={
               applying ||
@@ -482,87 +446,62 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
           </Button>
         </div>
 
+        {/* Barra fija en móvil al tener vista previa */}
+        {preview && (
+          <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+            <div className="mx-auto max-w-7xl flex flex-col gap-2">
+              <p className="text-xs text-center text-muted-foreground tabular-nums">
+                {includedCount}/{previewProducts.length} seleccionados · {preview.percentage > 0 ? "+" : ""}
+                {preview.percentage}%
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void runPreview()}
+                  disabled={loadingPreview || !hasSelection || !percentageValid}
+                >
+                  {loadingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : "Vista previa"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void runApply()}
+                  disabled={applying || includedCount === 0}
+                >
+                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {preview && previewProducts.length > 0 && (
-          <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-            <p className="text-sm font-medium">
-              {includedCount} de {previewProducts.length} producto(s) seleccionados · multiplicador{" "}
-              {preview.multiplier.toFixed(4)} ({preview.percentage > 0 ? "+" : ""}
-              {preview.percentage}%)
-            </p>
-            <div className="rounded-md border max-h-80 overflow-y-auto overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
-                      <Checkbox
-                        checked={
-                          allPreviewIncluded
-                            ? true
-                            : somePreviewIncluded
-                              ? "indeterminate"
-                              : false
-                        }
-                        onCheckedChange={(v) => toggleAllPreviewProducts(v === true)}
-                        aria-label="Seleccionar todos los productos"
-                      />
-                    </TableHead>
-                    <TableHead>Código</TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead className="text-right">Actual</TableHead>
-                    <TableHead className="text-right">Nuevo</TableHead>
-                    <TableHead className="w-12 text-center">Acción</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {previewProducts.map((row) => {
-                    const included = includedProductIds.has(row.id)
-                    const manualSaved = manuallyPricedIds.has(row.id)
-                    return (
-                      <TableRow
-                        key={row.id}
-                        className={included ? undefined : "opacity-50 bg-muted/20"}
-                      >
-                        <TableCell>
-                          <Checkbox
-                            checked={included}
-                            onCheckedChange={(v) => togglePreviewProduct(row.id, v === true)}
-                            aria-label={`Incluir ${row.name}`}
-                          />
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{row.code}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{row.name}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatArs(row.current_price)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">
-                          {included ? (
-                            <span className={manualSaved ? "text-turquoise-600 dark:text-turquoise-400" : undefined}>
-                              {formatArs(row.new_price)}
-                            </span>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            aria-label={`Editar precio de ${row.name}`}
-                            onClick={() => {
-                              setEditingProduct(row)
-                              setEditPriceDialogOpen(true)
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+          <div className="space-y-3 rounded-lg border bg-muted/30 p-3 sm:p-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                {includedCount} de {previewProducts.length} producto(s) seleccionados
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Multiplicador {preview.multiplier.toFixed(4)} ({preview.percentage > 0 ? "+" : ""}
+                {preview.percentage}%)
+              </p>
+            </div>
+            <div className="max-h-[min(60vh,28rem)] overflow-y-auto -mx-1 px-1">
+              <PricingProductPreviewList
+                products={previewProducts}
+                includedProductIds={includedProductIds}
+                manuallyPricedIds={manuallyPricedIds}
+                allIncluded={allPreviewIncluded}
+                someIncluded={somePreviewIncluded}
+                onToggleAll={toggleAllPreviewProducts}
+                onToggleProduct={togglePreviewProduct}
+                onEditProduct={(row) => {
+                  setEditingProduct(row)
+                  setEditPriceDialogOpen(true)
+                }}
+              />
             </div>
           </div>
         )}
