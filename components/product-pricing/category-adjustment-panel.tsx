@@ -15,9 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Loader2, Percent, RefreshCw, X } from "lucide-react"
+import { Loader2, Pencil, Percent, RefreshCw, X } from "lucide-react"
 import { useToast } from "@/contexts/ToastContext"
 import { getProducts, type Product } from "@/lib/api"
+import { PreviewProductManualPriceDialog } from "@/components/product-pricing/preview-product-manual-price-dialog"
 import {
   applyCategoryPriceAdjustmentWithMessage,
   formatArs,
@@ -77,6 +78,9 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState<PriceSampleRow | null>(null)
+  const [editPriceDialogOpen, setEditPriceDialogOpen] = useState(false)
+  const [manuallyPricedIds, setManuallyPricedIds] = useState<Set<number>>(new Set())
 
   const numericCategories = useMemo(
     () => categories.filter((c) => c.category_id != null),
@@ -105,6 +109,26 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
     setPreview(null)
     setPreviewProducts([])
     setIncludedProductIds(new Set())
+    setManuallyPricedIds(new Set())
+    setEditingProduct(null)
+    setEditPriceDialogOpen(false)
+  }
+
+  const handleManualPriceSaved = (productId: number, newPrice: number) => {
+    const multiplier = preview?.multiplier ?? 1
+    setPreviewProducts((prev) =>
+      prev.map((p) =>
+        p.id === productId
+          ? {
+              ...p,
+              current_price: newPrice,
+              new_price: roundPrice(newPrice * multiplier),
+            }
+          : p
+      )
+    )
+    setManuallyPricedIds((prev) => new Set(prev).add(productId))
+    onApplied?.()
   }
 
   const loadCategories = useCallback(async () => {
@@ -251,9 +275,12 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
       return
     }
     const sign = parsedPercentage > 0 ? "+" : ""
-    const excludedIds = previewProducts
-      .filter((p) => !includedProductIds.has(p.id))
-      .map((p) => p.id)
+    const excludedIds = [
+      ...new Set([
+        ...previewProducts.filter((p) => !includedProductIds.has(p.id)).map((p) => p.id),
+        ...manuallyPricedIds,
+      ]),
+    ]
     const msg = preview
       ? `¿Confirmar actualización de ${includedCount} producto(s) con ${sign}${parsedPercentage}%?${
           excludedIds.length > 0 ? ` (${excludedIds.length} excluido(s))` : ""
@@ -483,11 +510,13 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
                     <TableHead>Nombre</TableHead>
                     <TableHead className="text-right">Actual</TableHead>
                     <TableHead className="text-right">Nuevo</TableHead>
+                    <TableHead className="w-12 text-center">Acción</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {previewProducts.map((row) => {
                     const included = includedProductIds.has(row.id)
+                    const manualSaved = manuallyPricedIds.has(row.id)
                     return (
                       <TableRow
                         key={row.id}
@@ -506,7 +535,28 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
                           {formatArs(row.current_price)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums font-medium">
-                          {included ? formatArs(row.new_price) : "—"}
+                          {included ? (
+                            <span className={manualSaved ? "text-turquoise-600 dark:text-turquoise-400" : undefined}>
+                              {formatArs(row.new_price)}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label={`Editar precio de ${row.name}`}
+                            onClick={() => {
+                              setEditingProduct(row)
+                              setEditPriceDialogOpen(true)
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     )
@@ -522,6 +572,15 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
             No hay productos activos en las categorías seleccionadas.
           </p>
         )}
+
+        <PreviewProductManualPriceDialog
+          product={editingProduct}
+          open={editPriceDialogOpen}
+          onOpenChange={setEditPriceDialogOpen}
+          syncToWooCommerce={syncWoo}
+          previewMultiplier={preview?.multiplier ?? 1}
+          onSaved={handleManualPriceSaved}
+        />
       </CardContent>
     </Card>
   )
