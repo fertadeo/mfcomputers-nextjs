@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -60,6 +61,7 @@ import {
   FileEdit,
   PackagePlus,
   Truck,
+  BadgePercent,
 } from "lucide-react"
 
 export default function ProductosPage() {
@@ -366,6 +368,7 @@ export default function ProductosPage() {
   // Verificar si el usuario puede realizar acciones de administración
   const canManageProducts = isAdmin()
   const canLinkWooCommerce = hasAnyOfRoles(['gerencia', 'admin'])
+  const canBatchPricing = hasAnyOfRoles(['gerencia'])
 
   const hasActiveFilters =
     filterCategory !== "all" || filterStatus !== "all" || filterStock !== "all" || filterDateModification !== "all"
@@ -422,6 +425,14 @@ export default function ProductosPage() {
                     disabled={loading}
                     showSummary={false}
                   />
+                )}
+                {canBatchPricing && (
+                  <Button variant="outline" asChild>
+                    <Link href="/productos/actualizacion-precios">
+                      <BadgePercent className="h-4 w-4 mr-2" />
+                      Actualización de precios
+                    </Link>
+                  </Button>
                 )}
                 <Button variant="outline">
                   <Download className="h-4 w-4 mr-2" />

@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Wrench,
   Table2,
+  BadgePercent,
 } from "lucide-react"
 
 // Definición de roles disponibles según el backend
@@ -94,6 +95,13 @@ export const MENU_GROUPS: MenuGroup[] = [
         icon: Package, 
         href: "/productos",
         requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas']
+      },
+      {
+        id: "actualizacion-precios",
+        label: "Actualización de precios",
+        icon: BadgePercent,
+        href: "/productos/actualizacion-precios",
+        requiredRoles: ['gerencia']
       },
       // { 
       //   id: "categorias", 
