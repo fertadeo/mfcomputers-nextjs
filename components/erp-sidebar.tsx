@@ -344,11 +344,6 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
                   isCollapsed ? "max-h-9 max-w-[2.25rem]" : "max-h-10 max-w-[12.5rem]"
                 )}
               />
-              {!isCollapsed && (
-                <p className="text-xs text-muted-foreground text-center opacity-80">
-                  v1.0 · Sistema de Gestión
-                </p>
-              )}
             </div>
           </div>
         </div>
