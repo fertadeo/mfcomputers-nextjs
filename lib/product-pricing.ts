@@ -115,6 +115,7 @@ export async function previewCategoryPriceAdjustment(body: {
   include_uncategorized?: boolean
   percentage: number
   preview_limit?: number
+  exclude_product_ids?: number[]
 }): Promise<CategoryAdjustmentPreview> {
   const res = await apiPost("products/pricing/category-adjustment/preview", body)
   return parsePricingResponse<CategoryAdjustmentPreview>(res)
@@ -125,6 +126,7 @@ export async function applyCategoryPriceAdjustment(body: {
   include_uncategorized?: boolean
   percentage: number
   sync_to_woocommerce?: boolean
+  exclude_product_ids?: number[]
 }): Promise<CategoryAdjustmentResult> {
   const res = await apiPost("products/pricing/category-adjustment", body)
   return parsePricingResponse<CategoryAdjustmentResult>(res)
@@ -167,6 +169,7 @@ export async function applyCategoryPriceAdjustmentWithMessage(body: {
   include_uncategorized?: boolean
   percentage: number
   sync_to_woocommerce?: boolean
+  exclude_product_ids?: number[]
 }): Promise<{ data: CategoryAdjustmentResult; message: string }> {
   const res = await apiFetch("products/pricing/category-adjustment", {
     method: "POST",
@@ -177,6 +180,10 @@ export async function applyCategoryPriceAdjustmentWithMessage(body: {
     throw new Error(json.message || json.error || `Error ${res.status}`)
   }
   return { data: json.data, message: json.message ?? "Precios actualizados" }
+}
+
+export function roundPrice(value: number): number {
+  return Math.round(value * 100) / 100
 }
 
 export function formatArs(value: number): string {

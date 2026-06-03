@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -14,19 +15,52 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Loader2, Percent, RefreshCw } from "lucide-react"
+import { Loader2, Percent, RefreshCw, X } from "lucide-react"
 import { useToast } from "@/contexts/ToastContext"
+import { getProducts, type Product } from "@/lib/api"
 import {
   applyCategoryPriceAdjustmentWithMessage,
   formatArs,
   getPricingCategories,
   previewCategoryPriceAdjustment,
+  roundPrice,
   type CategoryAdjustmentPreview,
+  type PriceSampleRow,
   type PricingCategoryRow,
 } from "@/lib/product-pricing"
 
 interface CategoryAdjustmentPanelProps {
   onApplied?: () => void
+}
+
+type CategoryTag =
+  | { kind: "category"; id: number; label: string }
+  | { kind: "uncategorized"; label: string }
+
+function productMatchesSelection(
+  product: Product,
+  categoryIds: Set<number>,
+  includeUncategorized: boolean
+): boolean {
+  if (!product.is_active) return false
+  if (product.category_id != null && categoryIds.has(product.category_id)) return true
+  if (includeUncategorized && (product.category_id == null || product.category_id === undefined)) {
+    return true
+  }
+  return false
+}
+
+function mapProductToSample(product: Product, multiplier: number): PriceSampleRow {
+  const current = Number(product.price) || 0
+  return {
+    id: product.id,
+    code: product.code,
+    name: product.name,
+    category_id: product.category_id,
+    category_name: product.category_name,
+    current_price: current,
+    new_price: roundPrice(current * multiplier),
+  }
 }
 
 export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelProps) {
@@ -38,6 +72,8 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
   const [percentage, setPercentage] = useState("")
   const [syncWoo, setSyncWoo] = useState(false)
   const [preview, setPreview] = useState<CategoryAdjustmentPreview | null>(null)
+  const [previewProducts, setPreviewProducts] = useState<PriceSampleRow[]>([])
+  const [includedProductIds, setIncludedProductIds] = useState<Set<number>>(new Set())
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +87,26 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
     [categories]
   )
 
+  const selectionTags = useMemo((): CategoryTag[] => {
+    const tags: CategoryTag[] = []
+    for (const row of numericCategories) {
+      const id = row.category_id as number
+      if (selectedIds.has(id)) {
+        tags.push({ kind: "category", id, label: row.category_name })
+      }
+    }
+    if (includeUncategorized && uncategorizedRow) {
+      tags.push({ kind: "uncategorized", label: uncategorizedRow.category_name })
+    }
+    return tags
+  }, [numericCategories, selectedIds, includeUncategorized, uncategorizedRow])
+
+  const clearPreviewState = () => {
+    setPreview(null)
+    setPreviewProducts([])
+    setIncludedProductIds(new Set())
+  }
+
   const loadCategories = useCallback(async () => {
     setLoadingCategories(true)
     setError(null)
@@ -63,6 +119,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
       setSelectedIds(new Set(ids))
       const unc = rows.find((c) => c.category_id == null)
       setIncludeUncategorized(!!unc && unc.product_count > 0)
+      clearPreviewState()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar categorías")
     } finally {
@@ -84,6 +141,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
     } else {
       setSelectedIds(new Set())
     }
+    clearPreviewState()
   }
 
   const toggleCategory = (id: number, checked: boolean) => {
@@ -93,7 +151,20 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
       else next.delete(id)
       return next
     })
-    setPreview(null)
+    clearPreviewState()
+  }
+
+  const removeTag = (tag: CategoryTag) => {
+    if (tag.kind === "category") {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(tag.id)
+        return next
+      })
+    } else {
+      setIncludeUncategorized(false)
+    }
+    clearPreviewState()
   }
 
   const hasSelection = selectedIds.size > 0 || includeUncategorized
@@ -108,6 +179,28 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
     percentage: parsedPercentage,
   })
 
+  const includedCount = includedProductIds.size
+  const allPreviewIncluded =
+    previewProducts.length > 0 && previewProducts.every((p) => includedProductIds.has(p.id))
+  const somePreviewIncluded = previewProducts.some((p) => includedProductIds.has(p.id))
+
+  const toggleAllPreviewProducts = (checked: boolean) => {
+    if (checked) {
+      setIncludedProductIds(new Set(previewProducts.map((p) => p.id)))
+    } else {
+      setIncludedProductIds(new Set())
+    }
+  }
+
+  const togglePreviewProduct = (id: number, checked: boolean) => {
+    setIncludedProductIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
   const runPreview = async () => {
     if (!hasSelection) {
       showToast({ message: "Seleccioná al menos una categoría o productos sin categoría", type: "error" })
@@ -119,13 +212,29 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
     }
     setLoadingPreview(true)
     setError(null)
-    setPreview(null)
+    clearPreviewState()
     try {
       const data = await previewCategoryPriceAdjustment({
         ...buildBody(),
         preview_limit: 10,
       })
+
+      const dataProducts = await getProducts(1, 10000, true)
+      let allActive: Product[] = []
+      if (dataProducts && typeof dataProducts === "object" && "products" in dataProducts) {
+        allActive = dataProducts.products
+      } else if (Array.isArray(dataProducts)) {
+        allActive = dataProducts
+      }
+
+      const affected = allActive
+        .filter((p) => productMatchesSelection(p, selectedIds, includeUncategorized))
+        .map((p) => mapProductToSample(p, data.multiplier))
+        .sort((a, b) => a.name.localeCompare(b.name, "es"))
+
       setPreview(data)
+      setPreviewProducts(affected)
+      setIncludedProductIds(new Set(affected.map((p) => p.id)))
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error en vista previa"
       setError(msg)
@@ -137,14 +246,18 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
 
   const runApply = async () => {
     if (!hasSelection || !percentageValid) return
-    const count = preview?.products_affected ?? 0
-    if (preview && count === 0) {
-      showToast({ message: "No hay productos afectados con esta selección", type: "error" })
+    if (preview && includedCount === 0) {
+      showToast({ message: "Seleccioná al menos un producto para actualizar", type: "error" })
       return
     }
     const sign = parsedPercentage > 0 ? "+" : ""
+    const excludedIds = previewProducts
+      .filter((p) => !includedProductIds.has(p.id))
+      .map((p) => p.id)
     const msg = preview
-      ? `¿Confirmar actualización de ${preview.products_affected} producto(s) con ${sign}${parsedPercentage}%?`
+      ? `¿Confirmar actualización de ${includedCount} producto(s) con ${sign}${parsedPercentage}%?${
+          excludedIds.length > 0 ? ` (${excludedIds.length} excluido(s))` : ""
+        }`
       : `¿Aplicar ${sign}${parsedPercentage}% a las categorías seleccionadas?`
     if (!window.confirm(msg)) return
 
@@ -154,6 +267,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
       const { data, message } = await applyCategoryPriceAdjustmentWithMessage({
         ...buildBody(),
         sync_to_woocommerce: syncWoo,
+        ...(excludedIds.length > 0 ? { exclude_product_ids: excludedIds } : {}),
       })
       let detail = message
       if (data.woocommerce_sync && syncWoo) {
@@ -163,7 +277,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
         }
       }
       showToast({ message: detail, type: "success", duration: 6000 })
-      setPreview(null)
+      clearPreviewState()
       setPercentage("")
       onApplied?.()
     } catch (e) {
@@ -206,6 +320,31 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
             Recargar categorías
           </Button>
         </div>
+
+        {selectionTags.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-muted-foreground">Categorías seleccionadas</Label>
+            <div className="flex flex-wrap gap-2">
+              {selectionTags.map((tag) => (
+                <Badge
+                  key={tag.kind === "category" ? `cat-${tag.id}` : "uncategorized"}
+                  variant="secondary"
+                  className="pl-2.5 pr-1 py-1 gap-1 text-sm font-normal"
+                >
+                  {tag.label}
+                  <button
+                    type="button"
+                    className="rounded-sm p-0.5 hover:bg-muted-foreground/20 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={`Quitar ${tag.label}`}
+                    onClick={() => removeTag(tag)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loadingCategories ? (
           <div className="flex items-center gap-2 text-muted-foreground py-8">
@@ -252,7 +391,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
                         checked={includeUncategorized}
                         onCheckedChange={(v) => {
                           setIncludeUncategorized(v === true)
-                          setPreview(null)
+                          clearPreviewState()
                         }}
                         aria-label="Incluir sin categoría"
                       />
@@ -279,7 +418,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
               value={percentage}
               onChange={(e) => {
                 setPercentage(e.target.value)
-                setPreview(null)
+                clearPreviewState()
               }}
             />
           </div>
@@ -308,7 +447,7 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
               loadingCategories ||
               !hasSelection ||
               !percentageValid ||
-              (preview != null && preview.products_affected === 0)
+              (preview != null && includedCount === 0)
             }
           >
             {applying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -316,42 +455,72 @@ export function CategoryAdjustmentPanel({ onApplied }: CategoryAdjustmentPanelPr
           </Button>
         </div>
 
-        {preview && (
+        {preview && previewProducts.length > 0 && (
           <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
             <p className="text-sm font-medium">
-              {preview.products_affected} producto(s) afectados · multiplicador{" "}
+              {includedCount} de {previewProducts.length} producto(s) seleccionados · multiplicador{" "}
               {preview.multiplier.toFixed(4)} ({preview.percentage > 0 ? "+" : ""}
               {preview.percentage}%)
             </p>
-            {preview.sample.length > 0 && (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead className="text-right">Actual</TableHead>
-                      <TableHead className="text-right">Nuevo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {preview.sample.map((row) => (
-                      <TableRow key={row.id}>
+            <div className="rounded-md border max-h-80 overflow-y-auto overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={
+                          allPreviewIncluded
+                            ? true
+                            : somePreviewIncluded
+                              ? "indeterminate"
+                              : false
+                        }
+                        onCheckedChange={(v) => toggleAllPreviewProducts(v === true)}
+                        aria-label="Seleccionar todos los productos"
+                      />
+                    </TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead className="text-right">Nuevo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {previewProducts.map((row) => {
+                    const included = includedProductIds.has(row.id)
+                    return (
+                      <TableRow
+                        key={row.id}
+                        className={included ? undefined : "opacity-50 bg-muted/20"}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={included}
+                            onCheckedChange={(v) => togglePreviewProduct(row.id, v === true)}
+                            aria-label={`Incluir ${row.name}`}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{row.code}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{row.name}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {formatArs(row.current_price)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums font-medium">
-                          {formatArs(row.new_price)}
+                          {included ? formatArs(row.new_price) : "—"}
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
+        )}
+
+        {preview && previewProducts.length === 0 && (
+          <p className="text-sm text-muted-foreground rounded-lg border bg-muted/30 p-4">
+            No hay productos activos en las categorías seleccionadas.
+          </p>
         )}
       </CardContent>
     </Card>
