@@ -332,13 +332,24 @@ export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
               )}
             </Button>
 
-            {/* Información de versión */}
-            {!isCollapsed && (
-              <div className="text-xs text-muted-foreground text-center">
-                <div className="font-medium">Aurix ERP v1.0</div>
-                <div className="text-xs opacity-70">Sistema de Gestión</div>
-              </div>
-            )}
+            {/* Marca Aurix */}
+            <div className="flex flex-col items-center gap-1.5 pt-1">
+              <Image
+                src="/images/aurix-logo.png"
+                alt="Aurix ERP by FENEC"
+                width={200}
+                height={50}
+                className={cn(
+                  "h-auto w-auto object-contain object-center select-none opacity-90",
+                  isCollapsed ? "max-h-9 max-w-[2.25rem]" : "max-h-10 max-w-[12.5rem]"
+                )}
+              />
+              {!isCollapsed && (
+                <p className="text-xs text-muted-foreground text-center opacity-80">
+                  v1.0 · Sistema de Gestión
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </aside>
