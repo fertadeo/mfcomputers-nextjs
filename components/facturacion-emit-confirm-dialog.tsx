@@ -1,9 +1,12 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -20,17 +23,16 @@ import type { BillableRow } from "@/lib/facturacion-billables"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
+import {
+  formatCuitInputDisplay,
+  isReceptorCuitInputInvalid,
+  receptorCuitInputFromForm,
+} from "@/lib/facturacion-receptor-doc"
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(
     value
   )
-
-function formatCuitMostrar(raw?: string | null): string {
-  const d = (raw ?? "").replace(/\D/g, "")
-  if (d.length !== 11) return raw?.trim() || "—"
-  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
-}
 
 function conceptoLabel(concepto?: number): string {
   if (concepto === 2) return "Servicios"
@@ -52,6 +54,7 @@ export interface FacturacionEmitConfirmDialogProps {
   emisorCuitLabel: string
   isSubmitting: boolean
   onConfigure: () => void
+  onReceptorCuitChange: (rawInput: string) => void
   onConfirm: () => void
 }
 
@@ -69,10 +72,20 @@ export function FacturacionEmitConfirmDialog({
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
+  onReceptorCuitChange,
   onConfirm,
 }: FacturacionEmitConfirmDialogProps) {
+  const [receptorCuitInput, setReceptorCuitInput] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit))
+  }, [open, form.docTipo, form.docNro, cliente?.cuil_cuit, form])
+
   const linesSubtotal = lines.reduce((acc, l) => acc + l.subtotal, 0)
   const totalComprobante = sale?.total_amount ?? billable?.totalAmount ?? linesSubtotal
+  const cuitInvalid = isReceptorCuitInputInvalid(receptorCuitInput)
+  const esConsumidorFinal = form.docTipo === 99 && (form.docNro ?? 0) === 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -112,14 +125,11 @@ export function FacturacionEmitConfirmDialog({
                     <span className="text-muted-foreground">CUIT emisor: </span>
                     <span className="font-mono text-xs">{emisorCuitLabel}</span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Receptor (ERP): </span>
-                    <span className="font-mono text-xs">
-                      {clienteLoading
-                        ? "Cargando…"
-                        : formatCuitMostrar(cliente?.cuil_cuit) || "Consumidor final (sin CUIT)"}
-                    </span>
-                  </div>
+                  {cliente?.cuil_cuit ? (
+                    <div className="text-xs text-muted-foreground sm:col-span-2">
+                      CUIT en ficha del cliente: {formatCuitInputDisplay(cliente.cuil_cuit)}
+                    </div>
+                  ) : null}
                   {cliente?.tax_condition ? (
                     <div>
                       <span className="text-muted-foreground">Condición fiscal: </span>
@@ -140,12 +150,43 @@ export function FacturacionEmitConfirmDialog({
                     <span>{conceptoLabel(form.concepto)}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Documento receptor: </span>
+                    <span className="text-muted-foreground">Documento AFIP: </span>
                     <span className="font-mono text-xs">
-                      tipo {form.docTipo ?? "—"} · nro {form.docNro ?? 0}
+                      {esConsumidorFinal
+                        ? "tipo 99 · sin número (consumidor final)"
+                        : `tipo ${form.docTipo ?? "—"} · ${form.docNro ?? 0}`}
                     </span>
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="confirm-receptor-cuit">CUIT / CUIL del receptor</Label>
+                  <p className="text-muted-foreground text-xs">
+                    Dejá el campo vacío para facturar como consumidor final. Si ingresás un CUIT, deben ser 11 dígitos.
+                  </p>
+                </div>
+                <Input
+                  id="confirm-receptor-cuit"
+                  value={receptorCuitInput}
+                  onChange={(e) => {
+                    const formatted = formatCuitInputDisplay(e.target.value)
+                    setReceptorCuitInput(formatted)
+                    onReceptorCuitChange(formatted)
+                  }}
+                  placeholder="Vacío = consumidor final"
+                  disabled={isSubmitting || clienteLoading}
+                  className="font-mono"
+                  autoComplete="off"
+                />
+                {clienteLoading ? (
+                  <p className="text-muted-foreground text-xs">Cargando datos del cliente…</p>
+                ) : cuitInvalid ? (
+                  <p className="text-destructive text-xs">El CUIT debe tener 11 dígitos o dejá el campo vacío.</p>
+                ) : esConsumidorFinal ? (
+                  <Badge variant="secondary">Consumidor final</Badge>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -236,7 +277,8 @@ export function FacturacionEmitConfirmDialog({
                 !sale ||
                 clienteLoading ||
                 linesLoading ||
-                lines.length === 0
+                lines.length === 0 ||
+                cuitInvalid
               }
             >
               {isSubmitting ? (

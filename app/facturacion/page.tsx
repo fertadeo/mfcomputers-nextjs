@@ -83,6 +83,7 @@ import {
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
 } from "@/lib/facturacion-cliente-fiscal"
+import { applyReceptorCuitToFacturarForm } from "@/lib/facturacion-receptor-doc"
 import {
   loadFacturacionPreviewLines,
   type FacturacionPreviewLine,
@@ -151,6 +152,19 @@ function formatCuitMostrar(raw?: string | null): string {
  */
 function buildFacturarPayload(form: FacturarSaleRequest, cliente: Cliente | null): FacturarSaleRequest {
   const payload: FacturarSaleRequest = { ...form }
+
+  if (form.docTipo === 99) {
+    payload.docTipo = 99
+    payload.docNro = 0
+    return payload
+  }
+
+  if (form.docTipo === 80 && form.docNro != null && form.docNro > 0) {
+    payload.docTipo = 80
+    payload.docNro = form.docNro
+    return payload
+  }
+
   if (payload.condicionIvaReceptor !== 5) return payload
 
   const cuil = soloDigitos(cliente?.cuil_cuit)
@@ -162,19 +176,8 @@ function buildFacturarPayload(form: FacturarSaleRequest, cliente: Cliente | null
     return payload
   }
 
-  /** Si el usuario dejó CF explícito (99), no forzar CUIT aunque el ERP tenga cuil_cuit */
-  if (form.docTipo === 99) {
-    payload.docTipo = 99
-    payload.docNro = form.docNro ?? 0
-    return payload
-  }
-
-  const usuarioDefinioDoc = form.docTipo != null && form.docTipo !== 99
-  if (!usuarioDefinioDoc) {
-    payload.docTipo = 80
-    payload.docNro = parseInt(cuil, 10)
-  }
-
+  payload.docTipo = 80
+  payload.docNro = parseInt(cuil, 10)
   return payload
 }
 
@@ -285,6 +288,15 @@ export default function FacturacionPage() {
   )
 
   const stats = useMemo(() => billableStats(billables), [billables])
+
+  const clienteFiscalSnapshot = useMemo(() => {
+    if (!modalCliente) return null
+    const fiscal = resolveFacturacionDesdeCliente(modalCliente)
+    return {
+      condicionIvaReceptor: fiscal.condicionIvaReceptor,
+      tipoComprobante: fiscal.tipoComprobante,
+    }
+  }, [modalCliente])
 
   const loadBillables = async () => {
     setIsLoading(true)
@@ -1454,6 +1466,9 @@ export default function FacturacionPage() {
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
             onConfigure={() => setIsEmitModalOpen(true)}
+            onReceptorCuitChange={(raw: string) =>
+              setForm((prev) => applyReceptorCuitToFacturarForm(prev, raw, clienteFiscalSnapshot))
+            }
             onConfirm={() => void onSubmitFacturar()}
           />
 
