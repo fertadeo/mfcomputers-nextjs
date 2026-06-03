@@ -1,12 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { ArrowRight, Loader2 } from "lucide-react"
+import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -18,15 +17,19 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
-import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import type { BillableRow } from "@/lib/facturacion-billables"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
+import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import {
+  buildVentaDestinatarioSnapshot,
   formatCuitInputDisplay,
+  isFacturacionDestinatarioChanged,
   isReceptorCuitInputInvalid,
   receptorCuitInputFromForm,
+  requiresPadronForReceptorCuit,
+  soloDigitosDoc,
 } from "@/lib/facturacion-receptor-doc"
 
 const formatCurrency = (value: number) =>
@@ -55,7 +58,11 @@ export interface FacturacionEmitConfirmDialogProps {
   isSubmitting: boolean
   onConfigure: () => void
   onReceptorCuitChange: (rawInput: string) => void
+  onPadronApply: (data: ArcaPadronResult) => void
+  onPadronReset: () => void
   onConfirm: () => void
+  /** Clave de fila seleccionada (reinicia estado al cambiar comprobante). */
+  selectedBillableKey?: string | null
 }
 
 export function FacturacionEmitConfirmDialog({
@@ -73,19 +80,59 @@ export function FacturacionEmitConfirmDialog({
   isSubmitting,
   onConfigure,
   onReceptorCuitChange,
+  onPadronApply,
+  onPadronReset,
   onConfirm,
+  selectedBillableKey = null,
 }: FacturacionEmitConfirmDialogProps) {
   const [receptorCuitInput, setReceptorCuitInput] = useState("")
+  const [padronDisplayName, setPadronDisplayName] = useState<string | null>(null)
+  const [padronVerifiedDigits, setPadronVerifiedDigits] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit))
+    setPadronDisplayName(null)
+    setPadronVerifiedDigits(null)
+  }, [open, billable?.key, selectedBillableKey])
 
   useEffect(() => {
     if (!open) return
     setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit))
   }, [open, form.docTipo, form.docNro, cliente?.cuil_cuit, form])
 
+  const ventaDestinatario = buildVentaDestinatarioSnapshot(
+    sale?.client_name,
+    billable?.clientName,
+    cliente?.cuil_cuit,
+    cliente?.tax_condition
+  )
+
   const linesSubtotal = lines.reduce((acc, l) => acc + l.subtotal, 0)
   const totalComprobante = sale?.total_amount ?? billable?.totalAmount ?? linesSubtotal
   const cuitInvalid = isReceptorCuitInputInvalid(receptorCuitInput)
   const esConsumidorFinal = form.docTipo === 99 && (form.docNro ?? 0) === 0
+  const receptorCuitDigits = esConsumidorFinal ? "" : soloDigitosDoc(receptorCuitInput)
+
+  const destinatarioCambio = isFacturacionDestinatarioChanged(ventaDestinatario, {
+    esConsumidorFinal,
+    receptorCuitDigits,
+    padronDisplayName,
+  })
+
+  const comprobanteDestinatarioNombre = esConsumidorFinal
+    ? "Consumidor final"
+    : padronDisplayName || ventaDestinatario.name
+
+  const comprobanteDestinatarioCuit = esConsumidorFinal
+    ? null
+    : receptorCuitDigits.length === 11
+      ? formatCuitInputDisplay(receptorCuitDigits)
+      : null
+
+  const needsPadron =
+    requiresPadronForReceptorCuit(ventaDestinatario.cuitDigits, receptorCuitDigits, esConsumidorFinal)
+  const padronPending = needsPadron && padronVerifiedDigits !== receptorCuitDigits
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -114,8 +161,8 @@ export function FacturacionEmitConfirmDialog({
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
-                    <span className="text-muted-foreground">Cliente: </span>
-                    <span className="font-medium">{sale.client_name || billable.clientName || "Consumidor final"}</span>
+                    <span className="text-muted-foreground">Cliente en venta (ERP): </span>
+                    <span className="font-medium">{ventaDestinatario.name}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Fecha: </span>
@@ -125,17 +172,16 @@ export function FacturacionEmitConfirmDialog({
                     <span className="text-muted-foreground">CUIT emisor: </span>
                     <span className="font-mono text-xs">{emisorCuitLabel}</span>
                   </div>
-                  {cliente?.cuil_cuit ? (
-                    <div className="text-xs text-muted-foreground sm:col-span-2">
-                      CUIT en ficha del cliente: {formatCuitInputDisplay(cliente.cuil_cuit)}
-                    </div>
-                  ) : null}
-                  {cliente?.tax_condition ? (
+                  {ventaDestinatario.cuitFormatted ? (
                     <div>
-                      <span className="text-muted-foreground">Condición fiscal: </span>
-                      <span>{formatTaxConditionLabel(cliente.tax_condition)}</span>
+                      <span className="text-muted-foreground">CUIT en venta (ERP): </span>
+                      <span className="font-mono text-xs">{ventaDestinatario.cuitFormatted}</span>
                     </div>
                   ) : null}
+                  <div>
+                    <span className="text-muted-foreground">Condición fiscal (ERP): </span>
+                    <span>{ventaDestinatario.condicionLabel}</span>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <span className="text-muted-foreground">Comprobante a emitir: </span>
                     <TipoComprobanteBadge tipo={form.tipo} />
@@ -160,32 +206,112 @@ export function FacturacionEmitConfirmDialog({
                 </div>
               </div>
 
-              <div className="rounded-lg border p-4 space-y-3">
+              <div className="rounded-lg border-2 border-dashed border-amber-500/40 bg-amber-500/5 p-4 space-y-4">
                 <div className="space-y-1">
-                  <Label htmlFor="confirm-receptor-cuit">CUIT / CUIL del receptor</Label>
+                  <p className="text-sm font-semibold">Destinatario del comprobante ARCA</p>
                   <p className="text-muted-foreground text-xs">
-                    Dejá el campo vacío para facturar como consumidor final. Si ingresás un CUIT, deben ser 11 dígitos.
+                    Podés facturar al cliente de la venta u otro CUIT. Si cambiás el CUIT, consultá ARCA (padrón) antes
+                    de confirmar. Dejá el campo vacío para consumidor final.
                   </p>
                 </div>
-                <Input
-                  id="confirm-receptor-cuit"
-                  value={receptorCuitInput}
-                  onChange={(e) => {
-                    const formatted = formatCuitInputDisplay(e.target.value)
+
+                {destinatarioCambio ? (
+                  <Alert
+                    variant="warning"
+                    title="Vas a cambiar el destinatario del comprobante"
+                    description="El comprobante fiscal se emitirá a otro contribuyente distinto del cliente registrado en la venta. Verificá nombre y CUIT antes de confirmar."
+                  />
+                ) : (
+                  <Alert
+                    variant="info"
+                    title="Mismo destinatario que la venta"
+                    description="Si no modificás el CUIT, el comprobante se emitirá al cliente de la venta."
+                  />
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-stretch">
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Cliente en la venta
+                    </p>
+                    <p className="font-medium leading-snug">{ventaDestinatario.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {ventaDestinatario.cuitFormatted ?? "Sin CUIT en ERP"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{ventaDestinatario.condicionLabel}</p>
+                  </div>
+                  <div className="hidden sm:flex items-center justify-center text-amber-600">
+                    <ArrowRight className="h-6 w-6" />
+                  </div>
+                  <div
+                    className={`rounded-lg border p-3 space-y-1.5 ${
+                      destinatarioCambio
+                        ? "border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/30"
+                        : "border-emerald-500/30 bg-emerald-500/5"
+                    }`}
+                  >
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Se facturará a
+                    </p>
+                    <p className="font-semibold leading-snug text-base">{comprobanteDestinatarioNombre}</p>
+                    <p className="text-xs font-mono">
+                      {comprobanteDestinatarioCuit ?? "Sin CUIT (consumidor final)"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)} ·{" "}
+                      {getTipoComprobanteLabel(form.tipo)}
+                    </p>
+                    {padronDisplayName ? (
+                      <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-800 dark:text-emerald-200">
+                        Verificado en ARCA
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+
+                <ArcaPadronCuitField
+                  entityType="client"
+                  inputId="confirm-receptor-cuit"
+                  label="CUIT / CUIL del receptor (consulta padrón ARCA)"
+                  cuitValue={receptorCuitInput}
+                  disabled={isSubmitting || clienteLoading}
+                  onCuitChange={(formatted) => {
                     setReceptorCuitInput(formatted)
                     onReceptorCuitChange(formatted)
+                    const d = soloDigitosDoc(formatted)
+                    if (d !== padronVerifiedDigits) {
+                      setPadronVerifiedDigits(null)
+                      setPadronDisplayName(null)
+                    }
                   }}
-                  placeholder="Vacío = consumidor final"
-                  disabled={isSubmitting || clienteLoading}
-                  className="font-mono"
-                  autoComplete="off"
+                  onApplyPadron={(data) => {
+                    onPadronApply(data)
+                    const digits = soloDigitosDoc(data.cuit)
+                    setPadronVerifiedDigits(digits)
+                    setPadronDisplayName(getArcaPadronDisplayName(data) || null)
+                  }}
+                  onPadronReset={() => {
+                    onPadronReset()
+                    setPadronVerifiedDigits(null)
+                    setPadronDisplayName(null)
+                  }}
                 />
+
                 {clienteLoading ? (
-                  <p className="text-muted-foreground text-xs">Cargando datos del cliente…</p>
-                ) : cuitInvalid ? (
+                  <p className="text-muted-foreground text-xs">Cargando datos del cliente de la venta…</p>
+                ) : null}
+                {cuitInvalid ? (
                   <p className="text-destructive text-xs">El CUIT debe tener 11 dígitos o dejá el campo vacío.</p>
-                ) : esConsumidorFinal ? (
-                  <Badge variant="secondary">Consumidor final</Badge>
+                ) : null}
+                {padronPending ? (
+                  <Alert
+                    variant="warning"
+                    title="Consultá ARCA para el nuevo CUIT"
+                    description="Ingresaste un CUIT distinto al de la venta. Usá «Buscar en ARCA» o esperá la consulta automática para validar el destinatario."
+                  />
+                ) : null}
+                {esConsumidorFinal ? (
+                  <Badge variant="secondary">Consumidor final — sin documento en AFIP</Badge>
                 ) : null}
               </div>
 
@@ -278,7 +404,8 @@ export function FacturacionEmitConfirmDialog({
                 clienteLoading ||
                 linesLoading ||
                 lines.length === 0 ||
-                cuitInvalid
+                cuitInvalid ||
+                padronPending
               }
             >
               {isSubmitting ? (

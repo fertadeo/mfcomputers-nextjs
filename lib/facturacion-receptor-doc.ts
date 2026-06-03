@@ -1,4 +1,6 @@
 import type { FacturarSaleRequest } from "@/lib/api"
+import type { ArcaPadronResult } from "@/lib/arca-padron"
+import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import { resolveTipoComprobanteFromCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 
 export function soloDigitosDoc(s?: string | null): string {
@@ -77,4 +79,78 @@ export function applyReceptorCuitToFacturarForm(
   }
 
   return next
+}
+
+/** Aplica condición IVA y tipo de comprobante desde padrón ARCA (misma lógica que alta de clientes). */
+export function applyPadronToFacturarForm(
+  prev: FacturarSaleRequest,
+  padron: ArcaPadronResult
+): FacturarSaleRequest {
+  const digits = soloDigitosDoc(padron.cuit)
+  if (digits.length !== 11) return prev
+
+  const condicion =
+    padron.condicionIvaCodigo != null && padron.condicionIvaCodigo > 0
+      ? padron.condicionIvaCodigo
+      : (prev.condicionIvaReceptor ?? 5)
+
+  return {
+    ...prev,
+    docTipo: 80,
+    docNro: parseInt(digits, 10),
+    condicionIvaReceptor: condicion,
+    tipo: resolveTipoComprobanteFromCondicionIvaReceptor(condicion),
+  }
+}
+
+export interface FacturacionVentaDestinatario {
+  name: string
+  cuitDigits: string
+  cuitFormatted: string | null
+  condicionLabel: string
+}
+
+export function buildVentaDestinatarioSnapshot(
+  saleClientName: string | null | undefined,
+  billableClientName: string | null | undefined,
+  clienteCuil?: string | null,
+  taxCondition?: string | null
+): FacturacionVentaDestinatario {
+  const name = (saleClientName || billableClientName || "Consumidor final").trim()
+  const cuitDigits = soloDigitosDoc(clienteCuil)
+  return {
+    name,
+    cuitDigits,
+    cuitFormatted: cuitDigits.length === 11 ? formatCuitInputDisplay(cuitDigits) : null,
+    condicionLabel: formatTaxConditionLabel(taxCondition, "Sin datos fiscales en ERP"),
+  }
+}
+
+export function isFacturacionDestinatarioChanged(
+  venta: FacturacionVentaDestinatario,
+  opts: {
+    esConsumidorFinal: boolean
+    receptorCuitDigits: string
+    padronDisplayName?: string | null
+  }
+): boolean {
+  if (opts.esConsumidorFinal) {
+    return venta.cuitDigits.length === 11 || venta.name.toLowerCase() !== "consumidor final"
+  }
+  if (opts.receptorCuitDigits.length === 11 && opts.receptorCuitDigits !== venta.cuitDigits) {
+    return true
+  }
+  if (opts.padronDisplayName) {
+    return opts.padronDisplayName.trim().toUpperCase() !== venta.name.trim().toUpperCase()
+  }
+  return false
+}
+
+export function requiresPadronForReceptorCuit(
+  ventaCuitDigits: string,
+  receptorCuitDigits: string,
+  esConsumidorFinal: boolean
+): boolean {
+  if (esConsumidorFinal) return false
+  return receptorCuitDigits.length === 11 && receptorCuitDigits !== ventaCuitDigits
 }

@@ -83,7 +83,11 @@ import {
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
 } from "@/lib/facturacion-cliente-fiscal"
-import { applyReceptorCuitToFacturarForm } from "@/lib/facturacion-receptor-doc"
+import type { ArcaPadronResult } from "@/lib/arca-padron"
+import {
+  applyPadronToFacturarForm,
+  applyReceptorCuitToFacturarForm,
+} from "@/lib/facturacion-receptor-doc"
 import {
   loadFacturacionPreviewLines,
   type FacturacionPreviewLine,
@@ -1466,9 +1470,29 @@ export default function FacturacionPage() {
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
             onConfigure={() => setIsEmitModalOpen(true)}
+            selectedBillableKey={selectedBillableKey}
             onReceptorCuitChange={(raw: string) =>
               setForm((prev) => applyReceptorCuitToFacturarForm(prev, raw, clienteFiscalSnapshot))
             }
+            onPadronApply={(data: ArcaPadronResult) =>
+              setForm((prev) => applyPadronToFacturarForm(prev, data))
+            }
+            onPadronReset={() => {
+              if (modalCliente) {
+                const fiscal = resolveFacturacionDesdeCliente(modalCliente)
+                const cuil = soloDigitos(modalCliente.cuil_cuit)
+                setForm((prev) => ({
+                  ...prev,
+                  condicionIvaReceptor: fiscal.condicionIvaReceptor,
+                  tipo: fiscal.tipoComprobante,
+                  ...(cuil.length === 11
+                    ? { docTipo: 80, docNro: parseInt(cuil, 10) }
+                    : { docTipo: 99, docNro: 0 }),
+                }))
+              } else {
+                setForm((prev) => applyReceptorCuitToFacturarForm(prev, "", null))
+              }
+            }}
             onConfirm={() => void onSubmitFacturar()}
           />
 
