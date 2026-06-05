@@ -2,6 +2,7 @@
 
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import {
   ChartContainer,
   ChartLegend,
@@ -10,7 +11,13 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
-import type { DashboardChartData } from "@/lib/dashboard-chart-data"
+import {
+  DASHBOARD_CHART_PERIOD_OPTIONS,
+  getSalesBlockTitles,
+  type DashboardChartData,
+  type DashboardChartPeriod,
+} from "@/lib/dashboard-chart-data"
+import { cn } from "@/lib/utils"
 import { Loader2, LineChart, PieChartIcon, Wrench } from "lucide-react"
 
 const salesChartConfig = {
@@ -32,42 +39,78 @@ function formatCurrency(value: number) {
 
 interface DashboardChartsProps {
   loading?: boolean
+  salesBlockLoading?: boolean
   data: DashboardChartData | null
+  period: DashboardChartPeriod
+  onPeriodChange: (period: DashboardChartPeriod) => void
 }
 
-export function DashboardCharts({ loading, data }: DashboardChartsProps) {
+export function DashboardCharts({
+  loading,
+  salesBlockLoading,
+  data,
+  period,
+  onPeriodChange,
+}: DashboardChartsProps) {
+  const salesLoading = loading || salesBlockLoading
+  const titles = getSalesBlockTitles(period)
   const hasDailyData = data?.dailySales.some((d) => d.total > 0) ?? false
   const channelTotal =
-    (data?.channelMix.reduce((s, c) => s + (c.channel !== "sin_datos" ? c.amount : 0), 0) ?? 0)
+    data?.channelMix.reduce((s, c) => s + (c.channel !== "sin_datos" ? c.amount : 0), 0) ?? 0
   const hasChannelData = channelTotal > 0
   const hasRepairData = (data?.repairByStatus.length ?? 0) > 0
+  const emptyPeriodText = `Sin ventas en ${titles.salesTitle.replace("Ventas — ", "el ")}`
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Análisis visual</h2>
-        <p className="text-sm text-muted-foreground">
-          Tendencia de ventas, mix de canales y carga del taller
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Análisis visual</h2>
+          <p className="text-sm text-muted-foreground">
+            Tendencia de ventas y mix de canales · {titles.salesTitle.replace("Ventas — ", "")}
+          </p>
+        </div>
+        <div
+          className="flex flex-wrap gap-1 rounded-lg border bg-muted/40 p-1 w-full sm:w-auto"
+          role="group"
+          aria-label="Filtrar período de ventas"
+        >
+          {DASHBOARD_CHART_PERIOD_OPTIONS.map((opt) => (
+            <Button
+              key={opt.value}
+              type="button"
+              size="sm"
+              variant={period === opt.value ? "default" : "ghost"}
+              className={cn(
+                "h-8 flex-1 sm:flex-none px-2.5 sm:px-3 text-xs sm:text-sm",
+                period === opt.value && "shadow-sm"
+              )}
+              disabled={salesLoading}
+              onClick={() => onPeriodChange(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2 overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <LineChart className="h-4 w-4 text-turquoise-500" />
-              Ventas — últimos 14 días
+              <LineChart className="h-4 w-4 text-turquoise-500 shrink-0" />
+              <span className="min-w-0">{titles.salesTitle}</span>
             </CardTitle>
-            <CardDescription>POS y WooCommerce apilados por día</CardDescription>
+            <CardDescription>{titles.salesDescription}</CardDescription>
           </CardHeader>
           <CardContent className="pb-4">
-            {loading ? (
+            {salesLoading ? (
               <div className="flex h-[280px] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : !hasDailyData ? (
-              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-                Sin ventas en el período
+              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground text-center px-4">
+                {emptyPeriodText}
               </div>
             ) : (
               <ChartContainer config={salesChartConfig} className="h-[280px] w-full">
@@ -88,7 +131,8 @@ export function DashboardCharts({ loading, data }: DashboardChartsProps) {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    minTickGap={24}
+                    minTickGap={period === "1y" ? 8 : period === "3m" ? 20 : 24}
+                    tick={{ fontSize: period === "1y" || period === "3m" ? 10 : 12 }}
                   />
                   <YAxis
                     tickLine={false}
@@ -135,19 +179,19 @@ export function DashboardCharts({ loading, data }: DashboardChartsProps) {
         <Card className="overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <PieChartIcon className="h-4 w-4 text-turquoise-500" />
-              Mix del mes
+              <PieChartIcon className="h-4 w-4 text-turquoise-500 shrink-0" />
+              <span className="min-w-0">{titles.mixTitle}</span>
             </CardTitle>
             <CardDescription>Participación POS vs WooCommerce</CardDescription>
           </CardHeader>
           <CardContent className="pb-4">
-            {loading ? (
+            {salesLoading ? (
               <div className="flex h-[280px] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : !hasChannelData ? (
-              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-                Sin ventas este mes
+              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground text-center px-4">
+                Sin ventas en el período
               </div>
             ) : (
               <ChartContainer config={channelChartConfig} className="mx-auto h-[280px] w-full max-w-[320px]">

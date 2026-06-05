@@ -18,7 +18,11 @@ import {
 } from "@/lib/api"
 import { fetchMonthlySalesBreakdown, type MonthlySalesBreakdown } from "@/lib/dashboard-monthly-sales"
 import { fetchDashboardInsights, type DashboardInsightsView } from "@/lib/dashboard-insights"
-import { fetchDashboardChartData, type DashboardChartData } from "@/lib/dashboard-chart-data"
+import {
+  fetchDashboardChartData,
+  type DashboardChartData,
+  type DashboardChartPeriod,
+} from "@/lib/dashboard-chart-data"
 import { DashboardCharts } from "@/components/dashboard-charts"
 import {
   Package,
@@ -51,13 +55,28 @@ export default function Dashboard() {
   const [monthlySales, setMonthlySales] = useState<MonthlySalesBreakdown | null>(null)
   const [insights, setInsights] = useState<DashboardInsightsView | null>(null)
   const [chartData, setChartData] = useState<DashboardChartData | null>(null)
+  const [chartPeriod, setChartPeriod] = useState<DashboardChartPeriod>("14d")
+  const [salesBlockLoading, setSalesBlockLoading] = useState(false)
+  const [repairByStatus, setRepairByStatus] = useState<Record<string, number>>({})
+
+  const loadChartData = async (
+    period: DashboardChartPeriod,
+    repairStatus: Record<string, number>
+  ) => {
+    const charts = await fetchDashboardChartData(
+      period,
+      repairStatus,
+      REPAIR_ORDER_STATUS_LABELS
+    ).catch(() => null)
+    if (charts) setChartData(charts)
+  }
 
   // Cargar datos al montar el componente (incl. GET /api/dashboard/stats para gerencia/finanzas)
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
         setLoading(true)
-        
+
         const [clientesData, productosData, dashboardData] = await Promise.allSettled([
           getClienteStats().catch(() => null),
           getProductStats().catch(() => null),
@@ -66,10 +85,10 @@ export default function Dashboard() {
 
         let productStatsData: ProductStats | null = null
 
-        if (clientesData.status === 'fulfilled' && clientesData.value) {
+        if (clientesData.status === "fulfilled" && clientesData.value) {
           setClienteStats(clientesData.value)
         }
-        
+
         if (productosData.status === "fulfilled" && productosData.value) {
           productStatsData = productosData.value
           setProductStats(productStatsData)
@@ -92,15 +111,11 @@ export default function Dashboard() {
         const insightsData = await fetchDashboardInsights(productStatsData).catch(() => null)
         if (insightsData) setInsights(insightsData)
 
-        const charts = await fetchDashboardChartData(
-          monthlyData.fromPos,
-          monthlyData.fromOrders,
-          insightsData?.repairPipeline.byStatus ?? {},
-          REPAIR_ORDER_STATUS_LABELS
-        ).catch(() => null)
-        if (charts) setChartData(charts)
+        const repairStatus = insightsData?.repairPipeline.byStatus ?? {}
+        setRepairByStatus(repairStatus)
+        await loadChartData("14d", repairStatus)
       } catch (error) {
-        console.error('Error al cargar datos del dashboard:', error)
+        console.error("Error al cargar datos del dashboard:", error)
       } finally {
         setLoading(false)
       }
@@ -108,6 +123,16 @@ export default function Dashboard() {
 
     loadDashboardData()
   }, [])
+
+  const handleChartPeriodChange = async (period: DashboardChartPeriod) => {
+    setChartPeriod(period)
+    setSalesBlockLoading(true)
+    try {
+      await loadChartData(period, repairByStatus)
+    } finally {
+      setSalesBlockLoading(false)
+    }
+  }
 
   const inventoryValue = (() => {
     const raw = productStats?.total_stock_value
@@ -308,7 +333,13 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <DashboardCharts loading={loading} data={chartData} />
+        <DashboardCharts
+          loading={loading}
+          salesBlockLoading={salesBlockLoading}
+          data={chartData}
+          period={chartPeriod}
+          onPeriodChange={(p) => void handleChartPeriodChange(p)}
+        />
 
         {/* Destacados del mes */}
         <div>
