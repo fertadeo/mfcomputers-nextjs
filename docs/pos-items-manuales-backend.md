@@ -154,7 +154,7 @@ Al armar el payload para MultiCUIT / AFIP:
 | Descripción del ítem | Nombre del producto (o `description` de línea si se guardó override) | **`description` de la línea de venta** |
 | Código / NCM | `product.code` o id | `"0"` o código genérico acordado con contador |
 | Cantidad / precio | Desde línea | Desde línea |
-| IVA | Misma lógica que hoy por tipo de comprobante | Igual (servicio vs producto según `concepto`) |
+| IVA | `iva_rate` por línea (21, 10.5 o 0) — ver `docs/sale-items-iva-backend.md` | Igual |
 
 **No** exigir que exista `product_id` para facturar. Validar que cada línea tenga descripción usable y importe > 0.
 

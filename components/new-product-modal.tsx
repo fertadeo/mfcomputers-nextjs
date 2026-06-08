@@ -13,6 +13,8 @@ import { Separator } from "@/components/ui/separator"
 import { CheckCircle, Upload, X, Image as ImageIcon, Package, DollarSign, TrendingUp, Sparkles, Tag, BarChart3, Zap, Plus, AlertTriangle, Ruler, Truck } from "lucide-react"
 import Image from "next/image"
 import { createProductNew, getCategories, Category, CreateProductData } from "@/lib/api"
+import { IvaRateSelect } from "@/components/iva-rate-select"
+import { DEFAULT_SALE_IVA_RATE, type SaleIvaRate } from "@/lib/sale-iva"
 import { generateProductCodes } from "@/lib/product-codes"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { CategoryManagerPanel } from "@/components/category-manager-panel"
@@ -102,6 +104,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
   const [barcode, setBarcode] = useState<string>("")
   const [qrCode, setQrCode] = useState<string>("")
   const [syncToWooCommerce, setSyncToWooCommerce] = useState(true)
+  const [ivaRate, setIvaRate] = useState<SaleIvaRate>(DEFAULT_SALE_IVA_RATE)
 
   // Cargar categorías desde la API
   const loadCategories = async () => {
@@ -473,6 +476,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
           width: widthVal ?? undefined,
           height: heightVal ?? undefined,
           allow_backorders: allowBackorders,
+          iva_rate: ivaRate,
         }
 
         const responseData = await createProductNew(productData)
@@ -531,6 +535,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
     setBarcode("")
     setQrCode("")
     setSyncToWooCommerce(true)
+    setIvaRate(DEFAULT_SALE_IVA_RATE)
     setImages([])
     setImageUrlInput("")
     setError(null)
@@ -634,6 +639,7 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
         width: widthVal ?? undefined,
         height: heightVal ?? undefined,
         allow_backorders: false,
+        iva_rate: ivaRate,
       }
 
       await createProductNew(productData)
@@ -889,6 +895,17 @@ export function NewProductModal({ isOpen, onClose, onSuccess }: NewProductModalP
                         required
                       />
                     </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Precio final con IVA incluido.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="iva-rate" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Alícuota IVA
+                    </Label>
+                    <IvaRateSelect id="iva-rate" value={ivaRate} onChange={setIvaRate} disabled={loading} />
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Se usa al vender y facturar. No confundir con la condición fiscal del cliente.
+                    </p>
                   </div>
 
                   <div className="space-y-2">

@@ -15,6 +15,7 @@ import {
   getStoredFacturacionCuitEmisor,
   getStoredFacturacionPuntoVenta,
 } from "@/lib/facturacion-settings"
+import { computeSaleIvaBreakdown, normalizeSaleIvaRate } from "@/lib/sale-iva"
 
 const EMISOR_DEFAULT = {
   razonSocial: "FIGUEROA MAXIMILIANO IVAN JESUS",
@@ -113,7 +114,13 @@ export async function buildArcaInvoicePdfInput(
   const total = toNumber(emision.importe ?? sale.total_amount)
   const subtotalItems = items.reduce((acc, it) => acc + lineSubtotal(it), 0)
   const subtotal = Math.abs(subtotalItems - total) < 0.02 ? subtotalItems : total
-  const ivaContenido = Math.round((total - total / 1.21) * 100) / 100
+  const ivaBreakdown = computeSaleIvaBreakdown(
+    items.map((item) => ({
+      subtotal: lineSubtotal(item),
+      iva_rate: normalizeSaleIvaRate(item.iva_rate),
+    }))
+  )
+  const ivaContenido = ivaBreakdown.ivaTotal
 
   const fechaEmision =
     emision.fechaEmision?.slice(0, 10) ??

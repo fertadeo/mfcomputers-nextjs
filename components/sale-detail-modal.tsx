@@ -31,6 +31,7 @@ import type { SaleResponseData, SalePaymentMethod } from "@/lib/api"
 import { getProductById } from "@/lib/api"
 import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
+import { computeSaleIvaBreakdown, formatSaleIvaRateLabel, normalizeSaleIvaRate } from "@/lib/sale-iva"
 
 interface SaleDetailModalProps {
   sale: SaleResponseData | null
@@ -222,9 +223,10 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
               <div className="overflow-x-auto">
                 <Table className="w-full min-w-[320px]" style={{ tableLayout: "fixed" }}>
                   <colgroup>
-                    <col style={{ width: "50%" }} />
+                    <col style={{ width: "44%" }} />
                     <col style={{ width: "4rem" }} />
                     <col style={{ width: "6rem" }} />
+                    <col style={{ width: "5rem" }} />
                     <col style={{ width: "7rem" }} />
                   </colgroup>
                   <TableHeader>
@@ -232,6 +234,7 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                       <TableHead className="whitespace-nowrap">Producto</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Cant.</TableHead>
                       <TableHead className="text-right whitespace-nowrap">P. unit.</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">IVA</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Subtotal</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -278,6 +281,9 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                         <TableCell className="text-right align-top py-3 tabular-nums text-muted-foreground whitespace-nowrap">
                           ${typeof item.unit_price === "number" ? formatPrice(item.unit_price) : String(item.unit_price)}
                         </TableCell>
+                        <TableCell className="text-right align-top py-3 tabular-nums text-muted-foreground whitespace-nowrap text-xs">
+                          {formatSaleIvaRateLabel(normalizeSaleIvaRate(item.iva_rate))}
+                        </TableCell>
                         <TableCell className="text-right align-top py-3 font-medium tabular-nums whitespace-nowrap">
                           ${formatPrice(subtotal)}
                         </TableCell>
@@ -290,8 +296,31 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
             </div>
           </section>
 
-          <div className="flex justify-end rounded-xl border bg-muted/20 px-5 py-4 min-w-0">
-            <div className="flex items-baseline gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 rounded-xl border bg-muted/20 px-5 py-4 min-w-0">
+            {(() => {
+              const ivaBreakdown = computeSaleIvaBreakdown(
+                (sale.items || []).map((item) => ({
+                  subtotal:
+                    item.subtotal ??
+                    item.total_price ??
+                    item.quantity * (typeof item.unit_price === "number" ? item.unit_price : 0),
+                  iva_rate: item.iva_rate,
+                }))
+              )
+              return (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>Neto gravado: ${formatPrice(ivaBreakdown.netoGravado)}</p>
+                  {ivaBreakdown.iva21 > 0 ? <p>IVA 21% contenido: ${formatPrice(ivaBreakdown.iva21)}</p> : null}
+                  {ivaBreakdown.iva105 > 0 ? (
+                    <p>IVA 10,5% contenido: ${formatPrice(ivaBreakdown.iva105)}</p>
+                  ) : null}
+                  {ivaBreakdown.ivaExento > 0 ? (
+                    <p>Exento / 0%: ${formatPrice(ivaBreakdown.ivaExento)}</p>
+                  ) : null}
+                </div>
+              )
+            })()}
+            <div className="flex items-baseline gap-2 sm:ml-auto">
               <span className="text-sm font-medium text-muted-foreground">Total</span>
               <span className="text-2xl font-bold tabular-nums">
                 ${formatPrice(sale.total_amount)}

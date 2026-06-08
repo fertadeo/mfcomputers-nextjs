@@ -53,6 +53,7 @@ import {
 import { posCartLinesToCreateSaleItems, posCartLinesToReceiptItems } from "@/lib/sale-items"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { PosCartItemRow } from "@/components/pos-cart-item-row"
+import { computeSaleIvaBreakdown, DEFAULT_SALE_IVA_RATE, productIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
 
 const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
   efectivo: "Efectivo",
@@ -102,6 +103,17 @@ export default function PuntoVentaPage() {
 
   const total = useMemo(
     () => cart.reduce((sum, i) => sum + i.quantity * i.unit_price, 0),
+    [cart]
+  )
+
+  const ivaBreakdown = useMemo(
+    () =>
+      computeSaleIvaBreakdown(
+        cart.map((line) => ({
+          subtotal: line.quantity * line.unit_price,
+          iva_rate: line.iva_rate,
+        }))
+      ),
     [cart]
   )
 
@@ -226,12 +238,23 @@ export default function PuntoVentaPage() {
       }
       return [
         ...prev,
-        { kind: "catalog", product, quantity: Math.min(qty, maxQty), unit_price: product.price },
+        {
+          kind: "catalog",
+          product,
+          quantity: Math.min(qty, maxQty),
+          unit_price: product.price,
+          iva_rate: productIvaRate(product),
+        },
       ]
     })
   }
 
-  function addCustomToCart(payload: { description: string; quantity: number; unit_price: number }) {
+  function addCustomToCart(payload: {
+    description: string
+    quantity: number
+    unit_price: number
+    iva_rate: SaleIvaRate
+  }) {
     setCart((prev) => [
       ...prev,
       {
@@ -240,6 +263,7 @@ export default function PuntoVentaPage() {
         description: payload.description,
         quantity: payload.quantity,
         unit_price: payload.unit_price,
+        iva_rate: payload.iva_rate,
       },
     ])
     setError(null)
@@ -270,6 +294,12 @@ export default function PuntoVentaPage() {
     if (unit_price < 0) return
     setCart((prev) =>
       prev.map((i) => (getPosCartLineKey(i) === lineKey ? { ...i, unit_price } : i))
+    )
+  }
+
+  function setCartIvaRate(lineKey: string, iva_rate: SaleIvaRate) {
+    setCart((prev) =>
+      prev.map((i) => (getPosCartLineKey(i) === lineKey ? { ...i, iva_rate } : i))
     )
   }
 
@@ -619,6 +649,7 @@ export default function PuntoVentaPage() {
                           view="list"
                           onUpdateQuantity={updateCartQuantity}
                           onSetUnitPrice={setCartUnitPrice}
+                          onSetIvaRate={setCartIvaRate}
                           onRemove={removeFromCart}
                         />
                       ))}
@@ -632,6 +663,7 @@ export default function PuntoVentaPage() {
                           view="grid"
                           onUpdateQuantity={updateCartQuantity}
                           onSetUnitPrice={setCartUnitPrice}
+                          onSetIvaRate={setCartIvaRate}
                           onRemove={removeFromCart}
                         />
                       ))}
@@ -794,6 +826,40 @@ export default function PuntoVentaPage() {
                     rows={2}
                     className="resize-none"
                   />
+                  {cart.length > 0 && (
+                    <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                      <div className="flex justify-between">
+                        <span>Neto gravado</span>
+                        <span className="tabular-nums">
+                          ${ivaBreakdown.netoGravado.toLocaleString("es-AR", FORMAT_NUM)}
+                        </span>
+                      </div>
+                      {ivaBreakdown.iva21 > 0 ? (
+                        <div className="flex justify-between">
+                          <span>IVA 21% (contenido)</span>
+                          <span className="tabular-nums">
+                            ${ivaBreakdown.iva21.toLocaleString("es-AR", FORMAT_NUM)}
+                          </span>
+                        </div>
+                      ) : null}
+                      {ivaBreakdown.iva105 > 0 ? (
+                        <div className="flex justify-between">
+                          <span>IVA 10,5% (contenido)</span>
+                          <span className="tabular-nums">
+                            ${ivaBreakdown.iva105.toLocaleString("es-AR", FORMAT_NUM)}
+                          </span>
+                        </div>
+                      ) : null}
+                      {ivaBreakdown.ivaExento > 0 ? (
+                        <div className="flex justify-between">
+                          <span>Exento / 0%</span>
+                          <span className="tabular-nums">
+                            ${ivaBreakdown.ivaExento.toLocaleString("es-AR", FORMAT_NUM)}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                   <div className="text-2xl font-bold text-turquoise-600">
                     Total: ${total.toLocaleString("es-AR", FORMAT_NUM)}
                   </div>
@@ -964,6 +1030,7 @@ export default function PuntoVentaPage() {
                             <th className="text-left p-2">Producto</th>
                             <th className="text-center p-2 w-28">Cantidad</th>
                             <th className="text-right p-2 w-28">P. unit.</th>
+                            <th className="text-right p-2 w-28">IVA</th>
                             <th className="text-right p-2 w-24">Subtotal</th>
                             <th className="text-right p-2 w-20">Quitar</th>
                           </tr>
@@ -976,15 +1043,26 @@ export default function PuntoVentaPage() {
                               view="table"
                               onUpdateQuantity={updateCartQuantity}
                               onSetUnitPrice={setCartUnitPrice}
+                              onSetIvaRate={setCartIvaRate}
                               onRemove={removeFromCart}
                             />
                           ))}
                         </tbody>
                       </table>
                     </div>
-                    <p className="text-lg font-semibold pt-2 border-t">
-                      Total: ${total.toLocaleString("es-AR", FORMAT_NUM)}
-                    </p>
+                    <div className="pt-2 border-t space-y-1 text-sm text-muted-foreground">
+                      <p>
+                        Neto gravado: ${ivaBreakdown.netoGravado.toLocaleString("es-AR", FORMAT_NUM)}
+                      </p>
+                      {ivaBreakdown.ivaTotal > 0 ? (
+                        <p>
+                          IVA contenido: ${ivaBreakdown.ivaTotal.toLocaleString("es-AR", FORMAT_NUM)}
+                        </p>
+                      ) : null}
+                      <p className="text-lg font-semibold text-foreground">
+                        Total: ${total.toLocaleString("es-AR", FORMAT_NUM)}
+                      </p>
+                    </div>
                   </>
                 )}
               </div>

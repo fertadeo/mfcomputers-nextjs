@@ -22,6 +22,7 @@ import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
+import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import {
   buildVentaDestinatarioSnapshot,
   formatCuitInputDisplay,
@@ -110,6 +111,16 @@ export function FacturacionEmitConfirmDialog({
 
   const linesSubtotal = lines.reduce((acc, l) => acc + l.subtotal, 0)
   const totalComprobante = sale?.total_amount ?? billable?.totalAmount ?? linesSubtotal
+  const ivaBreakdown = computeSaleIvaBreakdown(
+    lines.map((line) => ({ subtotal: line.subtotal, iva_rate: line.ivaRate }))
+  )
+  const hasBackendIvaDetail = lines.some((l) => l.neto != null && l.iva != null)
+  const netoFromLines = hasBackendIvaDetail
+    ? Math.round(lines.reduce((acc, l) => acc + (l.neto ?? 0), 0) * 100) / 100
+    : ivaBreakdown.netoGravado
+  const ivaFromLines = hasBackendIvaDetail
+    ? Math.round(lines.reduce((acc, l) => acc + (l.iva ?? 0), 0) * 100) / 100
+    : ivaBreakdown.ivaTotal
   const cuitInvalid = isReceptorCuitInputInvalid(receptorCuitInput)
   const esConsumidorFinal = form.docTipo === 99 && (form.docNro ?? 0) === 0
   const receptorCuitDigits = esConsumidorFinal ? "" : soloDigitosDoc(receptorCuitInput)
@@ -338,6 +349,13 @@ export function FacturacionEmitConfirmDialog({
                           <TableHead>Descripción</TableHead>
                           <TableHead className="text-right w-20">Cant.</TableHead>
                           <TableHead className="text-right">P. unit.</TableHead>
+                          <TableHead className="text-right w-24">IVA</TableHead>
+                          {hasBackendIvaDetail ? (
+                            <>
+                              <TableHead className="text-right">Neto</TableHead>
+                              <TableHead className="text-right">IVA $</TableHead>
+                            </>
+                          ) : null}
                           <TableHead className="text-right">Subtotal</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -351,6 +369,19 @@ export function FacturacionEmitConfirmDialog({
                             <TableCell className="text-right tabular-nums whitespace-nowrap">
                               {formatCurrency(line.unitPrice)}
                             </TableCell>
+                            <TableCell className="text-right tabular-nums whitespace-nowrap text-xs">
+                              {formatSaleIvaRateLabel(line.ivaRate)}
+                            </TableCell>
+                            {hasBackendIvaDetail ? (
+                              <>
+                                <TableCell className="text-right tabular-nums whitespace-nowrap text-xs">
+                                  {formatCurrency(line.neto ?? 0)}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums whitespace-nowrap text-xs">
+                                  {formatCurrency(line.iva ?? 0)}
+                                </TableCell>
+                              </>
+                            ) : null}
                             <TableCell className="text-right tabular-nums font-medium whitespace-nowrap">
                               {formatCurrency(line.subtotal)}
                             </TableCell>
@@ -362,15 +393,26 @@ export function FacturacionEmitConfirmDialog({
                 )}
               </div>
 
-              <div className="rounded-lg border bg-muted/30 p-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-muted-foreground">
+              <div className="rounded-lg border bg-muted/30 p-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>Neto gravado: {formatCurrency(netoFromLines)}</p>
+                  <p>IVA discriminado: {formatCurrency(ivaFromLines)}</p>
+                  {ivaBreakdown.iva21 > 0 ? (
+                    <p>IVA 21% contenido: {formatCurrency(ivaBreakdown.iva21)}</p>
+                  ) : null}
+                  {ivaBreakdown.iva105 > 0 ? (
+                    <p>IVA 10,5% contenido: {formatCurrency(ivaBreakdown.iva105)}</p>
+                  ) : null}
+                  {ivaBreakdown.ivaExento > 0 ? (
+                    <p>Importe exento / 0%: {formatCurrency(ivaBreakdown.ivaExento)}</p>
+                  ) : null}
                   {lines.length > 0 && Math.abs(linesSubtotal - totalComprobante) > 0.01 ? (
-                    <span>
+                    <p>
                       Suma de líneas: {formatCurrency(linesSubtotal)} · Total comprobante:{" "}
                       {formatCurrency(totalComprobante)}
-                    </span>
+                    </p>
                   ) : (
-                    <span>Total a facturar en ARCA</span>
+                    <p>Total a facturar en ARCA (precios con IVA incluido)</p>
                   )}
                 </div>
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>

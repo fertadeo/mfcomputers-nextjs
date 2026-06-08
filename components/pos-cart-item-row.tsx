@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { Minus, Plus, Trash2 } from "lucide-react"
 import Image from "next/image"
 import { getProductImageUrl } from "@/lib/product-image-utils"
+import { IvaRateSelect } from "@/components/iva-rate-select"
 import { getPosCartLineKey, getPosCartLineLabel, isPosCustomLine, type PosCartLine } from "@/lib/pos-cart"
 import { posCatalogMaxQuantity } from "@/lib/pos-products"
+import type { SaleIvaRate } from "@/lib/sale-iva"
 
 const FORMAT_NUM = { maximumFractionDigits: 0, minimumFractionDigits: 0 } as const
 
@@ -25,6 +27,7 @@ export interface PosCartItemRowProps {
   view: "list" | "grid" | "table"
   onUpdateQuantity: (lineKey: string, delta: number) => void
   onSetUnitPrice: (lineKey: string, unit_price: number) => void
+  onSetIvaRate: (lineKey: string, iva_rate: SaleIvaRate) => void
   onRemove: (lineKey: string) => void
 }
 
@@ -33,6 +36,7 @@ export function PosCartItemRow({
   view,
   onUpdateQuantity,
   onSetUnitPrice,
+  onSetIvaRate,
   onRemove,
 }: PosCartItemRowProps) {
   const lineKey = getPosCartLineKey(line)
@@ -73,6 +77,14 @@ export function PosCartItemRow({
     </div>
   )
 
+  const ivaSelect = (
+    <IvaRateSelect
+      value={line.iva_rate}
+      onChange={(rate) => onSetIvaRate(lineKey, rate)}
+      size="sm"
+    />
+  )
+
   if (view === "table") {
     return (
       <tr className="border-t hover:bg-muted/30">
@@ -100,6 +112,9 @@ export function PosCartItemRow({
         </td>
         <td className="p-2 text-right">
           <div className="flex items-center justify-end gap-1">{priceInput}</div>
+        </td>
+        <td className="p-2 text-right">
+          <div className="flex justify-end">{ivaSelect}</div>
         </td>
         <td className="p-2 text-right font-medium">${lineTotal.toLocaleString("es-AR", FORMAT_NUM)}</td>
         <td className="p-2 text-right">
@@ -132,7 +147,10 @@ export function PosCartItemRow({
           )}
         </p>
         <div className="flex items-center justify-between gap-1">{qtyControls}</div>
-        {priceInput}
+        <div className="flex items-center justify-between gap-2">
+          {priceInput}
+          {ivaSelect}
+        </div>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold">${lineTotal.toLocaleString("es-AR", FORMAT_NUM)}</span>
           <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={() => onRemove(lineKey)}>
@@ -154,9 +172,10 @@ export function PosCartItemRow({
             </Badge>
           )}
         </p>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex flex-wrap items-center gap-2 mt-1">
           {qtyControls}
           {priceInput}
+          {ivaSelect}
         </div>
       </div>
       <span className="text-sm font-medium whitespace-nowrap">${lineTotal.toLocaleString("es-AR", FORMAT_NUM)}</span>

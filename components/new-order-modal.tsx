@@ -31,8 +31,9 @@ import {
   Search,
   ChevronDown
 } from "lucide-react"
-import { getClientes } from "@/lib/api"
-import { Cliente } from "@/lib/api"
+import { getClientes, type Cliente } from "@/lib/api"
+import { IvaRateSelect } from "@/components/iva-rate-select"
+import { computeSaleIvaBreakdown, DEFAULT_SALE_IVA_RATE, formatSaleIvaRateLabel, type SaleIvaRate } from "@/lib/sale-iva"
 
 interface NewOrderModalProps {
   isOpen: boolean
@@ -45,7 +46,7 @@ interface OrderItem {
   product: string
   description: string
   quantity: number
-  vat: number
+  ivaRate: SaleIvaRate
   recovery: number
   unitPrice: number
   subtotal: number
@@ -103,7 +104,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
     product: "",
     description: "",
     quantity: 1,
-    vat: 21.0,
+    ivaRate: DEFAULT_SALE_IVA_RATE as SaleIvaRate,
     recovery: 0.0,
     unitPrice: 0
   })
@@ -197,7 +198,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
       product: currentItem.product,
       description: currentItem.description,
       quantity: currentItem.quantity,
-      vat: currentItem.vat,
+      ivaRate: currentItem.ivaRate,
       recovery: currentItem.recovery,
       unitPrice: currentItem.unitPrice,
       subtotal
@@ -210,7 +211,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
       product: "",
       description: "",
       quantity: 1,
-      vat: 21.0,
+      ivaRate: DEFAULT_SALE_IVA_RATE,
       recovery: 0.0,
       unitPrice: 0
     })
@@ -222,17 +223,19 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
 
   const calculateTotals = () => {
     const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
-    const vat21 = items.filter(item => item.vat === 21.0).reduce((sum, item) => sum + (item.subtotal * 0.21), 0)
-    const vat105 = items.filter(item => item.vat === 10.5).reduce((sum, item) => sum + (item.subtotal * 0.105), 0)
-    const exempt = items.filter(item => item.vat === 0).reduce((sum, item) => sum + item.subtotal, 0)
+    const ivaBreakdown = computeSaleIvaBreakdown(
+      items.map((item) => ({ subtotal: item.subtotal, iva_rate: item.ivaRate }))
+    )
     const discount = subtotal * (formData.finalDiscount / 100)
-    const total = subtotal + vat21 + vat105 - discount
+    const total = subtotal - discount
 
     return {
       subtotal,
-      vat21,
-      vat105,
-      exempt,
+      netoGravado: ivaBreakdown.netoGravado,
+      iva21: ivaBreakdown.iva21,
+      iva105: ivaBreakdown.iva105,
+      exempt: ivaBreakdown.ivaExento,
+      ivaTotal: ivaBreakdown.ivaTotal,
       discount,
       total
     }
@@ -306,7 +309,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
       product: "",
       description: "",
       quantity: 1,
-      vat: 21.0,
+      ivaRate: DEFAULT_SALE_IVA_RATE,
       recovery: 0.0,
       unitPrice: 0
     })
@@ -613,17 +616,11 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">I.V.A.</Label>
-                    <Select value={currentItem.vat.toString()} onValueChange={(value) => handleItemChange('vat', parseFloat(value))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="21.0">21,0%</SelectItem>
-                        <SelectItem value="10.5">10,5%</SelectItem>
-                        <SelectItem value="0">0%</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm font-medium">Alícuota IVA</Label>
+                    <IvaRateSelect
+                      value={currentItem.ivaRate}
+                      onChange={(rate) => handleItemChange("ivaRate", rate)}
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -707,7 +704,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
                           <TableRow key={item.id}>
                             <TableCell>{item.quantity.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</TableCell>
                             <TableCell className="font-medium">{item.description}</TableCell>
-                            <TableCell>{item.vat.toLocaleString('es-AR', { minimumFractionDigits: 2 })}%</TableCell>
+                            <TableCell>{formatSaleIvaRateLabel(item.ivaRate)}</TableCell>
                             <TableCell>{item.recovery.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</TableCell>
                             <TableCell>$ {item.unitPrice.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</TableCell>
                             <TableCell className="font-medium">$ {item.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</TableCell>
@@ -746,18 +743,23 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
 
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Gravado</Label>
+                    <Label className="text-sm font-medium">Subtotal (con IVA)</Label>
                     <div className="text-lg font-semibold">$ {totals.subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
                   </div>
 
                   <div className="space-y-2">
+                    <Label className="text-sm font-medium">Neto gravado</Label>
+                    <div className="text-lg font-semibold">$ {totals.netoGravado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label className="text-sm font-medium">IVA 21%</Label>
-                    <div className="text-lg font-semibold">$ {totals.vat21.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                    <div className="text-lg font-semibold">$ {totals.iva21.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
                   </div>
 
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">IVA 10,5%</Label>
-                    <div className="text-lg font-semibold">$ {totals.vat105.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                    <div className="text-lg font-semibold">$ {totals.iva105.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
                   </div>
 
                   <div className="space-y-2">

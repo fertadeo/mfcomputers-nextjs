@@ -608,6 +608,8 @@ export interface Product {
   width?: number | null   // Ancho en cm
   height?: number | null  // Alto en cm
   allow_backorders?: boolean  // true = venta por encargo (reservas con stock 0)
+  /** Alícuota IVA de venta: 21, 10.5 o 0. Default API: 21. */
+  iva_rate?: number | null
 }
 
 export interface CreateProductData {
@@ -630,6 +632,8 @@ export interface CreateProductData {
   width?: number | null    // Ancho en cm (≥ 0)
   height?: number | null   // Alto en cm (≥ 0)
   allow_backorders?: boolean  // true = venta por encargo (stock 0 permitido)
+  /** Alícuota IVA: 21, 10.5 o 0. Default: 21. */
+  iva_rate?: number
 }
 
 export interface UpdateProductData {
@@ -652,6 +656,8 @@ export interface UpdateProductData {
   width?: number | null
   height?: number | null
   allow_backorders?: boolean
+  /** Alícuota IVA: 21, 10.5 o 0. */
+  iva_rate?: number
 }
 
 export interface UpdateStockData {
@@ -707,6 +713,8 @@ export interface CreateSaleCatalogItem {
   product_id: number
   quantity: number
   unit_price: number
+  /** Alícuota IVA: 21, 10.5 o 0 (exento). Default backend: 21. */
+  iva_rate?: number
 }
 
 /** Línea libre: no crea producto en catálogo; requiere soporte en POST /api/sales. */
@@ -714,6 +722,8 @@ export interface CreateSaleCustomItem {
   description: string
   quantity: number
   unit_price: number
+  /** Alícuota IVA: 21, 10.5 o 0 (exento). Default backend: 21. */
+  iva_rate?: number
 }
 
 export type CreateSaleItem = CreateSaleCatalogItem | CreateSaleCustomItem
@@ -747,6 +757,8 @@ export interface SaleItemResponse {
   description?: string | null
   quantity: number
   unit_price: number
+  /** Alícuota IVA de la línea: 21, 10.5 o 0. */
+  iva_rate?: number | null
   subtotal?: number
   /** Backend puede devolver total_price en lugar de subtotal */
   total_price?: number
@@ -969,6 +981,57 @@ export async function getSale(id: number): Promise<{ success: boolean; message: 
     throw err
   }
   return data
+}
+
+export interface FacturarSugerenciaIvaLine {
+  itemId?: number
+  productId?: number | null
+  descripcion: string
+  ivaRate: number
+  ivaRateLabel?: string
+  lineTotal: number
+  neto: number
+  iva: number
+  quantity?: number
+  unitPrice?: number
+}
+
+export interface FacturarSugerenciaData {
+  totalAmount: number
+  condicionIvaReceptor?: number
+  sugerencia?: { tipo: number; label: string; motivo?: string }
+  ivaDesglose?: FacturarSugerenciaIvaLine[]
+  ivaResumen?: Array<{ id: number; base: number; cuota: number }>
+  alicuotasPermitidas?: Array<{ rate: number; label: string; afipId: number }>
+}
+
+export interface FacturarSugerenciaResponse {
+  success: boolean
+  message: string
+  data: FacturarSugerenciaData
+  error?: string
+  timestamp?: string
+}
+
+/** Preview fiscal listo para el modal de emisión (GET /api/sales/:id/facturar/sugerencia). */
+export async function getFacturarSugerencia(saleId: number): Promise<FacturarSugerenciaData> {
+  const apiUrl = getApiUrl()
+  const headers: HeadersInit = { ...getAuthHeaders() }
+  if (typeof window !== "undefined") {
+    const apiKey = localStorage.getItem("posApiKey") || localStorage.getItem("apiKey")
+    if (apiKey) (headers as Record<string, string>)["x-api-key"] = apiKey
+  }
+
+  const response = await fetch(`${apiUrl}sales/${saleId}/facturar/sugerencia`, { method: "GET", headers })
+  const data = (await response.json().catch(() => ({}))) as FacturarSugerenciaResponse
+  if (!response.ok) {
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & { status?: number }
+    err.status = response.status
+    if (response.status === 401) logout()
+    throw err
+  }
+  return data.data
 }
 
 export interface FacturarSaleRequest {
@@ -3799,6 +3862,8 @@ export interface OrderItem {
   unit_price: number;
   subtotal: number;
   vat?: number;
+  /** Alícuota IVA de la línea: 21, 10.5 o 0. */
+  iva_rate?: number | null;
   recovery?: number;
   created_at: string;
 }
@@ -3836,6 +3901,9 @@ export interface CreateOrderItemRequest {
   description: string;
   quantity: number;
   unit_price: number;
+  /** Alícuota IVA: 21, 10.5 o 0. Default backend: 21. */
+  iva_rate?: number;
+  /** @deprecated Usar iva_rate */
   vat?: number;
   recovery?: number;
 }
@@ -6444,6 +6512,8 @@ export interface RepairOrderItem {
   unit_price: string
   total_price: string
   stock_deducted: number
+  /** Alícuota IVA si el backend la persiste en reparaciones. */
+  iva_rate?: number | null
   created_at: string
   product?: { id: number; name: string; code?: string; stock?: number }
 }

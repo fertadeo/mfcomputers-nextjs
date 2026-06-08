@@ -27,6 +27,7 @@ import { NewProductModal } from "@/components/new-product-modal"
 import { EditProductModal } from "@/components/edit-product-modal"
 import { BarcodeSearchModal } from "@/components/barcode-search-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
+import { formatSaleIvaRateLabel, productIvaRate } from "@/lib/sale-iva"
 import { LinkWooCommerceIdsButton, LinkWooCommerceSummary } from "@/components/products/link-woocommerce-ids-button"
 import Image from "next/image"
 import {
@@ -793,6 +794,7 @@ export default function ProductosPage() {
                           <TableHead>Código</TableHead>
                           <TableHead>Producto</TableHead>
                           <TableHead>Precio</TableHead>
+                          <TableHead>IVA</TableHead>
                           <TableHead>Stock</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Acciones</TableHead>
@@ -809,6 +811,7 @@ export default function ProductosPage() {
                               </div>
                             </TableCell>
                             <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-10" /></TableCell>
                             <TableCell><Skeleton className="h-4 w-10" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-14 rounded-full" /></TableCell>
                             <TableCell><Skeleton className="h-8 w-24" /></TableCell>
@@ -865,23 +868,26 @@ export default function ProductosPage() {
                         <p className="font-medium text-sm truncate" title={product.name}>
                           {product.name}
                         </p>
-                        <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center justify-between mt-2 gap-1 flex-wrap">
                           <span className="font-semibold text-turquoise-600">
                             ${Math.round(Number(product.price)).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
-                          <div className="flex items-center gap-1 flex-wrap justify-end">
-                            {product.allow_backorders && (
-                              <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-700 dark:text-amber-400">
-                                Por encargo
-                              </Badge>
-                            )}
-                            <Badge
-                              variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
-                              className="text-xs"
-                            >
-                              {!product.is_active ? "Inactivo" : `${product.stock} u.`}
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {formatSaleIvaRateLabel(productIvaRate(product))}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap justify-end mt-1">
+                          {product.allow_backorders && (
+                            <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-700 dark:text-amber-400">
+                              Por encargo
                             </Badge>
-                          </div>
+                          )}
+                          <Badge
+                            variant={!product.is_active ? "destructive" : (product.stock > 0) ? "default" : "secondary"}
+                            className="text-xs"
+                          >
+                            {!product.is_active ? "Inactivo" : `${product.stock} u.`}
+                          </Badge>
                         </div>
                         <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button
@@ -938,6 +944,7 @@ export default function ProductosPage() {
                       <TableHead>Código</TableHead>
                       <TableHead>Producto</TableHead>
                       <TableHead>Precio</TableHead>
+                      <TableHead>IVA</TableHead>
                       <TableHead>Stock</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Acciones</TableHead>
@@ -978,6 +985,11 @@ export default function ProductosPage() {
                           </div>
                         </TableCell>
                         <TableCell>${Math.round(Number(product.price)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {formatSaleIvaRateLabel(productIvaRate(product))}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{product.stock}</span>

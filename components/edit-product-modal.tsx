@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Package, DollarSign, BarChart3, Edit, Tag, Image as ImageIcon, Upload, X, ExternalLink, Loader2, Ruler, Truck, ClipboardList } from "lucide-react"
 import Image from "next/image"
+import { IvaRateSelect } from "@/components/iva-rate-select"
 import {
   Product,
   updateProduct,
@@ -17,6 +18,10 @@ import {
   Category,
   UpdateProductData,
 } from "@/lib/api"
+import {
+  productIvaRate,
+  type SaleIvaRate,
+} from "@/lib/sale-iva"
 import { getAllProductImages } from "@/lib/product-image-utils"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { useToast } from "@/contexts/ToastContext"
@@ -96,6 +101,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
   const [saveConfirmLines, setSaveConfirmLines] = useState<string[]>([])
   const [closePromptOpen, setClosePromptOpen] = useState(false)
   const [draftCloseLoading, setDraftCloseLoading] = useState(false)
+  const [ivaRate, setIvaRate] = useState<SaleIvaRate>(21)
 
   const [formData, setFormData] = useState<FormData>({
     code: "",
@@ -160,6 +166,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         height: product.height != null ? String(product.height) : "",
         allow_backorders: product.allow_backorders ? "1" : "0",
       })
+      setIvaRate(productIvaRate(product))
       setSyncToWooCommerce(true)
       setImageUrlInput("")
       // Imágenes: usar product.images si existe (incluso si es []). Solo usar otras fuentes si images no existe (null/undefined).
@@ -202,6 +209,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     if ((parseInt(formData.max_stock, 10) || 1000) !== (product.max_stock ?? 1000)) return true
     if (formData.is_active !== expectedIsActive) return true
     if ((formData.allow_backorders === "1") !== pAllow) return true
+    if (ivaRate !== productIvaRate(product)) return true
     if (!dimensionMatchesForm(formData.weight, product.weight ?? null)) return true
     if (!dimensionMatchesForm(formData.length, product.length ?? null)) return true
     if (!dimensionMatchesForm(formData.width, product.width ?? null)) return true
@@ -210,7 +218,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
     if (JSON.stringify(imageUrls) !== JSON.stringify(baseUrls)) return true
     if (syncToWooCommerce !== true) return true
     return false
-  }, [product, formData, imageUrls, syncToWooCommerce])
+  }, [product, formData, imageUrls, syncToWooCommerce, ivaRate])
 
   useEffect(() => {
     if (!isOpen || !loading || !submitStep) return
@@ -566,6 +574,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         width: widthVal ?? undefined,
         height: heightVal ?? undefined,
         allow_backorders: allowBackorders,
+        iva_rate: ivaRate,
       }
 
       if (syncToWooCommerce) {
@@ -684,6 +693,7 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
         width: widthVal ?? undefined,
         height: heightVal ?? undefined,
         allow_backorders: false,
+        iva_rate: ivaRate,
       }
 
       const updated = await updateProduct(product.id, payload)
@@ -837,6 +847,19 @@ export function EditProductModal({ product, isOpen, onClose, onSuccess }: EditPr
                       className="h-10 pl-9"
                     />
                   </div>
+                  <p className="text-xs text-muted-foreground">Precio final con IVA incluido.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-iva-rate">Alícuota IVA</Label>
+                  <IvaRateSelect
+                    id="edit-iva-rate"
+                    value={ivaRate}
+                    onChange={setIvaRate}
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se usa al vender y facturar. No confundir con la condición fiscal del cliente.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-stock">Stock</Label>

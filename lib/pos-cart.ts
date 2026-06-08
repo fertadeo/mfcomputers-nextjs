@@ -1,10 +1,12 @@
 import type { CreateSaleItem, Product } from "@/lib/api"
+import { DEFAULT_SALE_IVA_RATE, type SaleIvaRate } from "@/lib/sale-iva"
 
 export type PosCatalogCartLine = {
   kind: "catalog"
   product: Product
   quantity: number
   unit_price: number
+  iva_rate: SaleIvaRate
 }
 
 export type PosCustomCartLine = {
@@ -13,6 +15,7 @@ export type PosCustomCartLine = {
   description: string
   quantity: number
   unit_price: number
+  iva_rate: SaleIvaRate
 }
 
 export type PosCartLine = PosCatalogCartLine | PosCustomCartLine
@@ -30,17 +33,20 @@ export function isPosCustomLine(line: PosCartLine): line is PosCustomCartLine {
 }
 
 export function posCartLineToCreateSaleItem(line: PosCartLine): CreateSaleItem {
+  const iva_rate = line.iva_rate ?? DEFAULT_SALE_IVA_RATE
   if (line.kind === "catalog") {
     return {
       product_id: line.product.id,
       quantity: line.quantity,
       unit_price: line.unit_price,
+      iva_rate,
     }
   }
   return {
     description: line.description.trim(),
     quantity: line.quantity,
     unit_price: line.unit_price,
+    iva_rate,
   }
 }
 

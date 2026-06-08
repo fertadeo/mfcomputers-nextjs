@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PenLine, Plus } from "lucide-react"
+import { IvaRateSelect } from "@/components/iva-rate-select"
+import { DEFAULT_SALE_IVA_RATE, type SaleIvaRate } from "@/lib/sale-iva"
 
 const FORMAT_NUM = { maximumFractionDigits: 0, minimumFractionDigits: 0 } as const
 
@@ -19,7 +21,7 @@ function parseUnitPriceInput(value: string): number {
 }
 
 export interface PosManualItemCardProps {
-  onAdd: (payload: { description: string; quantity: number; unit_price: number }) => void
+  onAdd: (payload: { description: string; quantity: number; unit_price: number; iva_rate: SaleIvaRate }) => void
   disabled?: boolean
   addLabel?: string
   inputIdPrefix?: string
@@ -34,6 +36,7 @@ export function PosManualItemCard({
   const [description, setDescription] = useState("")
   const [quantity, setQuantity] = useState("1")
   const [unitPrice, setUnitPrice] = useState(0)
+  const [ivaRate, setIvaRate] = useState<SaleIvaRate>(DEFAULT_SALE_IVA_RATE)
   const [localError, setLocalError] = useState<string | null>(null)
 
   function handleAdd() {
@@ -52,10 +55,11 @@ export function PosManualItemCard({
       return
     }
     setLocalError(null)
-    onAdd({ description: desc, quantity: q, unit_price: unitPrice })
+    onAdd({ description: desc, quantity: q, unit_price: unitPrice, iva_rate: ivaRate })
     setDescription("")
     setQuantity("1")
     setUnitPrice(0)
+    setIvaRate(DEFAULT_SALE_IVA_RATE)
   }
 
   return (
@@ -83,7 +87,7 @@ export function PosManualItemCard({
             disabled={disabled}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="space-y-2">
             <Label htmlFor={`${inputIdPrefix}-qty`}>Cantidad</Label>
             <Input
@@ -110,6 +114,15 @@ export function PosManualItemCard({
                 disabled={disabled}
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${inputIdPrefix}-iva`}>IVA</Label>
+            <IvaRateSelect
+              id={`${inputIdPrefix}-iva`}
+              value={ivaRate}
+              onChange={setIvaRate}
+              disabled={disabled}
+            />
           </div>
         </div>
         {localError && <p className="text-xs text-red-600 dark:text-red-400">{localError}</p>}

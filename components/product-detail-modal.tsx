@@ -10,6 +10,7 @@ import { Package, DollarSign, AlertTriangle, TrendingUp, Edit, Trash2, Image as 
 import Image from "next/image"
 import { Product, updateProduct, syncProductToWooCommerce, getProductById } from "@/lib/api"
 import { getAllProductImages } from "@/lib/product-image-utils"
+import { formatSaleIvaRateLabel, productIvaRate } from "@/lib/sale-iva"
 import { useToast } from "@/contexts/ToastContext"
 import QRCodeSVG from "react-qr-code"
 import JsBarcode from "jsbarcode"
@@ -534,6 +535,10 @@ export function ProductDetailModal({ product, isOpen, onClose, onDelete, onEdit,
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">Precio:</span>
                 <span className="font-semibold text-lg">${Math.round(Number(displayedProduct.price)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                <Badge variant="outline" className="text-xs">
+                  IVA {formatSaleIvaRateLabel(productIvaRate(displayedProduct))}
+                </Badge>
+                <span className="text-xs text-muted-foreground">(precio con IVA incluido)</span>
               </div>
 
               <div className="flex items-center gap-2">
