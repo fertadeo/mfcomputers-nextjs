@@ -760,7 +760,7 @@ export default function FacturacionPage() {
 
   return (
     <Protected requiredRoles={["gerencia", "ventas", "finanzas", "admin"]}>
-      <ERPLayout activeItem="facturacion">
+      <ERPLayout activeItem="facturacion" wideContent>
         <div className="space-y-6">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
@@ -897,16 +897,17 @@ export default function FacturacionPage() {
                 </Select>
               </div>
 
-              <Table>
+              <div className="rounded-md border overflow-x-auto">
+              <Table className="min-w-[1040px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Comprobante</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Estado ARCA</TableHead>
-                    <TableHead>Tipo factura</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHead className="min-w-[11rem]">Comprobante</TableHead>
+                    <TableHead className="min-w-[10rem] max-w-[14rem]">Cliente</TableHead>
+                    <TableHead className="min-w-[9rem]">Fecha</TableHead>
+                    <TableHead className="min-w-[9rem] whitespace-normal">Estado ARCA</TableHead>
+                    <TableHead className="min-w-[6rem]">Tipo factura</TableHead>
+                    <TableHead className="min-w-[7rem] text-right">Total</TableHead>
+                    <TableHead className="min-w-[15rem] text-right whitespace-normal">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -935,9 +936,11 @@ export default function FacturacionPage() {
                               ) : null}
                             </div>
                           </TableCell>
-                          <TableCell>{row.clientName}</TableCell>
-                          <TableCell>{formatDateTime(row.date)}</TableCell>
-                          <TableCell>
+                          <TableCell className="max-w-[14rem] truncate" title={row.clientName}>
+                            {row.clientName}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{formatDateTime(row.date)}</TableCell>
+                          <TableCell className="whitespace-normal">
                             <div className="space-y-1">
                               <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
                               {status === "error" && (row.arcaErrorCode || row.arcaErrorMessage) ? (
@@ -962,13 +965,15 @@ export default function FacturacionPage() {
                               <span className="text-muted-foreground text-xs">—</span>
                             )}
                           </TableCell>
-                          <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right tabular-nums whitespace-nowrap">
+                            {formatCurrency(row.totalAmount)}
+                          </TableCell>
+                          <TableCell className="text-right align-top whitespace-normal">
                             {status === "success" ? (
-                              <div className="flex flex-col items-end gap-1.5">
+                              <div className="flex flex-wrap items-center justify-end gap-1.5">
                                 <Button
                                   size="sm"
-                                  className="h-8"
+                                  className="h-8 shrink-0"
                                   disabled={row.kind === "repair_order" && !row.linkedSaleId}
                                   onClick={() => {
                                     setSelectedBillableKey(row.key)
@@ -976,34 +981,33 @@ export default function FacturacionPage() {
                                     setIsEmitModalOpen(true)
                                   }}
                                 >
-                                  <Eye className="mr-1 h-3.5 w-3.5" />
+                                  <Eye className="mr-1 h-3.5 w-3.5 shrink-0" />
                                   Ver comprobante
                                 </Button>
-                                <div className="flex flex-wrap justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 shrink-0"
+                                  onClick={() => startEmitFromTable(row.key)}
+                                >
+                                  Reemitir
+                                </Button>
+                                {row.sale ? (
                                   <Button
-                                    variant="outline"
+                                    variant="ghost"
                                     size="sm"
-                                    className="h-7 text-xs"
-                                    onClick={() => startEmitFromTable(row.key)}
+                                    className="h-8 shrink-0 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
+                                    onClick={() => setCreditNoteSale(row.sale!)}
                                   >
-                                    Reemitir
+                                    ¿Fue un error?
                                   </Button>
-                                  {row.sale ? (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
-                                      onClick={() => setCreditNoteSale(row.sale!)}
-                                    >
-                                      ¿Fue un error?
-                                    </Button>
-                                  ) : null}
-                                </div>
+                                ) : null}
                               </div>
                             ) : (
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="h-8 shrink-0"
                                 onClick={() => startEmitFromTable(row.key)}
                               >
                                 Emitir comprobante
@@ -1016,6 +1020,7 @@ export default function FacturacionPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
 

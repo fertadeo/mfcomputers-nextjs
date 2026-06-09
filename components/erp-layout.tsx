@@ -8,9 +8,11 @@ import { cn } from "@/lib/utils"
 interface ERPLayoutProps {
   children: React.ReactNode
   activeItem?: string
+  /** Más ancho útil para tablas extensas (p. ej. facturación). */
+  wideContent?: boolean
 }
 
-export function ERPLayout({ children, activeItem }: ERPLayoutProps) {
+export function ERPLayout({ children, activeItem, wideContent }: ERPLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
@@ -24,9 +26,16 @@ export function ERPLayout({ children, activeItem }: ERPLayoutProps) {
       />
 
       {/* Main content */}
-      <main className={cn("transition-all duration-300 md:ml-64", "min-h-screen")}>
-        <div className="p-4 md:p-6 pt-16 md:pt-6">
-          <div className="max-w-7xl mx-auto">{children}</div>
+      <main className={cn("transition-all duration-300 md:ml-64 min-h-screen min-w-0")}>
+        <div className="p-4 md:p-6 pt-16 md:pt-6 min-w-0">
+          <div
+            className={cn(
+              "mx-auto w-full min-w-0",
+              wideContent ? "max-w-[min(100%,96rem)]" : "max-w-7xl"
+            )}
+          >
+            {children}
+          </div>
         </div>
       </main>
     </div>
