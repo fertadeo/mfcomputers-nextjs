@@ -28,6 +28,8 @@ import {
 
 } from "@/lib/arca-invoice-format"
 
+import type { ArcaIvaDiscriminado } from "@/lib/sale-iva"
+
 import { drawArcaInvoiceHeader } from "@/lib/draw-arca-invoice-header"
 
 import {
@@ -94,13 +96,23 @@ export interface ArcaInvoiceLineItem {
 
   unidadMedida?: string
 
+  /** Precio unitario neto (sin IVA). */
+
   precioUnitario: number
 
   bonificacionPct?: number
 
-  importeBonificacion?: number
+  /** Subtotal neto de la línea (sin IVA). */
 
   subtotal: number
+
+  /** Ej. «21%», «10,5%», «0%». */
+
+  alicuotaIva: string
+
+  /** Subtotal de la línea con IVA incluido. */
+
+  subtotalConIva: number
 
 }
 
@@ -132,11 +144,13 @@ export interface GenerateArcaInvoicePdfParams {
 
   totales: {
 
-    subtotal: number
-
     otrosTributos?: number
 
     total: number
+
+    /** IVA discriminado (pie oficial ARCA). */
+
+    ivaDiscriminado: ArcaIvaDiscriminado
 
     /** IVA contenido — Régimen de Transparencia Fiscal (Ley 27.743) */
 
@@ -384,9 +398,11 @@ async function drawInvoicePage(
 
     moneyAr(it.bonificacionPct ?? 0),
 
-    moneyAr(it.importeBonificacion ?? 0),
-
     moneyAr(it.subtotal),
+
+    it.alicuotaIva,
+
+    moneyAr(it.subtotalConIva),
 
   ])
 
@@ -416,9 +432,11 @@ async function drawInvoicePage(
 
         "% Bonif",
 
-        "Imp. Bonif.",
-
         "Subtotal",
+
+        "Alicuota IVA",
+
+        "Subtotal c/IVA",
 
       ],
 
@@ -459,7 +477,7 @@ async function drawInvoicePage(
     },
 
     columnStyles: (() => {
-      const [w0, w1, w2, w3, w4, w5, w6, w7] = getArcaItemTableColumnWidthsMm(innerW)
+      const [w0, w1, w2, w3, w4, w5, w6, w7, w8] = getArcaItemTableColumnWidthsMm(innerW)
       return {
         0: { cellWidth: w0, halign: "left" as const },
         1: { cellWidth: w1, halign: "left" as const },
@@ -468,7 +486,8 @@ async function drawInvoicePage(
         4: { cellWidth: w4, halign: "right" as const },
         5: { cellWidth: w5, halign: "right" as const },
         6: { cellWidth: w6, halign: "right" as const },
-        7: { cellWidth: w7, halign: "right" as const },
+        7: { cellWidth: w7, halign: "center" as const },
+        8: { cellWidth: w8, halign: "right" as const },
       }
     })(),
 
@@ -482,7 +501,13 @@ async function drawInvoicePage(
 
 
 
-  const totalsBoxH = params.totales.ivaContenido != null ? 32 : 22
+  const ivaDisc = params.totales.ivaDiscriminado
+
+  const otrosTributos = params.totales.otrosTributos ?? 0
+
+  const transBlockH = params.totales.ivaContenido != null ? 14 : 0
+
+  const totalsBoxH = 52 + transBlockH
 
   const totalsBoxTop = yAfter
 
@@ -490,7 +515,7 @@ async function drawInvoicePage(
 
 
 
-  const labelX = margin + innerW - 72
+  const labelX = margin + innerW - 78
 
   let yT = totalsBoxTop + 6
 
@@ -500,25 +525,43 @@ async function drawInvoicePage(
 
 
 
+  doc.text("Importe Otros Tributos: $", margin + 3, yT)
+
+  doc.text(moneyArWithSymbol(otrosTributos), margin + innerW * 0.45, yT, { align: "right" })
+
+
+
   const drawTotalLine = (label: string, amount: number, bold = false) => {
 
     if (bold) doc.setFont("helvetica", "bold")
+
+    else doc.setFont("helvetica", "normal")
 
     doc.text(label, labelX, yT)
 
     doc.text(moneyArWithSymbol(amount), margin + innerW - 2, yT, { align: "right" })
 
-    doc.setFont("helvetica", "normal")
-
-    yT += 5
+    yT += 4.5
 
   }
 
 
 
-  drawTotalLine("Subtotal: $", params.totales.subtotal)
+  drawTotalLine("Importe Neto Gravado: $", ivaDisc.netoGravado)
 
-  drawTotalLine("Importe Otros Tributos: $", params.totales.otrosTributos ?? 0)
+  drawTotalLine("IVA 27%: $", ivaDisc.iva27)
+
+  drawTotalLine("IVA 21%: $", ivaDisc.iva21)
+
+  drawTotalLine("IVA 10.5%: $", ivaDisc.iva105)
+
+  drawTotalLine("IVA 5%: $", ivaDisc.iva5)
+
+  drawTotalLine("IVA 2.5%: $", ivaDisc.iva25)
+
+  drawTotalLine("IVA 0%: $", ivaDisc.iva0)
+
+  drawTotalLine("Importe Otros Tributos: $", otrosTributos)
 
   drawTotalLine("Importe Total: $", params.totales.total, true)
 

@@ -1,8 +1,8 @@
 /** Formato numérico y estilos compartidos plantilla ARCA (AFIP). */
 export const ARCA_TABLE_HEADER_RGB: [number, number, number] = [230, 230, 230]
 
-/** Proporciones relativas de las 8 columnas de la tabla de ítems. */
-export const ARCA_ITEM_TABLE_COL_WEIGHTS = [12, 48, 14, 16, 22, 14, 16, 22] as const
+/** Proporciones relativas de las 9 columnas de la tabla de ítems (con IVA discriminado). */
+export const ARCA_ITEM_TABLE_COL_WEIGHTS = [9, 34, 11, 12, 16, 9, 14, 10, 16] as const
 
 const ARCA_ITEM_TABLE_COL_WEIGHT_SUM = ARCA_ITEM_TABLE_COL_WEIGHTS.reduce((a, b) => a + b, 0)
 

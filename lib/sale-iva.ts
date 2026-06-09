@@ -28,6 +28,13 @@ export function formatSaleIvaRateLabel(rate: SaleIvaRate): string {
   return "21%"
 }
 
+/** Etiqueta de alícuota para comprobante ARCA/AFIP (columna «Alicuota IVA»). */
+export function formatAlicuotaIvaArca(rate: SaleIvaRate): string {
+  if (rate === 0) return "0%"
+  if (rate === 10.5) return "10,5%"
+  return "21%"
+}
+
 export function afipAlicuotaIdFromRate(rate: SaleIvaRate): number {
   return AFIP_ALICUOTA_BY_RATE[rate]
 }
@@ -96,5 +103,31 @@ export function computeSaleIvaBreakdown(
     iva105,
     ivaExento,
     ivaTotal: Math.round((iva21 + iva105) * 100) / 100,
+  }
+}
+
+export interface ArcaIvaDiscriminado {
+  netoGravado: number
+  iva27: number
+  iva21: number
+  iva105: number
+  iva5: number
+  iva25: number
+  iva0: number
+}
+
+/** Desglose IVA discriminado para pie de factura ARCA (todas las alícuotas AFIP, con 0 si no aplica). */
+export function buildArcaIvaDiscriminado(
+  items: Array<{ subtotal: number; iva_rate?: number | null }>
+): ArcaIvaDiscriminado {
+  const breakdown = computeSaleIvaBreakdown(items)
+  return {
+    netoGravado: breakdown.netoGravado,
+    iva27: 0,
+    iva21: breakdown.iva21,
+    iva105: breakdown.iva105,
+    iva5: 0,
+    iva25: 0,
+    iva0: 0,
   }
 }

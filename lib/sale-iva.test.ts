@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildArcaIvaDiscriminado,
   computeSaleIvaBreakdown,
   ivaFromInclusiveAmount,
   normalizeSaleIvaRate,
@@ -32,5 +33,16 @@ describe("sale-iva", () => {
     expect(breakdown.ivaTotal).toBe(31.5)
     expect(breakdown.subtotalInclIva).toBe(281.5)
     expect(breakdown.netoGravado).toBe(250)
+  })
+
+  it("arma IVA discriminado ARCA con alícuotas AFIP en cero si no aplican", () => {
+    const disc = buildArcaIvaDiscriminado([
+      { subtotal: 121, iva_rate: 21 },
+      { subtotal: 110.5, iva_rate: 10.5 },
+    ])
+    expect(disc.iva21).toBe(21)
+    expect(disc.iva105).toBe(10.5)
+    expect(disc.iva27).toBe(0)
+    expect(disc.netoGravado).toBe(200)
   })
 })

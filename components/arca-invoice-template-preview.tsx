@@ -152,8 +152,9 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
               "U. Medida",
               "Precio Unit.",
               "% Bonif",
-              "Imp. Bonif.",
               "Subtotal",
+              "Alicuota IVA",
+              "Subtotal c/IVA",
             ].map((h) => (
               <th
                 key={h}
@@ -161,7 +162,12 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
                   border,
                   padding: "5px 4px",
                   fontWeight: 700,
-                  textAlign: h === "Producto / Servicio" || h === "Código" ? "left" : "right",
+                  textAlign:
+                    h === "Producto / Servicio" || h === "Código"
+                      ? "left"
+                      : h === "U. Medida" || h === "Alicuota IVA"
+                        ? "center"
+                        : "right",
                 }}
               >
                 {h}
@@ -178,18 +184,26 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
               <td style={{ border, padding: "4px", textAlign: "center" }}>{it.unidadMedida ?? "unidades"}</td>
               <td style={{ border, padding: "4px", textAlign: "right" }}>{moneyAr(it.precioUnitario)}</td>
               <td style={{ border, padding: "4px", textAlign: "right" }}>{moneyAr(it.bonificacionPct ?? 0)}</td>
-              <td style={{ border, padding: "4px", textAlign: "right" }}>
-                {moneyAr(it.importeBonificacion ?? 0)}
-              </td>
               <td style={{ border, padding: "4px", textAlign: "right" }}>{moneyAr(it.subtotal)}</td>
+              <td style={{ border, padding: "4px", textAlign: "center" }}>{it.alicuotaIva}</td>
+              <td style={{ border, padding: "4px", textAlign: "right" }}>{moneyAr(it.subtotalConIva)}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <div style={{ borderTop: border, borderBottom: border, padding: "10px 12px", minHeight: "72px" }}>
-        <div style={{ float: "right", width: "220px", fontSize: "11px" }}>
-          <TotalRow label="Subtotal: $" value={data.totales.subtotal} />
+      <div style={{ borderTop: border, borderBottom: border, padding: "10px 12px", minHeight: "120px" }}>
+        <div style={{ float: "left", width: "45%", fontSize: "11px", paddingTop: "2px" }}>
+          <TotalRow label="Importe Otros Tributos: $" value={data.totales.otrosTributos ?? 0} />
+        </div>
+        <div style={{ float: "right", width: "240px", fontSize: "11px" }}>
+          <TotalRow label="Importe Neto Gravado: $" value={data.totales.ivaDiscriminado.netoGravado} />
+          <TotalRow label="IVA 27%: $" value={data.totales.ivaDiscriminado.iva27} />
+          <TotalRow label="IVA 21%: $" value={data.totales.ivaDiscriminado.iva21} />
+          <TotalRow label="IVA 10.5%: $" value={data.totales.ivaDiscriminado.iva105} />
+          <TotalRow label="IVA 5%: $" value={data.totales.ivaDiscriminado.iva5} />
+          <TotalRow label="IVA 2.5%: $" value={data.totales.ivaDiscriminado.iva25} />
+          <TotalRow label="IVA 0%: $" value={data.totales.ivaDiscriminado.iva0} />
           <TotalRow label="Importe Otros Tributos: $" value={data.totales.otrosTributos ?? 0} />
           <TotalRow label="Importe Total: $" value={data.totales.total} bold />
           {data.totales.ivaContenido != null ? (

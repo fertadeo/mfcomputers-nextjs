@@ -15,7 +15,13 @@ import {
   getStoredFacturacionCuitEmisor,
   getStoredFacturacionPuntoVenta,
 } from "@/lib/facturacion-settings"
-import { computeSaleIvaBreakdown, normalizeSaleIvaRate } from "@/lib/sale-iva"
+import {
+  buildArcaIvaDiscriminado,
+  computeSaleIvaBreakdown,
+  formatAlicuotaIvaArca,
+  netFromInclusiveAmount,
+  normalizeSaleIvaRate,
+} from "@/lib/sale-iva"
 
 const EMISOR_DEFAULT = {
   razonSocial: "FIGUEROA MAXIMILIANO IVAN JESUS",
@@ -112,14 +118,12 @@ export async function buildArcaInvoicePdfInput(
   const docNro = toNumber(facturarPayload.docNro, 0)
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
   const total = toNumber(emision.importe ?? sale.total_amount)
-  const subtotalItems = items.reduce((acc, it) => acc + lineSubtotal(it), 0)
-  const subtotal = Math.abs(subtotalItems - total) < 0.02 ? subtotalItems : total
-  const ivaBreakdown = computeSaleIvaBreakdown(
-    items.map((item) => ({
-      subtotal: lineSubtotal(item),
-      iva_rate: normalizeSaleIvaRate(item.iva_rate),
-    }))
-  )
+  const lineItemsForIva = items.map((item) => ({
+    subtotal: lineSubtotal(item),
+    iva_rate: normalizeSaleIvaRate(item.iva_rate),
+  }))
+  const ivaBreakdown = computeSaleIvaBreakdown(lineItemsForIva)
+  const ivaDiscriminado = buildArcaIvaDiscriminado(lineItemsForIva)
   const ivaContenido = ivaBreakdown.ivaTotal
 
   const fechaEmision =
@@ -183,20 +187,26 @@ export async function buildArcaInvoicePdfInput(
       condicionIvaLabel: condicionLabels[condicionIva] ?? `Condición ${condicionIva}`,
       domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || undefined,
     },
-    items: items.map((item) => ({
-      codigo: saleItemCodigo(item),
-      descripcion: saleItemDescription(item, catalogNames),
-      cantidad: toNumber(item.quantity),
-      unidadMedida: "unidades",
-      precioUnitario: toNumber(item.unit_price),
-      bonificacionPct: 0,
-      importeBonificacion: 0,
-      subtotal: lineSubtotal(item),
-    })),
+    items: items.map((item) => {
+      const rate = normalizeSaleIvaRate(item.iva_rate)
+      const unitIncl = toNumber(item.unit_price)
+      const lineIncl = lineSubtotal(item)
+      return {
+        codigo: saleItemCodigo(item),
+        descripcion: saleItemDescription(item, catalogNames),
+        cantidad: toNumber(item.quantity),
+        unidadMedida: "unidades",
+        precioUnitario: netFromInclusiveAmount(unitIncl, rate),
+        bonificacionPct: 0,
+        subtotal: netFromInclusiveAmount(lineIncl, rate),
+        alicuotaIva: formatAlicuotaIvaArca(rate),
+        subtotalConIva: lineIncl,
+      }
+    }),
     totales: {
-      subtotal,
       otrosTributos: 0,
       total,
+      ivaDiscriminado,
       ivaContenido: ivaContenido > 0 ? ivaContenido : null,
     },
     cae: emision.cae,
