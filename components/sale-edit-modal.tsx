@@ -48,7 +48,16 @@ import {
   saleItemsToPosCartLines,
 } from "@/lib/sale-items"
 import { computeSaleIvaBreakdown, productIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
+import { SaleEditConfirmDialog } from "@/components/sale-edit-confirm-dialog"
+import {
+  buildSaleEditConfirmSummary,
+  cartToLineSnapshots,
+  clientLabelFromSale,
+  type SaleEditConfirmSummary,
+  type SaleEditOriginalSnapshot,
+} from "@/lib/sale-edit-summary"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
+import { Badge } from "@/components/ui/badge"
 import { Loader2, Plus, Save, Search } from "lucide-react"
 import { toast } from "sonner"
 
@@ -78,8 +87,12 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
   const [cart, setCart] = useState<PosCartLine[]>([])
   const [originalTotal, setOriginalTotal] = useState(0)
   const [clientId, setClientId] = useState<number | null>(null)
+  const [clientDisplayName, setClientDisplayName] = useState("Consumidor final")
+  const [originalSnapshot, setOriginalSnapshot] = useState<SaleEditOriginalSnapshot | null>(null)
   const [clientSearch, setClientSearch] = useState("")
   const [clients, setClients] = useState<Cliente[]>([])
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmSummary, setConfirmSummary] = useState<SaleEditConfirmSummary | null>(null)
   const [notes, setNotes] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("efectivo")
   const [originalPaymentMethod, setOriginalPaymentMethod] = useState<SalePaymentMethod>("efectivo")
@@ -105,9 +118,20 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
           }
         })
       )
-      setCart(saleItemsToPosCartLines(s.items || [], productById))
+      const initialCart = saleItemsToPosCartLines(s.items || [], productById)
+      const clientLabel = clientLabelFromSale(s.client_id, s.client_name)
+      setCart(initialCart)
       setOriginalTotal(s.total_amount)
       setClientId(s.client_id)
+      setClientDisplayName(clientLabel)
+      setOriginalSnapshot({
+        clientId: s.client_id,
+        clientLabel,
+        notes: s.notes ?? "",
+        paymentMethod: s.payment_method,
+        total: s.total_amount,
+        lines: cartToLineSnapshots(initialCart),
+      })
       setNotes(s.notes ?? "")
       setPaymentMethod(s.payment_method)
       setOriginalPaymentMethod(s.payment_method)
@@ -123,6 +147,8 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       setShowAddProduct(false)
       setClientSearch("")
       setClients([])
+      setConfirmOpen(false)
+      setConfirmSummary(null)
     } finally {
       setLoading(false)
     }
@@ -286,26 +312,27 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
     markDirty()
   }
 
-  async function handleSave() {
-    if (!sale) return
+  function validateBeforeSave(): boolean {
+    if (!sale) return false
     if (cart.length === 0) {
       toast.error("La venta debe tener al menos un ítem")
-      return
+      return false
     }
-    const invalidCustom = cart.some(
-      (i) => i.kind === "custom" && !i.description.trim()
-    )
+    const invalidCustom = cart.some((i) => i.kind === "custom" && !i.description.trim())
     if (invalidCustom) {
       toast.error("Hay un ítem manual sin descripción")
-      return
+      return false
     }
     if (needsMixtoDetails && !mixtoValid) {
       toast.error("En pago mixto, la suma debe coincidir con el nuevo total", {
         description: `${formatMoney(mixtoSum)} ≠ ${formatMoney(total)}`,
       })
-      return
+      return false
     }
+    return true
+  }
 
+  function buildUpdateBody(): UpdateSaleRequest {
     const body: UpdateSaleRequest = {
       client_id: clientId,
       notes: notes.trim() || null,
@@ -313,7 +340,6 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       allow_inactive: allowInactive || undefined,
       sync_to_woocommerce: syncWoo || undefined,
     }
-
     if (paymentMethodChanged) {
       body.payment_method = paymentMethod
     }
@@ -325,12 +351,35 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
         transferencia: paymentDetails.transferencia,
       }
     }
+    return body
+  }
 
+  function openConfirmSave() {
+    if (!sale || !originalSnapshot) return
+    if (!validateBeforeSave()) return
+    const summary = buildSaleEditConfirmSummary({
+      original: originalSnapshot,
+      clientId,
+      clientLabel: clientDisplayName,
+      notes,
+      paymentMethod,
+      paymentLabel: (m) => PAYMENT_LABELS[m],
+      total,
+      cart,
+    })
+    setConfirmSummary(summary)
+    setConfirmOpen(true)
+  }
+
+  async function performSave() {
+    if (!sale) return
     setSaving(true)
     try {
-      const updated = await updateSale(sale.id, body)
+      const updated = await updateSale(sale.id, buildUpdateBody())
       toast.success("Venta actualizada")
       setDirty(false)
+      setConfirmOpen(false)
+      setConfirmSummary(null)
       onSaved(updated)
       onClose()
     } catch (e) {
@@ -339,6 +388,8 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       setSaving(false)
     }
   }
+
+  const clientChanged = originalSnapshot != null && clientId !== originalSnapshot.clientId
 
   const [handleOpenChangeInner, confirmDialog] = useConfirmBeforeClose(
     () => onClose(),
@@ -410,6 +461,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                           className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
                           onClick={() => {
                             setClientId(c.id)
+                            setClientDisplayName(c.name)
                             setClientSearch("")
                             setClients([])
                             markDirty()
@@ -421,9 +473,20 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                     ))}
                   </ul>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Actual: {sale.client_name ?? (clientId ? `Cliente #${clientId}` : "Consumidor final")}
-                </p>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Cliente seleccionado:</span>
+                  <span className="font-medium">{clientDisplayName}</span>
+                  {clientChanged && originalSnapshot && (
+                    <>
+                      <Badge variant="secondary" className="text-[10px]">
+                        Cambiado
+                      </Badge>
+                      <span className="text-xs text-muted-foreground w-full sm:w-auto">
+                        Antes: {originalSnapshot.clientLabel}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -633,17 +696,30 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
               Cancelar
             </Button>
             <Button
-              onClick={handleSave}
+              onClick={openConfirmSave}
               disabled={loading || saving || cart.length === 0 || (needsMixtoDetails && !mixtoValid)}
               className="gap-2"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Guardar cambios
+              <Save className="h-4 w-4" />
+              Revisar y guardar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       {confirmDialog}
+      <SaleEditConfirmDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !saving) {
+            setConfirmOpen(false)
+            setConfirmSummary(null)
+          }
+        }}
+        summary={confirmSummary}
+        saleNumber={sale.sale_number}
+        saving={saving}
+        onConfirm={() => void performSave()}
+      />
     </>
   )
 }
