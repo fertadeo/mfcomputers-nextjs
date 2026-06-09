@@ -21,7 +21,7 @@ import type { BillableRow } from "@/lib/facturacion-billables"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
-import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
+import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import {
   buildVentaDestinatarioSnapshot,
@@ -53,6 +53,10 @@ export interface FacturacionEmitConfirmDialogProps {
   clienteLoading: boolean
   form: FacturarSaleRequest
   lines: FacturacionPreviewLine[]
+  /** Fecha comercial de la venta (defaults.saleDate de la sugerencia). */
+  saleDate?: string | null
+  /** Fecha del comprobante que enviará el backend (defaults.fechaCbte). */
+  fechaCbte?: string | null
   linesLoading: boolean
   linesError: string | null
   emisorCuitLabel: string
@@ -75,6 +79,8 @@ export function FacturacionEmitConfirmDialog({
   clienteLoading,
   form,
   lines,
+  saleDate,
+  fechaCbte,
   linesLoading,
   linesError,
   emisorCuitLabel,
@@ -176,9 +182,23 @@ export function FacturacionEmitConfirmDialog({
                     <span className="font-medium">{ventaDestinatario.name}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Fecha: </span>
-                    <span>{new Date(billable.date).toLocaleString("es-AR")}</span>
+                    <span className="text-muted-foreground">Fecha de venta: </span>
+                    <span>{formatFacturacionFecha(saleDate ?? sale?.sale_date ?? billable.date)}</span>
                   </div>
+                  <div>
+                    <span className="text-muted-foreground">Fecha del comprobante: </span>
+                    <span className="font-medium">
+                      {fechaCbte ? formatFacturacionFecha(fechaCbte) : "—"}
+                    </span>
+                  </div>
+                  {fechaCbte &&
+                  saleDate &&
+                  fechaCbte.slice(0, 10) !== saleDate.slice(0, 10) ? (
+                    <p className="text-muted-foreground text-xs sm:col-span-2">
+                      La fecha del comprobante difiere de la venta porque ARCA limita el rango de fechas
+                      permitidas; el backend usa la fecha de hoy para no rechazar la emisión.
+                    </p>
+                  ) : null}
                   <div>
                     <span className="text-muted-foreground">CUIT emisor: </span>
                     <span className="font-mono text-xs">{emisorCuitLabel}</span>

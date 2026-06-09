@@ -1059,6 +1059,15 @@ export interface FacturarSugerenciaIvaLine {
   unitPrice?: number
 }
 
+export interface FacturarSugerenciaDefaults {
+  /** Fecha comercial de la venta (YYYY-MM-DD, Argentina). */
+  saleDate?: string
+  sale_date?: string
+  /** Fecha que el backend enviará al facturador (fechaCbte). */
+  fechaCbte?: string
+  fecha_cbte?: string
+}
+
 export interface FacturarSugerenciaData {
   totalAmount: number
   condicionIvaReceptor?: number
@@ -1066,6 +1075,19 @@ export interface FacturarSugerenciaData {
   ivaDesglose?: FacturarSugerenciaIvaLine[]
   ivaResumen?: Array<{ id: number; base: number; cuota: number }>
   alicuotasPermitidas?: Array<{ rate: number; label: string; afipId: number }>
+  defaults?: FacturarSugerenciaDefaults
+}
+
+/** Fechas comercial y de comprobante desde GET /facturar/sugerencia. */
+export function parseFacturarSugerenciaDefaults(
+  data: FacturarSugerenciaData
+): { saleDate?: string; fechaCbte?: string } {
+  const d = data.defaults
+  if (!d) return {}
+  return {
+    saleDate: d.saleDate ?? d.sale_date,
+    fechaCbte: d.fechaCbte ?? d.fecha_cbte,
+  }
 }
 
 export interface FacturarSugerenciaResponse {

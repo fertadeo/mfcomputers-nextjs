@@ -89,7 +89,8 @@ import {
   applyReceptorCuitToFacturarForm,
 } from "@/lib/facturacion-receptor-doc"
 import {
-  loadFacturacionPreviewLines,
+  formatFacturacionFecha,
+  loadFacturacionPreview,
   type FacturacionPreviewLine,
 } from "@/lib/facturacion-preview-lines"
 
@@ -224,6 +225,8 @@ export default function FacturacionPage() {
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
   const [isConfirmEmitOpen, setIsConfirmEmitOpen] = useState(false)
   const [confirmLines, setConfirmLines] = useState<FacturacionPreviewLine[]>([])
+  const [confirmSaleDate, setConfirmSaleDate] = useState<string | null>(null)
+  const [confirmFechaCbte, setConfirmFechaCbte] = useState<string | null>(null)
   const [confirmLinesLoading, setConfirmLinesLoading] = useState(false)
   const [confirmLinesError, setConfirmLinesError] = useState<string | null>(null)
 
@@ -464,10 +467,12 @@ export default function FacturacionPage() {
 
     void (async () => {
       try {
-        const lines = await loadFacturacionPreviewLines(selectedBillable)
+        const preview = await loadFacturacionPreview(selectedBillable)
         if (cancelled) return
-        setConfirmLines(lines)
-        if (lines.length === 0) {
+        setConfirmLines(preview.lines)
+        setConfirmSaleDate(preview.saleDate ?? selectedBillable.date ?? null)
+        setConfirmFechaCbte(preview.fechaCbte ?? null)
+        if (preview.lines.length === 0) {
           setConfirmLinesError("No hay ítems para mostrar en el comprobante.")
         }
       } catch (e) {
@@ -489,6 +494,8 @@ export default function FacturacionPage() {
   useEffect(() => {
     if (!isConfirmEmitOpen) {
       setConfirmLines([])
+      setConfirmSaleDate(null)
+      setConfirmFechaCbte(null)
       setConfirmLinesError(null)
       setConfirmLinesLoading(false)
     }
@@ -1144,6 +1151,12 @@ export default function FacturacionPage() {
                       </div>
                     ) : null}
                     <div className="text-muted-foreground">Cliente: {selectedSale.client_name || "Consumidor final"}</div>
+                    <div className="text-muted-foreground">
+                      Fecha de venta: {formatFacturacionFecha(selectedSale.sale_date)}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      Al facturar, el backend asigna la fecha del comprobante según la venta (ver confirmación).
+                    </div>
                     <div className="text-muted-foreground">CUIT emisor: {emisorCuitMostrar}</div>
                     <div className="text-muted-foreground">
                       CUIT/CUIL receptor (ERP):{" "}
@@ -1470,6 +1483,8 @@ export default function FacturacionPage() {
             clienteLoading={modalClienteLoading}
             form={form}
             lines={confirmLines}
+            saleDate={confirmSaleDate}
+            fechaCbte={confirmFechaCbte}
             linesLoading={confirmLinesLoading}
             linesError={confirmLinesError}
             emisorCuitLabel={emisorCuitMostrar}

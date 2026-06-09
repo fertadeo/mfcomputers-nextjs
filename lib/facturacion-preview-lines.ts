@@ -6,6 +6,8 @@ import {
 
   getSale,
 
+  parseFacturarSugerenciaDefaults,
+
   type FacturarSugerenciaIvaLine,
 
   type RepairOrderItem,
@@ -55,6 +57,14 @@ export interface FacturacionPreviewResult {
   netoTotal?: number
 
   ivaTotal?: number
+
+  /** Fecha comercial de la venta (desde sugerencia API). */
+
+  saleDate?: string
+
+  /** Fecha del comprobante que enviará el backend al facturar. */
+
+  fechaCbte?: string
 
 }
 
@@ -214,6 +224,34 @@ export async function loadFacturacionPreviewLines(billable: BillableRow): Promis
 
 }
 
+/** Formato legible para fechas YYYY-MM-DD o ISO de la API de facturación. */
+
+export function formatFacturacionFecha(value?: string | null): string {
+
+  if (!value?.trim()) return "—"
+
+  const iso = value.trim().slice(0, 10)
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+
+    const [y, m, d] = iso.split("-")
+
+    return `${d}/${m}/${y}`
+
+  }
+
+  try {
+
+    return new Date(value).toLocaleDateString("es-AR")
+
+  } catch {
+
+    return value
+
+  }
+
+}
+
 
 
 /** Carga preview fiscal; para ventas intenta GET /facturar/sugerencia primero. */
@@ -224,9 +262,13 @@ export async function loadFacturacionPreview(billable: BillableRow): Promise<Fac
 
     const saleId = billable.sale?.id ?? billable.id
 
+    let fiscalDates: Pick<FacturacionPreviewResult, "saleDate" | "fechaCbte"> = {}
+
     try {
 
       const sugerencia = await getFacturarSugerencia(saleId)
+
+      fiscalDates = parseFacturarSugerenciaDefaults(sugerencia)
 
       const desglose = sugerencia.ivaDesglose ?? []
 
@@ -248,6 +290,8 @@ export async function loadFacturacionPreview(billable: BillableRow): Promise<Fac
 
           ivaTotal: Math.round(ivaTotal * 100) / 100,
 
+          ...fiscalDates,
+
         }
 
       }
@@ -262,15 +306,27 @@ export async function loadFacturacionPreview(billable: BillableRow): Promise<Fac
 
     let items = billable.sale?.items
 
-    if (!items?.length) {
+    let saleDateFallback: string | undefined
+
+    if (!items?.length || !fiscalDates.saleDate) {
 
       const res = await getSale(saleId)
 
-      items = res.data?.items ?? []
+      if (!items?.length) items = res.data?.items ?? []
+
+      saleDateFallback = res.data?.sale_date
 
     }
 
-    return { lines: mapSaleItems(items) }
+    return {
+
+      lines: mapSaleItems(items ?? []),
+
+      saleDate: fiscalDates.saleDate ?? saleDateFallback,
+
+      fechaCbte: fiscalDates.fechaCbte,
+
+    }
 
   }
 
@@ -282,11 +338,37 @@ export async function loadFacturacionPreview(billable: BillableRow): Promise<Fac
 
     try {
 
+      const sugerencia = await getFacturarSugerencia(billable.linkedSaleId)
+
+      const fiscalDates = parseFacturarSugerenciaDefaults(sugerencia)
+
+      const desglose = sugerencia.ivaDesglose ?? []
+
+      if (desglose.length > 0) {
+
+        const lines = desglose.map(mapSugerenciaLine)
+
+        return { lines, ...fiscalDates }
+
+      }
+
       const res = await getSale(billable.linkedSaleId)
 
       const saleItems = res.data?.items ?? []
 
-      if (saleItems.length > 0) return { lines: mapSaleItems(saleItems) }
+      if (saleItems.length > 0) {
+
+        return {
+
+          lines: mapSaleItems(saleItems),
+
+          saleDate: fiscalDates.saleDate ?? res.data?.sale_date,
+
+          fechaCbte: fiscalDates.fechaCbte,
+
+        }
+
+      }
 
     } catch {
 
