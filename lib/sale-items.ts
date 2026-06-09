@@ -1,6 +1,7 @@
-import type { CreateSaleItem, SaleItemResponse } from "@/lib/api"
+import type { CreateSaleItem, Product, SaleItemResponse } from "@/lib/api"
 import type { SaleReceiptCartItem } from "@/lib/generate-sale-receipt-pdf"
-import { posCartLineToCreateSaleItem, type PosCartLine } from "@/lib/pos-cart"
+import { newCustomLineId, posCartLineToCreateSaleItem, type PosCartLine } from "@/lib/pos-cart"
+import { normalizeSaleIvaRate } from "@/lib/sale-iva"
 
 /** Nombre visible de una línea de venta (catálogo o manual). */
 export function getSaleItemDisplayName(item: SaleItemResponse): string {
@@ -44,6 +45,50 @@ export function saleItemsToReceiptItems(
       product: { id: item.product_id ?? 0, name },
       quantity: item.quantity,
       unit_price: item.unit_price,
+    }
+  })
+}
+
+function stubProductFromSaleItem(item: SaleItemResponse): Product {
+  const name = getSaleItemDisplayName(item)
+  return {
+    id: item.product_id!,
+    code: "",
+    name,
+    price: item.unit_price,
+    stock: 0,
+    min_stock: 0,
+    max_stock: 0,
+    is_active: true,
+    created_at: "",
+    updated_at: "",
+  }
+}
+
+/** Convierte líneas de venta a carrito POS para edición. */
+export function saleItemsToPosCartLines(
+  items: SaleItemResponse[],
+  productById?: Record<number, Product>
+): PosCartLine[] {
+  return items.map((item) => {
+    const iva_rate = normalizeSaleIvaRate(item.iva_rate)
+    if (item.product_id != null && item.product_id > 0) {
+      const product = productById?.[item.product_id] ?? stubProductFromSaleItem(item)
+      return {
+        kind: "catalog" as const,
+        product,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        iva_rate,
+      }
+    }
+    return {
+      kind: "custom" as const,
+      lineId: newCustomLineId(),
+      description: getSaleItemDisplayName(item),
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      iva_rate,
     }
   })
 }

@@ -768,13 +768,28 @@ export interface SaleResponseData {
   id: number
   sale_number: string
   client_id: number | null
+  client_name?: string | null
   total_amount: number
   payment_method: SalePaymentMethod
+  payment_details?: CreateSalePaymentDetails
+  notes?: string | null
   sale_date: string
   sync_status?: string
+  arca_status?: 'pending' | 'success' | 'error' | null
   items: SaleItemResponse[]
   created_at: string
   updated_at: string
+}
+
+/** Cuerpo parcial para PUT /api/sales/:id (edición de venta no facturada). */
+export interface UpdateSaleRequest {
+  client_id?: number | null
+  items?: CreateSaleItem[]
+  payment_method?: SalePaymentMethod
+  payment_details?: CreateSalePaymentDetails
+  notes?: string | null
+  allow_inactive?: boolean
+  sync_to_woocommerce?: boolean
 }
 
 export interface CreateSaleResponse {
@@ -845,6 +860,54 @@ export async function createSale(body: CreateSaleRequest): Promise<SaleResponseD
 
   if (!data?.success || !data?.data) {
     throw new Error(data?.message || 'Error al crear la venta')
+  }
+
+  return data.data
+}
+
+/**
+ * Actualiza una venta POS existente (PUT /api/sales/:id).
+ * Solo permitido si arca_status !== 'success'. Requiere JWT o x-api-key.
+ */
+export async function updateSale(id: number, body: UpdateSaleRequest): Promise<SaleResponseData> {
+  const apiUrl = getApiUrl()
+  const token = getAccessToken()
+  const apiKey = getPosApiKey()
+
+  if (!token && !apiKey) {
+    throw new Error(
+      'Autenticación requerida: iniciá sesión o configurá la API Key para punto de venta en Configuración.'
+    )
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  if (apiKey) {
+    headers['x-api-key'] = apiKey
+  }
+
+  const response = await fetch(`${apiUrl}sales/${id}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & { status?: number }
+    err.status = response.status
+    if (response.status === 401) logout()
+    throw err
+  }
+
+  if (!data?.success || !data?.data) {
+    throw new Error(data?.message || 'Error al actualizar la venta')
   }
 
   return data.data

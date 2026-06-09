@@ -30,7 +30,10 @@ import {
 import { generateSaleReceiptPdf } from "@/lib/generate-sale-receipt-pdf"
 import { saleItemsToReceiptItems, saleItemCatalogProductIds } from "@/lib/sale-items"
 import { SaleDetailModal } from "@/components/sale-detail-modal"
+import { SaleEditModal } from "@/components/sale-edit-modal"
 import { OrderDetailModal } from "@/components/order-detail-modal"
+import { useRole } from "@/app/hooks/useRole"
+import { canEditSale } from "@/lib/sale-edit"
 import { Pagination } from "@/components/ui/pagination"
 import {
   Receipt,
@@ -125,8 +128,10 @@ export default function VentasPage() {
   const [salesDateTo, setSalesDateTo] = useState("")
   const [salesPaymentMethod, setSalesPaymentMethod] = useState<string>("all")
   const [salesSyncStatus, setSalesSyncStatus] = useState<string>("all")
+  const { hasAnyOfRoles } = useRole()
   const [selectedSale, setSelectedSale] = useState<SaleResponseData | null>(null)
   const [saleDetailOpen, setSaleDetailOpen] = useState(false)
+  const [saleEditOpen, setSaleEditOpen] = useState(false)
   const [downloadingPdfSaleId, setDownloadingPdfSaleId] = useState<number | null>(null)
 
   // Pedidos
@@ -728,6 +733,22 @@ export default function VentasPage() {
           onClose={() => {
             setSaleDetailOpen(false)
             setSelectedSale(null)
+          }}
+          canEdit={selectedSale ? canEditSale(selectedSale, hasAnyOfRoles) : false}
+          onEdit={() => {
+            setSaleDetailOpen(false)
+            setSaleEditOpen(true)
+          }}
+        />
+        <SaleEditModal
+          sale={selectedSale}
+          isOpen={saleEditOpen}
+          onClose={() => setSaleEditOpen(false)}
+          onSaved={(updated) => {
+            setSelectedSale(updated)
+            setSaleEditOpen(false)
+            setSaleDetailOpen(true)
+            void loadSales()
           }}
         />
         <OrderDetailModal

@@ -204,20 +204,30 @@ export default function PresupuestoDetallePage() {
       toast.error("Cliente requerido")
       return
     }
-    const invalidCustom = draftLines.some((l) => l.is_custom && !(l.description || l.product_name).trim())
-    if (invalidCustom) {
-      toast.error("Hay un ítem escrito sin descripción")
-      return
+    const isDraft = detail.status === "draft"
+    if (isDraft) {
+      const invalidCustom = draftLines.some((l) => l.is_custom && !(l.description || l.product_name).trim())
+      if (invalidCustom) {
+        toast.error("Hay un ítem escrito sin descripción")
+        return
+      }
+      if (draftLines.length === 0) {
+        toast.error("El presupuesto debe tener al menos un ítem")
+        return
+      }
     }
     setSaving(true)
     try {
-      const updated = await updateCommercialBudget(detail.id, {
+      const body: Parameters<typeof updateCommercialBudget>[1] = {
         client_id: clientId,
         valid_until: validUntil.trim() || null,
         notes: notes.trim() || null,
-        items: budgetDetailDraftLinesToApiItems(draftLines),
-        allow_inactive: allowInactiveDraft,
-      })
+      }
+      if (isDraft) {
+        body.items = budgetDetailDraftLinesToApiItems(draftLines)
+        body.allow_inactive = allowInactiveDraft
+      }
+      const updated = await updateCommercialBudget(detail.id, body)
       setDetail(updated)
       setDraftLines(linesFromBudgetDetail(updated.items || []))
       toast.success("Cambios guardados")
@@ -325,7 +335,10 @@ export default function PresupuestoDetallePage() {
   }
 
   const readonly = detail.status === "rejected" || detail.status === "expired"
-  const editable = puedeEditar && !readonly
+  const editableDraft = puedeEditar && detail.status === "draft"
+  const editableMeta =
+    puedeEditar && (detail.status === "draft" || detail.status === "sent" || detail.status === "approved")
+  const itemsReadonly = !editableDraft
 
   return (
     <Protected requiredRoles={ROLES_VER}>
@@ -361,7 +374,7 @@ export default function PresupuestoDetallePage() {
                 <FileText className="h-4 w-4" />
                 Ver / descargar PDF
               </Button>
-              {editable && (
+              {editableMeta && (
                 <Button
                   size="sm"
                   className="gap-1"
@@ -398,7 +411,7 @@ export default function PresupuestoDetallePage() {
                   {detail.item_count ?? detail.items?.length ?? 0} ítem(s) · sin movimiento de stock
                 </p>
               </div>
-              {editable && puedeEliminar && detail.status === "draft" && (
+              {editableDraft && puedeEliminar && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -424,12 +437,14 @@ export default function PresupuestoDetallePage() {
             </CardContent>
           </Card>
 
-          {editable && (
+          {editableMeta && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Editar presupuesto</CardTitle>
                 <CardDescription>
-                  Cliente, líneas, notas y vigencia. Guardá los cambios antes de convertir a venta.
+                  {editableDraft
+                    ? "Cliente, líneas, notas y vigencia. Guardá los cambios antes de convertir a venta."
+                    : "En este estado solo podés corregir cliente, notas y vigencia. Los ítems ya no se modifican."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -465,16 +480,18 @@ export default function PresupuestoDetallePage() {
                   )}
                   <p className="text-xs text-muted-foreground">Cliente actual en el presupuesto: ID {clientId}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="aid"
-                    checked={allowInactiveDraft}
-                    onCheckedChange={(c) => setAllowInactiveDraft(c === true)}
-                  />
-                  <Label htmlFor="aid" className="text-sm font-normal cursor-pointer">
-                    Permitir productos inactivos al guardar
-                  </Label>
-                </div>
+                {editableDraft && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="aid"
+                      checked={allowInactiveDraft}
+                      onCheckedChange={(c) => setAllowInactiveDraft(c === true)}
+                    />
+                    <Label htmlFor="aid" className="text-sm font-normal cursor-pointer">
+                      Permitir productos inactivos al guardar
+                    </Label>
+                  </div>
+                )}
                 <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
                   <div className="space-y-2">
                     <Label>Válido hasta</Label>
@@ -499,7 +516,7 @@ export default function PresupuestoDetallePage() {
                 <CardTitle>Ítems</CardTitle>
                 <CardDescription>Productos del catálogo o ítems escritos</CardDescription>
               </div>
-              {editable && (
+              {editableDraft && (
                 <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => setShowAddProduct((v) => !v)}>
                   <Plus className="h-4 w-4" />
                   Agregar producto
@@ -507,7 +524,7 @@ export default function PresupuestoDetallePage() {
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              {editable && showAddProduct && (
+              {editableDraft && showAddProduct && (
                 <div className="rounded-lg border p-3 bg-muted/20 space-y-4">
                   <BudgetProductCatalog
                     products={products}
@@ -517,7 +534,7 @@ export default function PresupuestoDetallePage() {
                   />
                 </div>
               )}
-              {editable && (
+              {editableDraft && (
                 <PosManualItemCard
                   onAdd={addCustomLine}
                   addLabel="Agregar ítem escrito"
@@ -532,14 +549,14 @@ export default function PresupuestoDetallePage() {
                       <TableHead className="w-28">Cant.</TableHead>
                       <TableHead className="text-right w-32">P. unit.</TableHead>
                       <TableHead className="text-right w-36">Subtotal</TableHead>
-                      {editable && <TableHead className="w-12" />}
+                      {editableDraft && <TableHead className="w-12" />}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(editable ? draftLines : linesFromBudgetDetail(detail.items || [])).map((row) => (
+                    {(itemsReadonly ? linesFromBudgetDetail(detail.items || []) : draftLines).map((row) => (
                       <TableRow key={row.id}>
                         <TableCell>
-                          {editable && row.is_custom ? (
+                          {editableDraft && row.is_custom ? (
                             <Input
                               className="h-8 font-medium"
                               value={row.description || row.product_name}
@@ -566,7 +583,7 @@ export default function PresupuestoDetallePage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {editable ? (
+                          {editableDraft ? (
                             <Input
                               type="number"
                               min={1}
@@ -582,7 +599,7 @@ export default function PresupuestoDetallePage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {editable ? (
+                          {editableDraft ? (
                             <Input
                               type="number"
                               min={0}
@@ -601,7 +618,7 @@ export default function PresupuestoDetallePage() {
                         <TableCell className="text-right font-medium tabular-nums">
                           {formatMoney(row.quantity * row.unit_price)}
                         </TableCell>
-                        {editable && (
+                        {editableDraft && (
                           <TableCell>
                             <Button
                               type="button"

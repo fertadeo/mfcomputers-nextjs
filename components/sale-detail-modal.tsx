@@ -17,6 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import { Alert } from "@/components/ui/alert"
 import {
   Calendar,
   User,
@@ -26,7 +28,9 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Pencil,
 } from "lucide-react"
+import { saleHasFiscalLock } from "@/lib/sale-edit"
 import type { SaleResponseData, SalePaymentMethod } from "@/lib/api"
 import { getProductById } from "@/lib/api"
 import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
@@ -37,6 +41,8 @@ interface SaleDetailModalProps {
   sale: SaleResponseData | null
   isOpen: boolean
   onClose: () => void
+  canEdit?: boolean
+  onEdit?: () => void
 }
 
 const paymentMethodLabels: Record<SalePaymentMethod, string> = {
@@ -67,7 +73,7 @@ function formatPrice(value: number | string, decimals = 2): string {
   return decPart ? `${withDots},${decPart}` : withDots
 }
 
-export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps) {
+export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: SaleDetailModalProps) {
   const [productInfoMap, setProductInfoMap] = useState<Record<number, ProductInfo>>({})
 
   useEffect(() => {
@@ -154,6 +160,21 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
         </DialogHeader>
 
         <div className="space-y-6 p-6 pr-12 min-w-0">
+          {saleHasFiscalLock(sale) && (
+            <Alert
+              variant="error"
+              title="Venta facturada (ARCA)"
+              description="Solo lectura. Para corregir el comprobante fiscal hace falta emitir una nota de crédito."
+            />
+          )}
+          {canEdit && onEdit && (
+            <div className="flex justify-end">
+              <Button type="button" size="sm" variant="outline" className="gap-2" onClick={onEdit}>
+                <Pencil className="h-4 w-4" />
+                Editar venta
+              </Button>
+            </div>
+          )}
           <section className="rounded-xl border bg-muted/20 p-4 min-w-0 overflow-hidden">
             <h3 className="sr-only">Detalles de la venta</h3>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 min-w-0">
@@ -177,7 +198,8 @@ export function SaleDetailModal({ sale, isOpen, onClose }: SaleDetailModalProps)
                     Cliente
                   </p>
                   <p className="mt-0.5 text-sm font-medium">
-                    {sale.client_id != null ? `#${sale.client_id}` : "—"}
+                    {sale.client_name ??
+                      (sale.client_id != null ? `Cliente #${sale.client_id}` : "Consumidor final")}
                   </p>
                 </div>
               </div>
