@@ -28,7 +28,7 @@ import {
 
 } from "@/lib/arca-invoice-format"
 
-import type { ArcaIvaDiscriminado } from "@/lib/sale-iva"
+import { arcaIvaDiscriminadoRows, type ArcaIvaDiscriminado } from "@/lib/sale-iva"
 
 import { drawArcaInvoiceHeader } from "@/lib/draw-arca-invoice-header"
 
@@ -503,11 +503,15 @@ async function drawInvoicePage(
 
   const ivaDisc = params.totales.ivaDiscriminado
 
+  const ivaRateLines = arcaIvaDiscriminadoRows(ivaDisc)
+
   const otrosTributos = params.totales.otrosTributos ?? 0
 
   const transBlockH = params.totales.ivaContenido != null ? 14 : 0
 
-  const totalsBoxH = 52 + transBlockH
+  const rightColumnLineCount = 1 + ivaRateLines.length + 1 + 1
+
+  const totalsBoxH = Math.max(22, 8 + 4.5 * rightColumnLineCount) + transBlockH
 
   const totalsBoxTop = yAfter
 
@@ -549,17 +553,9 @@ async function drawInvoicePage(
 
   drawTotalLine("Importe Neto Gravado: $", ivaDisc.netoGravado)
 
-  drawTotalLine("IVA 27%: $", ivaDisc.iva27)
-
-  drawTotalLine("IVA 21%: $", ivaDisc.iva21)
-
-  drawTotalLine("IVA 10.5%: $", ivaDisc.iva105)
-
-  drawTotalLine("IVA 5%: $", ivaDisc.iva5)
-
-  drawTotalLine("IVA 2.5%: $", ivaDisc.iva25)
-
-  drawTotalLine("IVA 0%: $", ivaDisc.iva0)
+  for (const row of ivaRateLines) {
+    drawTotalLine(row.label, row.amount)
+  }
 
   drawTotalLine("Importe Otros Tributos: $", otrosTributos)
 

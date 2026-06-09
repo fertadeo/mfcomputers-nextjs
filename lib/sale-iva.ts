@@ -116,6 +116,28 @@ export interface ArcaIvaDiscriminado {
   iva0: number
 }
 
+export interface ArcaIvaDiscriminadoRow {
+  label: string
+  amount: number
+}
+
+const ARCA_IVA_RATE_ROWS: Array<{ key: keyof Omit<ArcaIvaDiscriminado, "netoGravado">; label: string }> = [
+  { key: "iva27", label: "IVA 27%: $" },
+  { key: "iva21", label: "IVA 21%: $" },
+  { key: "iva105", label: "IVA 10.5%: $" },
+  { key: "iva5", label: "IVA 5%: $" },
+  { key: "iva25", label: "IVA 2.5%: $" },
+  { key: "iva0", label: "IVA 0%: $" },
+]
+
+/** Solo alícuotas IVA con importe distinto de cero (para pie de factura ARCA). */
+export function arcaIvaDiscriminadoRows(iva: ArcaIvaDiscriminado): ArcaIvaDiscriminadoRow[] {
+  return ARCA_IVA_RATE_ROWS.filter(({ key }) => Math.abs(iva[key]) >= 0.01).map(({ key, label }) => ({
+    label,
+    amount: iva[key],
+  }))
+}
+
 /** Desglose IVA discriminado para pie de factura ARCA (todas las alícuotas AFIP, con 0 si no aplica). */
 export function buildArcaIvaDiscriminado(
   items: Array<{ subtotal: number; iva_rate?: number | null }>

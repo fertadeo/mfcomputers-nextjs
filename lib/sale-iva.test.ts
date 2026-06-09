@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  arcaIvaDiscriminadoRows,
   buildArcaIvaDiscriminado,
   computeSaleIvaBreakdown,
   ivaFromInclusiveAmount,
@@ -44,5 +45,19 @@ describe("sale-iva", () => {
     expect(disc.iva105).toBe(10.5)
     expect(disc.iva27).toBe(0)
     expect(disc.netoGravado).toBe(200)
+  })
+
+  it("omite alícuotas IVA en cero del desglose ARCA", () => {
+    const rows = arcaIvaDiscriminadoRows({
+      netoGravado: 100,
+      iva27: 0,
+      iva21: 21,
+      iva105: 10.5,
+      iva5: 0,
+      iva25: 0,
+      iva0: 0,
+    })
+    expect(rows).toHaveLength(2)
+    expect(rows.map((r) => r.label)).toEqual(["IVA 21%: $", "IVA 10.5%: $"])
   })
 })

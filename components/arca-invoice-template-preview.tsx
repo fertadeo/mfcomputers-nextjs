@@ -14,6 +14,7 @@ import {
   moneyArWithSymbol,
 } from "@/lib/arca-invoice-format"
 import { ArcaInvoiceHeader } from "@/components/arca-invoice-header"
+import { arcaIvaDiscriminadoRows } from "@/lib/sale-iva"
 
 const border = "1px solid #000"
 const headerBg = "#e6e6e6"
@@ -71,6 +72,8 @@ interface ArcaInvoiceCopyPreviewProps {
 }
 
 function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewProps) {
+  const ivaRateLines = arcaIvaDiscriminadoRows(data.totales.ivaDiscriminado)
+
   return (
     <div
       style={{
@@ -198,12 +201,9 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
         </div>
         <div style={{ float: "right", width: "240px", fontSize: "11px" }}>
           <TotalRow label="Importe Neto Gravado: $" value={data.totales.ivaDiscriminado.netoGravado} />
-          <TotalRow label="IVA 27%: $" value={data.totales.ivaDiscriminado.iva27} />
-          <TotalRow label="IVA 21%: $" value={data.totales.ivaDiscriminado.iva21} />
-          <TotalRow label="IVA 10.5%: $" value={data.totales.ivaDiscriminado.iva105} />
-          <TotalRow label="IVA 5%: $" value={data.totales.ivaDiscriminado.iva5} />
-          <TotalRow label="IVA 2.5%: $" value={data.totales.ivaDiscriminado.iva25} />
-          <TotalRow label="IVA 0%: $" value={data.totales.ivaDiscriminado.iva0} />
+          {ivaRateLines.map((row) => (
+            <TotalRow key={row.label} label={row.label} value={row.amount} />
+          ))}
           <TotalRow label="Importe Otros Tributos: $" value={data.totales.otrosTributos ?? 0} />
           <TotalRow label="Importe Total: $" value={data.totales.total} bold />
           {data.totales.ivaContenido != null ? (
