@@ -10,49 +10,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ClienteDetailModal } from "@/components/cliente-detail-modal"
 import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar, Edit, User, Activity, Trash2 } from "lucide-react"
 import { useState, useEffect } from "react"
-import { getClientes, getClienteStats, deleteCliente } from "@/lib/api"
+import { getClientes, getClienteStats, deleteCliente, type Cliente } from "@/lib/api"
+import { mapClienteApiToUi, type ClienteUI } from "@/lib/cliente-ui-map"
 import { toast } from "sonner"
-import {
-  formatTaxConditionLabel,
-  normalizeTaxConditionFromApi,
-  type ClientTaxCondition,
-} from "@/lib/client-tax-condition"
-
 import { NewClientModal } from "@/components/new-client-modal"
 import { Pagination } from "@/components/ui/pagination"
-import { getSalesChannelConfig, SalesChannel } from "@/lib/utils"
-import { formatClienteNombreDisplay } from "@/lib/format-client-name"
+import { getSalesChannelConfig } from "@/lib/utils"
 import { ClienteActivityModal } from "@/components/cliente-activity-modal"  
 import { CuentaCorrienteStatusBadge } from "@/components/cuenta-corriente-status-badge"
 import { EditClientModal } from "@/components/edit-client-modal"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-// Tipo para la UI (formato mapeado)
-interface ClienteUI {
-  id: string;
-  dbId: number;
-  salesChannel: SalesChannel;
-  nombre: string;
-  email: string;
-  telefono: string;
-  ciudad: string;
-  tipo: "Minorista" | "Mayorista" | "Personalizado";
-  estado: "Activo" | "Inactivo";
-  ultimaCompra: string;
-  totalCompras: number;
-  direccion?: string;
-  cuit?: string;
-  cuitSecundario?: string;
-  /** persona_fisica | persona_juridica | consumidor_final (API: personeria) */
-  personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final";
-  personType?: "Persona Física" | "Persona Jurídica" | "Consumidor final";
-  taxCondition?: string;
-  taxConditionCode?: ClientTaxCondition;
-  ccEnabled?: boolean;
-  ccLimit?: number;
-  ccBalance?: number;
-  limiteCredito?: number;
-}
 
 export default function ClientesPage() {
   const [selectedCliente, setSelectedCliente] = useState<ClienteUI | null>(null)
@@ -193,55 +161,25 @@ export default function ClientesPage() {
   };
 
   // Función helper para mapear clientes hardcodeados al formato esperado por la UI
-  const mapClienteForUI = (apiCliente: any): ClienteUI => {
-    // Datos de compras hardcodeados por cliente
-    const comprasPorCliente: Record<number, number> = {
-      1: 450000, // Empresa ABC
-      2: 850000, // Distribuidora XYZ  
-      3: 320000, // Comercial Tech Solutions
-      4: 0,      // Ventas Directas (inactivo)
-      5: 680000  // Importadora del Sur
+  const comprasPorCliente: Record<number, number> = {
+    1: 450000,
+    2: 850000,
+    3: 320000,
+    4: 0,
+    5: 680000,
+  }
+
+  const mapClienteForUI = (apiCliente: Cliente): ClienteUI => ({
+    ...mapClienteApiToUi(apiCliente),
+    totalCompras: comprasPorCliente[apiCliente.id] || 0,
+  })
+
+  const refreshAfterClienteUpdate = async (updated?: Cliente) => {
+    await loadData(currentPage, searchTerm, statusFilter, channelFilter)
+    if (updated && selectedCliente?.dbId === updated.id) {
+      setSelectedCliente(mapClienteForUI(updated))
     }
-    const personeria = apiCliente.personeria === 'persona_fisica' || apiCliente.personeria === 'persona_juridica' || apiCliente.personeria === 'consumidor_final'
-      ? apiCliente.personeria
-      : (apiCliente.person_type === 'persona_fisica' ? 'persona_fisica' : apiCliente.person_type === 'persona_juridica' ? 'persona_juridica' : 'consumidor_final')
-    const personType = personeria === 'persona_fisica' ? 'Persona Física' : personeria === 'persona_juridica' ? 'Persona Jurídica' : 'Consumidor final'
-    const taxConditionCode = normalizeTaxConditionFromApi(apiCliente.tax_condition)
-    const taxCondition = formatTaxConditionLabel(
-      apiCliente.tax_condition,
-      personType === 'Persona Jurídica' ? 'Responsable Inscripto' : 'Consumidor Final'
-    )
-    const ccEnabled = Boolean(apiCliente.cc_enabled)
-    const ccLimit = typeof apiCliente.cc_limit === 'number' ? apiCliente.cc_limit : undefined
-    const ccBalance = typeof apiCliente.cc_balance === 'number' ? apiCliente.cc_balance : (ccEnabled ? 0 : undefined)
-    
-    return {
-      id: apiCliente.code,
-      dbId: apiCliente.id,
-      salesChannel: apiCliente.sales_channel,
-      nombre: formatClienteNombreDisplay(apiCliente.name),
-      email: apiCliente.email,
-      telefono: apiCliente.phone,
-      ciudad: apiCliente.city,
-      direccion: apiCliente.address,
-      tipo: apiCliente.client_type === 'minorista' ? 'Minorista' : 
-            apiCliente.client_type === 'mayorista' ? 'Mayorista' : 
-            apiCliente.client_type === 'personalizado' ? 'Personalizado' : 'Minorista',
-      estado: apiCliente.is_active === 1 ? 'Activo' : 'Inactivo',
-      ultimaCompra: new Date(apiCliente.updated_at).toLocaleDateString('es-AR'),
-      totalCompras: comprasPorCliente[apiCliente.id] || 0,
-      cuit: apiCliente.cuil_cuit ?? apiCliente.primary_tax_id,
-      cuitSecundario: apiCliente.secondary_tax_id,
-      personeria,
-      personType,
-      taxCondition,
-      taxConditionCode,
-      ccEnabled,
-      ccLimit,
-      ccBalance,
-      limiteCredito: ccLimit
-    };
-  };
+  }
 
   // Mapear clientes a formato UI (sin filtro local, el filtro se hace en el backend)
   const clientesUI = Array.isArray(clientes) ? clientes.map(mapClienteForUI) : []
@@ -584,7 +522,7 @@ export default function ClientesPage() {
           cliente={selectedCliente as unknown as any}
           isOpen={isModalOpen}
           onClose={handleCloseModal}
-          onClientUpdated={() => loadData(currentPage, searchTerm, statusFilter, channelFilter)}
+          onClientUpdated={(updated) => void refreshAfterClienteUpdate(updated)}
         />
 
         {/* Modal para nuevo cliente */}
@@ -611,8 +549,8 @@ export default function ClientesPage() {
             setIsEditModalOpen(false)
             setClienteToEdit(null)
           }}
-          onSuccess={() => {
-            loadData(currentPage, searchTerm, statusFilter, channelFilter)
+          onSuccess={(updated) => {
+            void refreshAfterClienteUpdate(updated)
             setIsEditModalOpen(false)
             setClienteToEdit(null)
           }}

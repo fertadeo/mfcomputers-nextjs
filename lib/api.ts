@@ -486,7 +486,7 @@ export async function updateCliente(id: number, clienteData: {
   cuil_cuit?: string | null;
   tax_condition?: ClientTaxCondition;
   condicion_iva_receptor?: number;
-}): Promise<any> {
+}): Promise<Cliente> {
   try {
     const apiUrl = getApiUrl();
     const url = `${apiUrl}clients/${id}`;
@@ -497,24 +497,28 @@ export async function updateCliente(id: number, clienteData: {
       name: clienteData.name,
       email: clienteData.email,
       phone: clienteData.phone,
-      address: clienteData.address,
+      address: clienteData.address ?? null,
       city: clienteData.city,
       country: clienteData.country,
       personeria: clienteData.personeria,
-      cuil_cuit: clienteData.cuil_cuit ?? null
+      cuil_cuit: clienteData.cuil_cuit ?? null,
     }
-    if (clienteData.personeria != null && clienteData.personeria !== "consumidor_final") {
+    if (clienteData.personeria === "consumidor_final") {
+      body.person_type = null
+    } else if (clienteData.personeria != null) {
       body.person_type = clienteData.personeria
     }
     if (clienteData.cuil_cuit != null && clienteData.cuil_cuit !== "") {
       body.primary_tax_id = clienteData.cuil_cuit
+    } else {
+      body.primary_tax_id = null
     }
     if (clienteData.tax_condition) {
       body.tax_condition = clienteData.tax_condition
       body.condicion_iva_receptor =
         clienteData.condicion_iva_receptor ?? afipCondicionFromTaxCondition(clienteData.tax_condition)
     }
-    
+
     console.log('🔄 [API] Actualizando cliente:', {
       url: url,
       id: id,
@@ -541,14 +545,24 @@ export async function updateCliente(id: number, clienteData: {
       throw new Error(msg);
     }
 
-    const data = await response.json();
-    console.log('✅ [API] Cliente actualizado exitosamente:', {
-      type: typeof data,
-      isObject: typeof data === 'object' && data !== null,
-      keys: typeof data === 'object' && data !== null ? Object.keys(data) : 'N/A',
-      data: data
-    });
-    
+    const text = await response.text();
+    if (!text.trim()) {
+      return getClienteById(id);
+    }
+
+    let parsed: ApiResponse<Cliente> | Cliente;
+    try {
+      parsed = JSON.parse(text) as ApiResponse<Cliente> | Cliente;
+    } catch {
+      return getClienteById(id);
+    }
+
+    const data =
+      typeof parsed === "object" && parsed !== null && "data" in parsed && parsed.data
+        ? parsed.data
+        : (parsed as Cliente);
+
+    console.log('✅ [API] Cliente actualizado exitosamente:', data);
     return data;
   } catch (error) {
     console.error('💥 [API] Error al actualizar cliente:', {

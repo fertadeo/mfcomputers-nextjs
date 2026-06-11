@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,7 +20,8 @@ import {
   CheckCircle,
   IdCard
 } from "lucide-react"
-import { updateCliente } from "@/lib/api"
+import { getClienteById, updateCliente, type Cliente } from "@/lib/api"
+import { toast } from "sonner"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { ClientTaxConditionField } from "@/components/client-tax-condition-field"
@@ -33,33 +34,9 @@ import {
   taxConditionFromArcaPadron,
   inferPersoneriaFromArcaPadron,
 } from "@/lib/client-tax-condition"
-import { SALES_CHANNEL_CONFIG, SalesChannel } from "@/lib/utils"
+import type { ClienteUI } from "@/lib/cliente-ui-map"
+import type { SalesChannel } from "@/lib/utils"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
-
-interface ClienteUI {
-  id: string
-  dbId: number
-  salesChannel: SalesChannel
-  nombre: string
-  email: string
-  telefono: string
-  ciudad: string
-  tipo: "Minorista" | "Mayorista" | "Personalizado"
-  estado: "Activo" | "Inactivo"
-  ultimaCompra: string
-  totalCompras: number
-  direccion?: string
-  cuit?: string
-  cuitSecundario?: string
-  personeria?: ClientPersoneria
-  personType?: "Persona Física" | "Persona Jurídica"
-  taxCondition?: string
-  taxConditionCode?: ClientTaxCondition
-  fechaRegistro?: string
-  descuento?: number
-  limiteCredito?: number
-  vendedor?: string
-}
 
 interface EditClientData {
   client_type: "minorista" | "mayorista" | "personalizado"
@@ -94,7 +71,81 @@ interface EditClientModalProps {
   cliente: ClienteUI | null
   isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
+  onSuccess?: (updated: Cliente) => void
+}
+
+function personeriaFromUi(cliente: ClienteUI): ClientPersoneria {
+  if (
+    cliente.personeria === "persona_fisica" ||
+    cliente.personeria === "persona_juridica" ||
+    cliente.personeria === "consumidor_final"
+  ) {
+    return cliente.personeria
+  }
+  if (cliente.personType === "Persona Jurídica") return "persona_juridica"
+  if (cliente.personType === "Persona Física") return "persona_fisica"
+  return "consumidor_final"
+}
+
+function taxConditionFromUi(cliente: ClienteUI, personeria: ClientPersoneria): ClientTaxCondition {
+  const tax =
+    cliente.taxConditionCode ??
+    normalizeTaxConditionFromApi(cliente.taxCondition) ??
+    defaultTaxConditionForPersoneria(personeria)
+  return isTaxConditionAllowedForPersoneria(personeria, tax)
+    ? tax
+    : defaultTaxConditionForPersoneria(personeria)
+}
+
+function buildEditFormFromUi(cliente: ClienteUI): EditClientData {
+  const personeria = personeriaFromUi(cliente)
+  const cuilRaw = cliente.cuit ?? ""
+  const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+  return {
+    client_type: cliente.tipo.toLowerCase() as "minorista" | "mayorista" | "personalizado",
+    sales_channel: cliente.salesChannel ?? "manual",
+    name: cliente.nombre,
+    email: cliente.email,
+    phone: cliente.telefono,
+    address: cliente.direccion || "",
+    city: cliente.ciudad,
+    country: "Argentina",
+    personeria,
+    tax_condition: taxConditionFromUi(cliente, personeria),
+    cuil_cuit: cuilDisplay,
+  }
+}
+
+function buildEditFormFromApi(cliente: Cliente): EditClientData {
+  const personeria: ClientPersoneria =
+    cliente.personeria === "persona_fisica" ||
+    cliente.personeria === "persona_juridica" ||
+    cliente.personeria === "consumidor_final"
+      ? cliente.personeria
+      : cliente.person_type === "persona_juridica"
+        ? "persona_juridica"
+        : cliente.person_type === "persona_fisica"
+          ? "persona_fisica"
+          : "consumidor_final"
+  const cuilRaw = cliente.cuil_cuit ?? cliente.primary_tax_id ?? ""
+  const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+  const tax_condition =
+    normalizeTaxConditionFromApi(cliente.tax_condition) ?? defaultTaxConditionForPersoneria(personeria)
+  return {
+    client_type: cliente.client_type,
+    sales_channel: cliente.sales_channel,
+    name: cliente.name,
+    email: cliente.email,
+    phone: cliente.phone,
+    address: cliente.address || "",
+    city: cliente.city,
+    country: cliente.country || "Argentina",
+    personeria,
+    tax_condition: isTaxConditionAllowedForPersoneria(personeria, tax_condition)
+      ? tax_condition
+      : defaultTaxConditionForPersoneria(personeria),
+    cuil_cuit: cuilDisplay,
+  }
 }
 
 export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditClientModalProps) {
@@ -117,46 +168,48 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const [successMessage, setSuccessMessage] = useState("")
   const [padronLocked, setPadronLocked] = useState(false)
   const [padronSuggestedTax, setPadronSuggestedTax] = useState<ClientTaxCondition | undefined>()
+  const [loadingCliente, setLoadingCliente] = useState(false)
+  const loadedForDbIdRef = useRef<number | null>(null)
+  const clienteRef = useRef(cliente)
+  clienteRef.current = cliente
 
-  // Cargar datos del cliente cuando se abre el modal
+  // Cargar datos frescos del cliente al abrir (evita props desactualizadas y resets al re-renderizar)
   useEffect(() => {
-    if (cliente && isOpen) {
-      const personeria: ClientPersoneria =
-        cliente.personeria === "persona_fisica" || cliente.personeria === "persona_juridica" || cliente.personeria === "consumidor_final"
-          ? cliente.personeria
-          : cliente.personType === "Persona Jurídica"
-          ? "persona_juridica"
-          : cliente.personType === "Persona Física"
-          ? "persona_fisica"
-          : "consumidor_final"
-      const tax_condition =
-        cliente.taxConditionCode ??
-        normalizeTaxConditionFromApi(cliente.taxCondition) ??
-        defaultTaxConditionForPersoneria(personeria)
-      const cuilRaw = cliente.cuit ?? ""
-      const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
-
-      setFormData({
-        client_type: cliente.tipo.toLowerCase() as "minorista" | "mayorista" | "personalizado",
-        sales_channel: cliente.salesChannel,
-        name: cliente.nombre,
-        email: cliente.email,
-        phone: cliente.telefono,
-        address: cliente.direccion || "",
-        city: cliente.ciudad,
-        country: "Argentina",
-        personeria,
-        tax_condition: isTaxConditionAllowedForPersoneria(personeria, tax_condition)
-          ? tax_condition
-          : defaultTaxConditionForPersoneria(personeria),
-        cuil_cuit: cuilDisplay
-      })
-      setErrors({})
-      setSuccessMessage("")
-      setPadronLocked(false)
-      setPadronSuggestedTax(undefined)
+    if (!isOpen || !cliente?.dbId) {
+      if (!isOpen) loadedForDbIdRef.current = null
+      return
     }
-  }, [cliente, isOpen])
+
+    if (loadedForDbIdRef.current === cliente.dbId) return
+
+    let cancelled = false
+    setLoadingCliente(true)
+    setErrors({})
+    setSuccessMessage("")
+    setPadronLocked(false)
+    setPadronSuggestedTax(undefined)
+
+    void (async () => {
+      const snapshot = clienteRef.current
+      try {
+        const fresh = await getClienteById(cliente.dbId)
+        if (cancelled) return
+        setFormData(buildEditFormFromApi(fresh))
+      } catch {
+        if (cancelled) return
+        if (snapshot) setFormData(buildEditFormFromUi(snapshot))
+      } finally {
+        if (!cancelled) {
+          loadedForDbIdRef.current = cliente.dbId
+          setLoadingCliente(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, cliente?.dbId])
 
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
@@ -203,30 +256,13 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
       }))
       return
     }
-    const personeria: ClientPersoneria =
-      cliente.personeria === "persona_fisica" ||
-      cliente.personeria === "persona_juridica" ||
-      cliente.personeria === "consumidor_final"
-        ? cliente.personeria
-        : cliente.personType === "Persona Jurídica"
-          ? "persona_juridica"
-          : cliente.personType === "Persona Física"
-            ? "persona_fisica"
-            : "consumidor_final"
-    const cuilRaw = cliente.cuit ?? ""
-    const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
-    const tax_condition =
-      cliente.taxConditionCode ??
-      normalizeTaxConditionFromApi(cliente.taxCondition) ??
-      defaultTaxConditionForPersoneria(personeria)
     setFormData((prev) => ({
-      ...prev,
-      name: cliente.nombre,
-      personeria,
-      tax_condition: isTaxConditionAllowedForPersoneria(personeria, tax_condition)
-        ? tax_condition
-        : defaultTaxConditionForPersoneria(personeria),
-      cuil_cuit: cuilDisplay,
+      ...buildEditFormFromUi(cliente),
+      // Conservar ediciones parciales del usuario en otros campos si ya estaba editando
+      email: prev.email || cliente.email,
+      phone: prev.phone || cliente.telefono,
+      address: prev.address || cliente.direccion || "",
+      city: prev.city || cliente.ciudad,
     }))
   }, [cliente])
 
@@ -261,6 +297,12 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     if (!cliente) return
 
     if (!validateForm()) {
+      toast.error("Revisá los campos marcados antes de guardar")
+      return
+    }
+
+    if (!cliente.dbId || !Number.isFinite(cliente.dbId)) {
+      toast.error("No se pudo identificar el cliente a actualizar")
       return
     }
 
@@ -283,19 +325,21 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
       }
       console.log('📝 [EDIT] Enviando datos de actualización:', { clienteId: cliente.dbId, payload })
 
-      await updateCliente(cliente.dbId, payload)
-      
+      const updated = await updateCliente(cliente.dbId, payload)
+      loadedForDbIdRef.current = null
+
       setSuccessMessage("Cliente actualizado exitosamente")
-      
-      // Esperar un momento para mostrar el mensaje de éxito
+      toast.success("Cliente actualizado")
+
       setTimeout(() => {
-        onSuccess()
+        onSuccess?.(updated)
         onClose()
-      }, 1500)
+      }, 800)
 
     } catch (error) {
       console.error('💥 [EDIT] Error al actualizar cliente:', error)
       const msg = error instanceof Error ? error.message : "Error al actualizar el cliente"
+      toast.error(msg)
       setErrors(prev => {
         const next = { ...prev, submit: msg }
         if (msg.toLowerCase().includes("cuil") || msg.toLowerCase().includes("cuit")) next.cuil_cuit = msg
@@ -625,13 +669,13 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
             </Button>
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || loadingCliente}
               className="flex items-center gap-2 bg-turquoise-600 hover:bg-turquoise-700"
             >
-              {isLoading ? (
+              {isLoading || loadingCliente ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Actualizando...
+                  {loadingCliente ? "Cargando datos…" : "Actualizando..."}
                 </>
               ) : (
                 <>

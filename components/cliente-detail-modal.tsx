@@ -31,7 +31,7 @@ import {
   Link
 } from "lucide-react"
 import { EditClientModal } from "./edit-client-modal"
-import { deleteCliente } from "@/lib/api"
+import { deleteCliente, type Cliente as ClienteApi } from "@/lib/api"
 import { CuentaCorrienteModal } from "./cuenta-corriente-modal"
 
 interface Cliente {
@@ -50,7 +50,9 @@ interface Cliente {
   cuit?: string
   cuitSecundario?: string
   personType?: "Persona Física" | "Persona Jurídica" | "Consumidor final"
-  taxCondition?: "Inscripto" | "Consumidor Final" | "Monotributo" | "Responsable Inscripto" | "Exento"
+  personeria?: "persona_fisica" | "persona_juridica" | "consumidor_final"
+  taxCondition?: "Inscripto" | "Consumidor Final" | "Monotributo" | "Responsable Inscripto" | "Exento" | string
+  taxConditionCode?: string
   fechaRegistro?: string
   descuento?: number
   limiteCredito?: number
@@ -83,7 +85,7 @@ interface ClienteDetailModalProps {
   cliente: Cliente | null
   isOpen: boolean
   onClose: () => void
-  onClientUpdated?: () => void
+  onClientUpdated?: (updated?: ClienteApi) => void
 }
 
 // Datos de ejemplo para el historial de compras
@@ -200,11 +202,9 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
     setIsEditModalOpen(false)
   }
 
-  const handleEditSuccess = () => {
+  const handleEditSuccess = (updated?: ClienteApi) => {
     setIsEditModalOpen(false)
-    if (onClientUpdated) {
-      onClientUpdated()
-    }
+    onClientUpdated?.(updated)
   }
 
   const handleDeleteClient = async () => {
@@ -926,27 +926,27 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
           </div>
         )}
 
-        {/* Modal de Edición */}
-        <EditClientModal
-          cliente={cliente}
-          isOpen={isEditModalOpen}
-          onClose={handleEditModalClose}
-          onSuccess={handleEditSuccess}
-        />
-
-        {/* Modal de Cuenta Corriente */}
-        <CuentaCorrienteModal
-          clienteId={cliente.dbId}
-          clienteNombre={cliente.nombre}
-          isOpen={isCuentaCorrienteModalOpen}
-          onClose={() => setIsCuentaCorrienteModalOpen(false)}
-          onSuccess={() => {
-            setIsCuentaCorrienteModalOpen(false)
-            if (onClientUpdated) onClientUpdated()
-          }}
-        />
       </DialogContent>
     </Dialog>
+
+    <EditClientModal
+      cliente={cliente}
+      isOpen={isEditModalOpen}
+      onClose={handleEditModalClose}
+      onSuccess={handleEditSuccess}
+    />
+
+    <CuentaCorrienteModal
+      clienteId={cliente.dbId}
+      clienteNombre={cliente.nombre}
+      isOpen={isCuentaCorrienteModalOpen}
+      onClose={() => setIsCuentaCorrienteModalOpen(false)}
+      onSuccess={() => {
+        setIsCuentaCorrienteModalOpen(false)
+        onClientUpdated?.()
+      }}
+    />
+
     {confirmDialog}
     </>
   )
