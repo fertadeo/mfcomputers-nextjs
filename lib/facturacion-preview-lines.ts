@@ -154,6 +154,136 @@ function mapSaleItems(items: SaleItemResponse[]): FacturacionPreviewLine[] {
 
 
 
+/** Empareja línea fiscal de sugerencia con ítem de venta (productId, descripción o índice). */
+export function findMatchingIvaDesgloseLine(
+
+  item: SaleItemResponse,
+
+  index: number,
+
+  desglose: FacturarSugerenciaIvaLine[]
+
+): FacturarSugerenciaIvaLine | undefined {
+
+  if (desglose.length === 0) return undefined
+
+
+
+  if (item.product_id != null && item.product_id > 0) {
+
+    const byProduct = desglose.find((line) => line.productId === item.product_id)
+
+    if (byProduct) return byProduct
+
+  }
+
+
+
+  const name = getSaleItemDisplayName(item).trim().toLowerCase()
+
+  if (name) {
+
+    const byDesc = desglose.find((line) => line.descripcion.trim().toLowerCase() === name)
+
+    if (byDesc) return byDesc
+
+  }
+
+
+
+  if (index < desglose.length) return desglose[index]
+
+  return undefined
+
+}
+
+
+
+/** Cantidad y precio unitario desde la venta; neto/IVA desde sugerencia si hay match. */
+export function mapSaleItemsWithIvaDesglose(
+
+  saleItems: SaleItemResponse[],
+
+  desglose: FacturarSugerenciaIvaLine[]
+
+): FacturacionPreviewLine[] {
+
+  return saleItems.map((item, index) => {
+
+    const line = mapSaleItems([item])[0]
+
+    const fiscal = findMatchingIvaDesgloseLine(item, index, desglose)
+
+    if (!fiscal) return line
+
+    return {
+
+      ...line,
+
+      neto: parseMoney(fiscal.neto),
+
+      iva: parseMoney(fiscal.iva),
+
+    }
+
+  })
+
+}
+
+
+
+function buildPreviewFromSaleItems(
+
+  saleItems: SaleItemResponse[],
+
+  desglose: FacturarSugerenciaIvaLine[],
+
+  opts: {
+
+    saleDate?: string
+
+    fechaCbte?: string
+
+    totalAmount?: number
+
+  } = {}
+
+): FacturacionPreviewResult {
+
+  const lines =
+
+    saleItems.length > 0
+
+      ? mapSaleItemsWithIvaDesglose(saleItems, desglose)
+
+      : desglose.map(mapSugerenciaLine)
+
+  const netoTotal = lines.reduce((acc, l) => acc + (l.neto ?? 0), 0)
+
+  const ivaTotal = lines.reduce((acc, l) => acc + (l.iva ?? 0), 0)
+
+
+
+  return {
+
+    lines,
+
+    totalAmount: opts.totalAmount,
+
+    netoTotal: Math.round(netoTotal * 100) / 100,
+
+    ivaTotal: Math.round(ivaTotal * 100) / 100,
+
+    saleDate: opts.saleDate,
+
+    fechaCbte: opts.fechaCbte,
+
+  }
+
+}
+
+
+
 function repairItemDescription(item: RepairOrderItem): string {
 
   return (
@@ -262,71 +392,37 @@ export async function loadFacturacionPreview(billable: BillableRow): Promise<Fac
 
     const saleId = billable.sale?.id ?? billable.id
 
-    let fiscalDates: Pick<FacturacionPreviewResult, "saleDate" | "fechaCbte"> = {}
+    const [saleRes, sugerencia] = await Promise.all([
 
-    try {
+      getSale(saleId).catch(() => null),
 
-      const sugerencia = await getFacturarSugerencia(saleId)
+      getFacturarSugerencia(saleId).catch(() => null),
 
-      fiscalDates = parseFacturarSugerenciaDefaults(sugerencia)
-
-      const desglose = sugerencia.ivaDesglose ?? []
-
-      if (desglose.length > 0) {
-
-        const lines = desglose.map(mapSugerenciaLine)
-
-        const netoTotal = lines.reduce((acc, l) => acc + (l.neto ?? 0), 0)
-
-        const ivaTotal = lines.reduce((acc, l) => acc + (l.iva ?? 0), 0)
-
-        return {
-
-          lines,
-
-          totalAmount: parseMoney(sugerencia.totalAmount),
-
-          netoTotal: Math.round(netoTotal * 100) / 100,
-
-          ivaTotal: Math.round(ivaTotal * 100) / 100,
-
-          ...fiscalDates,
-
-        }
-
-      }
-
-    } catch {
-
-      /* fallback a ítems de venta */
-
-    }
+    ])
 
 
 
-    let items = billable.sale?.items
+    const saleItems = saleRes?.data?.items?.length
 
-    let saleDateFallback: string | undefined
+      ? saleRes.data.items
 
-    if (!items?.length || !fiscalDates.saleDate) {
+      : (billable.sale?.items ?? [])
 
-      const res = await getSale(saleId)
+    const fiscalDates = sugerencia ? parseFacturarSugerenciaDefaults(sugerencia) : {}
 
-      if (!items?.length) items = res.data?.items ?? []
+    const desglose = sugerencia?.ivaDesglose ?? []
 
-      saleDateFallback = res.data?.sale_date
 
-    }
 
-    return {
+    return buildPreviewFromSaleItems(saleItems, desglose, {
 
-      lines: mapSaleItems(items ?? []),
-
-      saleDate: fiscalDates.saleDate ?? saleDateFallback,
+      saleDate: fiscalDates.saleDate ?? saleRes?.data?.sale_date,
 
       fechaCbte: fiscalDates.fechaCbte,
 
-    }
+      totalAmount: sugerencia ? parseMoney(sugerencia.totalAmount) : saleRes?.data?.total_amount,
+
+    })
 
   }
 
@@ -338,35 +434,35 @@ export async function loadFacturacionPreview(billable: BillableRow): Promise<Fac
 
     try {
 
-      const sugerencia = await getFacturarSugerencia(billable.linkedSaleId)
+      const [saleRes, sugerencia] = await Promise.all([
 
-      const fiscalDates = parseFacturarSugerenciaDefaults(sugerencia)
+        getSale(billable.linkedSaleId).catch(() => null),
 
-      const desglose = sugerencia.ivaDesglose ?? []
+        getFacturarSugerencia(billable.linkedSaleId).catch(() => null),
 
-      if (desglose.length > 0) {
+      ])
 
-        const lines = desglose.map(mapSugerenciaLine)
 
-        return { lines, ...fiscalDates }
 
-      }
+      const saleItems = saleRes?.data?.items ?? []
 
-      const res = await getSale(billable.linkedSaleId)
+      const fiscalDates = sugerencia ? parseFacturarSugerenciaDefaults(sugerencia) : {}
 
-      const saleItems = res.data?.items ?? []
+      const desglose = sugerencia?.ivaDesglose ?? []
 
-      if (saleItems.length > 0) {
 
-        return {
 
-          lines: mapSaleItems(saleItems),
+      if (saleItems.length > 0 || desglose.length > 0) {
 
-          saleDate: fiscalDates.saleDate ?? res.data?.sale_date,
+        return buildPreviewFromSaleItems(saleItems, desglose, {
+
+          saleDate: fiscalDates.saleDate ?? saleRes?.data?.sale_date,
 
           fechaCbte: fiscalDates.fechaCbte,
 
-        }
+          totalAmount: sugerencia ? parseMoney(sugerencia.totalAmount) : saleRes?.data?.total_amount,
+
+        })
 
       }
 
