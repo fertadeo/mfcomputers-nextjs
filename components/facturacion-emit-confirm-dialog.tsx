@@ -23,7 +23,7 @@ import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
-import { buildFacturarHttpRequestPreview } from "@/lib/facturacion-request-preview"
+import { buildFacturarFullPayloadPreview } from "@/lib/facturacion-request-preview"
 import {
   buildVentaDestinatarioSnapshot,
   formatCuitInputDisplay,
@@ -172,13 +172,48 @@ export function FacturacionEmitConfirmDialog({
     return sale.id
   }, [billable, sale])
 
-  const facturarRequestPreview = useMemo(() => {
-    if (facturarSaleId == null) return null
-    return buildFacturarHttpRequestPreview(facturarSaleId, facturarPayload)
-  }, [facturarSaleId, facturarPayload])
+  const facturarFullPayloadPreview = useMemo(() => {
+    if (facturarSaleId == null || !sale) return null
 
-  const facturarRequestJson = facturarRequestPreview
-    ? JSON.stringify(facturarRequestPreview, null, 2)
+    const docTipo = facturarPayload.docTipo ?? 99
+    const docNro = facturarPayload.docNro ?? 0
+    const condicion = facturarPayload.condicionIvaReceptor ?? 5
+
+    return buildFacturarFullPayloadPreview({
+      saleId: facturarSaleId,
+      saleNumber: sale.sale_number,
+      clientId: sale.client_id,
+      facturarPayload,
+      lines,
+      saleDate: saleDate ?? sale.sale_date,
+      fechaCbte,
+      totalAmount: totalComprobante,
+      receptor: {
+        razonSocial: comprobanteDestinatarioNombre,
+        docTipo,
+        docNro,
+        condicionIvaReceptor: condicion,
+        condicionIvaLabel: labelCondicionIvaReceptor(condicion),
+        taxConditionEnErp: cliente?.tax_condition ?? null,
+        domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null,
+      },
+    })
+  }, [
+    facturarSaleId,
+    sale,
+    facturarPayload,
+    lines,
+    saleDate,
+    fechaCbte,
+    totalComprobante,
+    comprobanteDestinatarioNombre,
+    cliente?.tax_condition,
+    cliente?.address,
+    cliente?.city,
+  ])
+
+  const facturarRequestJson = facturarFullPayloadPreview
+    ? JSON.stringify(facturarFullPayloadPreview, null, 2)
     : ""
 
   const copyPayloadJson = async () => {
@@ -486,7 +521,7 @@ export function FacturacionEmitConfirmDialog({
                   onClick={() => setPayloadJsonOpen((prev) => !prev)}
                   aria-expanded={payloadJsonOpen}
                 >
-                  <span>Payload JSON al facturador</span>
+                  <span>JSON completo del comprobante</span>
                   {payloadJsonOpen ? (
                     <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
                   ) : (
@@ -496,11 +531,13 @@ export function FacturacionEmitConfirmDialog({
                 {payloadJsonOpen ? (
                   <div className="border-t px-4 pb-4 pt-3 space-y-2">
                     <p className="text-muted-foreground text-xs">
-                      Request HTTP que enviará el frontend al backend (método, URL y body). No incluye cabeceras de
-                      autenticación ni API keys.
+                      Incluye el POST al backend (<code className="text-[11px]">httpRequest</code>), receptor (razón
+                      social, CUIT, condición IVA), ítems con alícuotas, neto/IVA y totales. Los productos no van en el
+                      body del POST: el servidor los lee de la venta (<code className="text-[11px]">sale_items</code>).
+                      No incluye cabeceras de autenticación.
                     </p>
                     <div className="relative">
-                      <pre className="max-h-64 overflow-auto rounded-md bg-muted/60 p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
+                      <pre className="max-h-[min(28rem,50vh)] overflow-auto rounded-md bg-muted/60 p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
                         {facturarRequestJson}
                       </pre>
                       <Button
