@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 import type { Cliente } from "@/lib/api"
 import {
   applyClienteToFacturarForm,
+  buildFacturarFormForSale,
   buildFacturarPayload,
   clienteCuitDigitos,
+  validateFacturarPayloadCoherence,
   validateFacturarReceptorFiscal,
 } from "@/lib/facturacion-form-from-cliente"
 
@@ -69,6 +71,38 @@ describe("facturacion-form-from-cliente", () => {
     )
     expect(payload.docTipo).toBe(80)
     expect(payload.condicionIvaReceptor).toBe(1)
+  })
+
+  it("no deja Factura A con consumidor final si sugerencia API contradice al cliente ERP", () => {
+    const form = buildFacturarFormForSale(
+      cliente({
+        id: 1,
+        name: "MATERIALES BUTALO S. R. L.",
+        code: "MIN033",
+        personeria: "persona_juridica",
+        tax_condition: "responsable_inscripto",
+        primary_tax_id: "30709212083",
+      }),
+      {
+        totalAmount: 1000,
+        condicionIvaReceptor: 5,
+        sugerencia: { tipo: 1, label: "Factura A" },
+      }
+    )
+    expect(form.condicionIvaReceptor).toBe(1)
+    expect(form.tipo).toBe(1)
+    expect(form.docTipo).toBe(80)
+    expect(form.docNro).toBe(30709212083)
+  })
+
+  it("validateFacturarPayloadCoherence rechaza Factura A sin CUIT", () => {
+    const err = validateFacturarPayloadCoherence({
+      tipo: 1,
+      condicionIvaReceptor: 5,
+      docTipo: 99,
+      docNro: 0,
+    })
+    expect(err).toMatch(/no coincide/)
   })
 
   it("validateFacturarReceptorFiscal detecta CUIT en ERP con payload CF", () => {

@@ -1,10 +1,49 @@
 import type { Cliente, FacturarSaleRequest, FacturarSugerenciaData } from "@/lib/api"
+import { normalizeTaxConditionFromApi } from "@/lib/client-tax-condition"
 import {
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
 } from "@/lib/facturacion-cliente-fiscal"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
+
+/** Cliente con datos fiscales confiables en el ERP (no pisar con sugerencia API). */
+export function clienteTieneDatosFiscalesErp(cliente?: Cliente | null): boolean {
+  if (!cliente) return false
+  if (clienteCuitDigitos(cliente).length === 11) return true
+  if (normalizeTaxConditionFromApi(cliente.tax_condition)) return true
+  if (cliente.personeria === "persona_juridica") return true
+  if (cliente.condicion_iva_receptor != null && cliente.condicion_iva_receptor > 0) return true
+  return false
+}
+
+/** Evita combinaciones inválidas (ej. Factura A + consumidor final sin CUIT). */
+export function validateFacturarPayloadCoherence(payload: FacturarSaleRequest): string | null {
+  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
+  const condicion = payload.condicionIvaReceptor ?? 5
+  const docTipo = payload.docTipo ?? 99
+  const docNro = payload.docNro ?? 0
+  const tipoEsperado = resolveTipoComprobanteFromCondicionIvaReceptor(condicion)
+
+  if (tipo !== tipoEsperado) {
+    return `El tipo de comprobante (${tipo}) no coincide con la condición IVA del receptor (${condicion}). Debería ser tipo ${tipoEsperado}. Revisá la configuración o los datos del cliente antes de emitir.`
+  }
+
+  if (tipo === 1) {
+    if (condicion !== 1) {
+      return "Factura A solo corresponde a un receptor Responsable Inscripto (condición IVA 1)."
+    }
+    if (docTipo !== 80 || docNro <= 0) {
+      return "Factura A requiere el CUIT del receptor (docTipo 80 con 11 dígitos)."
+    }
+  }
+
+  if (condicion === 1 && (docTipo !== 80 || docNro <= 0)) {
+    return "Un receptor Responsable Inscripto requiere CUIT válido (docTipo 80)."
+  }
+
+  return null
+}
 
 /** CUIT/CUIL del cliente (campo nuevo o legacy `primary_tax_id`). */
 export function clienteCuitDigitos(cliente?: Cliente | null): string {
@@ -50,27 +89,31 @@ export function applyClienteToFacturarForm(
   }
 }
 
-/** Incorpora hints del backend (GET /facturar/sugerencia) sin pisar CUIT ya resuelto. */
+/**
+ * Incorpora hints del backend (GET /facturar/sugerencia).
+ * Si el cliente ERP ya tiene datos fiscales, no pisa condición/tipo/doc (evita Factura A + CF).
+ */
 export function mergeSugerenciaIntoFacturarForm(
   form: FacturarSaleRequest,
-  sugerencia: FacturarSugerenciaData | null | undefined
+  sugerencia: FacturarSugerenciaData | null | undefined,
+  cliente?: Cliente | null
 ): FacturarSaleRequest {
   if (!sugerencia) return form
 
   const next: FacturarSaleRequest = { ...form }
+  const erpFiscal = clienteTieneDatosFiscalesErp(cliente)
 
   if (
+    !erpFiscal &&
     sugerencia.condicionIvaReceptor != null &&
     Number.isFinite(sugerencia.condicionIvaReceptor) &&
     sugerencia.condicionIvaReceptor > 0
   ) {
     next.condicionIvaReceptor = sugerencia.condicionIvaReceptor
-    next.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(sugerencia.condicionIvaReceptor)
   }
 
-  if (sugerencia.sugerencia?.tipo != null && Number.isFinite(sugerencia.sugerencia.tipo)) {
-    next.tipo = sugerencia.sugerencia.tipo
-  }
+  const condicionFinal = next.condicionIvaReceptor ?? 5
+  next.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(condicionFinal)
 
   return next
 }
@@ -85,7 +128,7 @@ export function buildFacturarPayload(
 ): FacturarSaleRequest {
   if (cliente) {
     const fromCliente = applyClienteToFacturarForm(form, cliente)
-    return {
+    const payload: FacturarSaleRequest = {
       ...form,
       ...fromCliente,
       concepto: form.concepto ?? fromCliente.concepto,
@@ -95,6 +138,8 @@ export function buildFacturarPayload(
       cuitEmisor: form.cuitEmisor,
       puntoVenta: form.puntoVenta,
     }
+    payload.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
+    return payload
   }
 
   const payload: FacturarSaleRequest = { ...form }
@@ -143,6 +188,9 @@ export function validateFacturarReceptorFiscal(
     return "La venta tiene un cliente asignado pero no se pudieron cargar sus datos fiscales. Esperá a que termine la carga o revisá el cliente en el ERP antes de emitir."
   }
 
+  const incoherencia = validateFacturarPayloadCoherence(payload)
+  if (incoherencia) return incoherencia
+
   return null
 }
 
@@ -153,5 +201,5 @@ export function buildFacturarFormForSale(
 ): FacturarSaleRequest {
   const base = buildDefaultFacturarFormRequest()
   const withCliente = applyClienteToFacturarForm(base, cliente)
-  return mergeSugerenciaIntoFacturarForm(withCliente, sugerencia)
+  return mergeSugerenciaIntoFacturarForm(withCliente, sugerencia, cliente)
 }
