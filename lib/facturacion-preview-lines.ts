@@ -126,6 +126,10 @@ function mapSugerenciaLine(line: FacturarSugerenciaIvaLine): FacturacionPreviewL
 
 
 
+export function mapSaleItemsToPreviewLines(items: SaleItemResponse[]): FacturacionPreviewLine[] {
+  return mapSaleItems(items)
+}
+
 function mapSaleItems(items: SaleItemResponse[]): FacturacionPreviewLine[] {
 
   return items.map((item) => {

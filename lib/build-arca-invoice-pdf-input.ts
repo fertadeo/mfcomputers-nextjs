@@ -15,6 +15,8 @@ import {
   getStoredFacturacionCuitEmisor,
   getStoredFacturacionPuntoVenta,
 } from "@/lib/facturacion-settings"
+import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
+import { mergeFacturarSaleRequestBody } from "@/lib/facturacion-request-preview"
 import {
   buildArcaIvaDiscriminado,
   computeSaleIvaBreakdown,
@@ -215,5 +217,104 @@ export async function buildArcaInvoicePdfInput(
     condicionVenta: "Contado",
     pagina: "1/1",
     comprobanteIncompleto: numeroMissing && previewAllowMissingNumero,
+  }
+}
+
+const CONDICION_IVA_LABELS: Record<number, string> = {
+  1: "IVA Responsable Inscripto",
+  4: "IVA Sujeto Exento",
+  5: "Consumidor Final",
+  6: "Responsable Monotributo",
+  9: "Cliente del Exterior",
+  10: "IVA Liberado",
+}
+
+export interface BuildArcaInvoicePreviewFromLinesArgs {
+  facturarPayload: FacturarSaleRequest
+  lines: FacturacionPreviewLine[]
+  receptorRazonSocial: string
+  cliente?: Cliente | null
+  fechaEmision?: string | null
+  totalAmount: number
+  /** Tipo WSFE (factura o nota de crédito). Por defecto `facturarPayload.tipo`. */
+  tipoComprobante?: number
+  /** Aviso en el borrador (ej. comprobante asociado en NC). */
+  previewAviso?: string | null
+}
+
+/** Borrador visual del comprobante ARCA antes de emitir (sin CAE, número ni QR). */
+export function buildArcaInvoicePdfInputFromPreviewLines(
+  args: BuildArcaInvoicePreviewFromLinesArgs
+): GenerateArcaInvoicePdfParams {
+  const payload = mergeFacturarSaleRequestBody(args.facturarPayload)
+  const tipo = args.tipoComprobante ?? toNumber(payload.tipo, 6)
+  const puntoVenta = toNumber(payload.puntoVenta ?? getStoredFacturacionPuntoVenta(), 1)
+  const docTipo = toNumber(payload.docTipo, 99)
+  const docNro = toNumber(payload.docNro, 0)
+  const condicionIva = payload.condicionIvaReceptor ?? 5
+
+  const lineItemsForIva = args.lines.map((line) => ({
+    subtotal: line.subtotal,
+    iva_rate: line.ivaRate,
+  }))
+  const ivaBreakdown = computeSaleIvaBreakdown(lineItemsForIva)
+  const ivaDiscriminado = buildArcaIvaDiscriminado(lineItemsForIva)
+
+  const fechaEmision =
+    args.fechaEmision?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+
+  const cuitEmisor =
+    payload.cuitEmisor?.replace(/\D/g, "") ||
+    getStoredFacturacionCuitEmisor() ||
+    process.env.NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR?.replace(/\D/g, "") ||
+    ""
+
+  return {
+    emisor: {
+      razonSocial: EMISOR_DEFAULT.razonSocial,
+      domicilio: EMISOR_DEFAULT.domicilio,
+      condicionIva: EMISOR_DEFAULT.condicionIva,
+      cuit: cuitEmisor,
+      ingresosBrutos: EMISOR_DEFAULT.ingresosBrutos,
+      inicioActividades: EMISOR_DEFAULT.inicioActividades,
+    },
+    comprobante: {
+      tipo,
+      puntoVenta,
+      numero: 0,
+      fechaEmision,
+      concepto: (payload.concepto ?? 1) as 1 | 2 | 3,
+    },
+    receptor: {
+      razonSocial: args.receptorRazonSocial,
+      docTipo,
+      docNro,
+      condicionIvaLabel: CONDICION_IVA_LABELS[condicionIva] ?? `Condición ${condicionIva}`,
+      domicilio: [args.cliente?.address, args.cliente?.city].filter(Boolean).join(", ") || undefined,
+    },
+    items: args.lines.map((line, index) => ({
+      codigo: String(index + 1),
+      descripcion: line.description,
+      cantidad: line.quantity,
+      unidadMedida: "unidades",
+      precioUnitario: netFromInclusiveAmount(line.unitPrice, line.ivaRate),
+      bonificacionPct: 0,
+      subtotal: netFromInclusiveAmount(line.subtotal, line.ivaRate),
+      alicuotaIva: formatAlicuotaIvaArca(line.ivaRate),
+      subtotalConIva: line.subtotal,
+    })),
+    totales: {
+      otrosTributos: 0,
+      total: args.totalAmount,
+      ivaDiscriminado,
+      ivaContenido: ivaBreakdown.ivaTotal > 0 ? ivaBreakdown.ivaTotal : null,
+    },
+    cae: "",
+    caeVencimiento: null,
+    qrUrl: "",
+    condicionVenta: "Contado",
+    pagina: "1/1",
+    comprobanteIncompleto: true,
+    previewAviso: args.previewAviso ?? undefined,
   }
 }

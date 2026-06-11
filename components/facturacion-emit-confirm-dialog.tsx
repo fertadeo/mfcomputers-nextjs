@@ -23,6 +23,8 @@ import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
+import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
+import { buildArcaInvoicePdfInputFromPreviewLines } from "@/lib/build-arca-invoice-pdf-input"
 import { buildFacturarFullPayloadPreview } from "@/lib/facturacion-request-preview"
 import {
   buildVentaDestinatarioSnapshot,
@@ -212,6 +214,27 @@ export function FacturacionEmitConfirmDialog({
     cliente?.city,
   ])
 
+  const arcaInvoicePreview = useMemo(() => {
+    if (lines.length === 0) return null
+    return buildArcaInvoicePdfInputFromPreviewLines({
+      facturarPayload,
+      lines,
+      receptorRazonSocial: comprobanteDestinatarioNombre,
+      cliente,
+      fechaEmision: fechaCbte ?? saleDate ?? sale?.sale_date,
+      totalAmount: totalComprobante,
+    })
+  }, [
+    facturarPayload,
+    lines,
+    comprobanteDestinatarioNombre,
+    cliente,
+    fechaCbte,
+    saleDate,
+    sale?.sale_date,
+    totalComprobante,
+  ])
+
   const facturarRequestJson = facturarFullPayloadPreview
     ? JSON.stringify(facturarFullPayloadPreview, null, 2)
     : ""
@@ -229,7 +252,7 @@ export function FacturacionEmitConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] max-w-3xl flex-col gap-0 p-0">
+      <DialogContent className="flex max-h-[92vh] max-w-4xl flex-col gap-0 p-0">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Confirmar emisión del comprobante</DialogTitle>
           <DialogDescription>
@@ -513,6 +536,13 @@ export function FacturacionEmitConfirmDialog({
                 </div>
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>
               </div>
+
+              <FacturacionArcaPreviewPanel
+                data={linesLoading ? null : arcaInvoicePreview}
+                loading={linesLoading}
+                error={linesError}
+                defaultOpen
+              />
 
               <div className="rounded-lg border">
                 <button

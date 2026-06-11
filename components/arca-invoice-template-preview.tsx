@@ -96,7 +96,10 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
             color: "#664d03",
           }}
         >
-          Nº de comprobante y QR no confirmados (faltan datos AFIP en la API).
+          {data.previewAviso
+            ? `${data.previewAviso} · `
+            : ""}
+          Vista previa — sin CAE, número definitivo ni QR hasta emitir en ARCA.
         </div>
       ) : null}
       <ArcaInvoiceHeader

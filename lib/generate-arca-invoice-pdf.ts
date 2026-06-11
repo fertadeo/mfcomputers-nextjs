@@ -180,6 +180,9 @@ export interface GenerateArcaInvoicePdfParams {
 
   comprobanteIncompleto?: boolean
 
+  /** Texto adicional en borradores previos a la emisión. */
+  previewAviso?: string
+
 }
 
 

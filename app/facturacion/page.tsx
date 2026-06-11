@@ -51,7 +51,10 @@ import {
   type BillableRow,
 } from "@/lib/facturacion-billables"
 import { cacheFacturacionEmision, getCachedFacturacionEmision } from "@/lib/facturacion-emision-cache"
-import { buildArcaInvoicePdfInput } from "@/lib/build-arca-invoice-pdf-input"
+import {
+  buildArcaInvoicePdfInput,
+  buildArcaInvoicePdfInputFromPreviewLines,
+} from "@/lib/build-arca-invoice-pdf-input"
 import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
 import { fetchSaleArcaEmision } from "@/lib/fetch-sale-arca-emision"
 import {
@@ -76,6 +79,7 @@ import {
 } from "@/lib/facturacion-errors"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
+import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
@@ -93,6 +97,7 @@ import {
 import {
   formatFacturacionFecha,
   loadFacturacionPreview,
+  mapSaleItemsToPreviewLines,
   type FacturacionPreviewLine,
 } from "@/lib/facturacion-preview-lines"
 import {
@@ -188,6 +193,9 @@ export default function FacturacionPage() {
   const [defaultsSavedHint, setDefaultsSavedHint] = useState(false)
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
   const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
+  const [creditNoteArcaPreview, setCreditNoteArcaPreview] = useState<GenerateArcaInvoicePdfParams | null>(null)
+  const [creditNoteArcaLoading, setCreditNoteArcaLoading] = useState(false)
+  const [creditNoteArcaError, setCreditNoteArcaError] = useState<string | null>(null)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
@@ -260,6 +268,70 @@ export default function FacturacionPage() {
       cae: creditNoteSale.arca_cae ?? cached?.emision.cae,
     }
   }, [creditNoteSale])
+
+  useEffect(() => {
+    if (!creditNoteSale || !creditNotePreview?.ncTipo) {
+      setCreditNoteArcaPreview(null)
+      setCreditNoteArcaLoading(false)
+      setCreditNoteArcaError(null)
+      return
+    }
+
+    let cancelled = false
+    setCreditNoteArcaLoading(true)
+    setCreditNoteArcaError(null)
+    setCreditNoteArcaPreview(null)
+
+    void (async () => {
+      try {
+        const saleRes = await getSale(creditNoteSale.id)
+        const sale = saleRes.data
+        const items = mapSaleItemsToPreviewLines(sale.items ?? [])
+        if (items.length === 0) {
+          throw new Error("La venta no tiene ítems para armar la vista previa de la nota de crédito.")
+        }
+
+        let cliente: Cliente | null = null
+        if (sale.client_id) {
+          try {
+            cliente = await getClienteById(sale.client_id)
+          } catch {
+            cliente = null
+          }
+        }
+
+        const facturarPayload =
+          creditNotePreview.cached?.facturarPayload ?? buildDefaultFacturarFormRequest()
+
+        const preview = buildArcaInvoicePdfInputFromPreviewLines({
+          facturarPayload,
+          lines: items,
+          receptorRazonSocial: cliente?.name ?? sale.client_name ?? "Consumidor final",
+          cliente,
+          fechaEmision: new Date().toISOString().slice(0, 10),
+          totalAmount: creditNotePreview.importe,
+          tipoComprobante: creditNotePreview.ncTipo,
+          previewAviso: creditNotePreview.facturaRef
+            ? `Anula comprobante ${creditNotePreview.facturaRef}`
+            : "Nota de crédito — borrador previo a emisión",
+        })
+
+        if (!cancelled) setCreditNoteArcaPreview(preview)
+      } catch (e) {
+        if (!cancelled) {
+          setCreditNoteArcaError(
+            e instanceof Error ? e.message : "No se pudo generar la vista previa de la nota de crédito."
+          )
+        }
+      } finally {
+        if (!cancelled) setCreditNoteArcaLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [creditNoteSale, creditNotePreview])
 
   const filteredBillables = useMemo(
     () => filterBillables(billables, query, statusFilter as ArcaStatus | "all"),
@@ -1503,7 +1575,7 @@ export default function FacturacionPage() {
           />
 
           <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>¿Fue un error?</DialogTitle>
                 <DialogDescription>
@@ -1557,6 +1629,15 @@ export default function FacturacionPage() {
                       description="Para emitir la NC, el backend debe persistir punto de venta y número AFIP al facturar. Si facturaste en otra sesión, abrí la venta desde este navegador o pedí el dato a soporte."
                     />
                   ) : null}
+
+                  <FacturacionArcaPreviewPanel
+                    title="Vista previa de la nota de crédito ARCA"
+                    description="Borrador de la NC con los mismos ítems e importes que la factura original. El número y CAE se asignan al emitir."
+                    data={creditNoteArcaPreview}
+                    loading={creditNoteArcaLoading}
+                    error={creditNoteArcaError}
+                    defaultOpen
+                  />
 
                   <Alert
                     variant="info"
