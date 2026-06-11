@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { ArrowRight, Loader2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { ArrowRight, ChevronDown, ChevronUp, Copy, Loader2 } from "lucide-react"
 import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,7 @@ import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
+import { buildFacturarHttpRequestPreview } from "@/lib/facturacion-request-preview"
 import {
   buildVentaDestinatarioSnapshot,
   formatCuitInputDisplay,
@@ -63,6 +64,8 @@ export interface FacturacionEmitConfirmDialogProps {
   itemIvaError?: string | null
   /** Cliente con CUIT en ERP pero payload a consumidor final. */
   receptorFiscalError?: string | null
+  /** Body definitivo para POST /sales/:id/facturar (tras buildFacturarPayload). */
+  facturarPayload: FacturarSaleRequest
   emisorCuitLabel: string
   isSubmitting: boolean
   onConfigure: () => void
@@ -89,6 +92,7 @@ export function FacturacionEmitConfirmDialog({
   linesError,
   itemIvaError = null,
   receptorFiscalError = null,
+  facturarPayload,
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
@@ -101,12 +105,16 @@ export function FacturacionEmitConfirmDialog({
   const [receptorCuitInput, setReceptorCuitInput] = useState("")
   const [padronDisplayName, setPadronDisplayName] = useState<string | null>(null)
   const [padronVerifiedDigits, setPadronVerifiedDigits] = useState<string | null>(null)
+  const [payloadJsonOpen, setPayloadJsonOpen] = useState(false)
+  const [payloadCopied, setPayloadCopied] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id))
     setPadronDisplayName(null)
     setPadronVerifiedDigits(null)
+    setPayloadJsonOpen(false)
+    setPayloadCopied(false)
   }, [open, billable?.key, selectedBillableKey])
 
   useEffect(() => {
@@ -157,6 +165,32 @@ export function FacturacionEmitConfirmDialog({
   const needsPadron =
     requiresPadronForReceptorCuit(ventaDestinatario.cuitDigits, receptorCuitDigits, esConsumidorFinal)
   const padronPending = needsPadron && padronVerifiedDigits !== receptorCuitDigits
+
+  const facturarSaleId = useMemo(() => {
+    if (!billable || !sale) return null
+    if (billable.kind === "repair_order" && billable.linkedSaleId) return billable.linkedSaleId
+    return sale.id
+  }, [billable, sale])
+
+  const facturarRequestPreview = useMemo(() => {
+    if (facturarSaleId == null) return null
+    return buildFacturarHttpRequestPreview(facturarSaleId, facturarPayload)
+  }, [facturarSaleId, facturarPayload])
+
+  const facturarRequestJson = facturarRequestPreview
+    ? JSON.stringify(facturarRequestPreview, null, 2)
+    : ""
+
+  const copyPayloadJson = async () => {
+    if (!facturarRequestJson) return
+    try {
+      await navigator.clipboard.writeText(facturarRequestJson)
+      setPayloadCopied(true)
+      window.setTimeout(() => setPayloadCopied(false), 2000)
+    } catch {
+      setPayloadCopied(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -443,6 +477,46 @@ export function FacturacionEmitConfirmDialog({
                   )}
                 </div>
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>
+              </div>
+
+              <div className="rounded-lg border">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-muted/50 transition-colors"
+                  onClick={() => setPayloadJsonOpen((prev) => !prev)}
+                  aria-expanded={payloadJsonOpen}
+                >
+                  <span>Payload JSON al facturador</span>
+                  {payloadJsonOpen ? (
+                    <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+                {payloadJsonOpen ? (
+                  <div className="border-t px-4 pb-4 pt-3 space-y-2">
+                    <p className="text-muted-foreground text-xs">
+                      Request HTTP que enviará el frontend al backend (método, URL y body). No incluye cabeceras de
+                      autenticación ni API keys.
+                    </p>
+                    <div className="relative">
+                      <pre className="max-h-64 overflow-auto rounded-md bg-muted/60 p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
+                        {facturarRequestJson}
+                      </pre>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="absolute right-2 top-2 h-8 bg-background/90"
+                        onClick={() => void copyPayloadJson()}
+                        disabled={!facturarRequestJson}
+                      >
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        {payloadCopied ? "Copiado" : "Copiar"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {receptorFiscalError ? (

@@ -411,11 +411,15 @@ export default function FacturacionPage() {
     return validateFacturacionItemIva(tipo, confirmLines)
   }, [isConfirmEmitOpen, confirmLines, form.tipo, modalCliente])
 
+  const facturarPayloadForEmit = useMemo(
+    () => buildFacturarPayload(form, modalCliente),
+    [form, modalCliente]
+  )
+
   const receptorFiscalValidationError = useMemo(() => {
     if (!isConfirmEmitOpen || modalClienteLoading || !selectedSale) return null
-    const payload = buildFacturarPayload(form, modalCliente)
-    return validateFacturarReceptorFiscal(selectedSale, modalCliente, payload)
-  }, [isConfirmEmitOpen, modalClienteLoading, selectedSale, form, modalCliente])
+    return validateFacturarReceptorFiscal(selectedSale, modalCliente, facturarPayloadForEmit)
+  }, [isConfirmEmitOpen, modalClienteLoading, selectedSale, facturarPayloadForEmit, modalCliente])
 
   const startEmitFromTable = (rowKey: string) => {
     setSelectedBillableKey(rowKey)
@@ -1477,6 +1481,7 @@ export default function FacturacionPage() {
             linesError={confirmLinesError}
             itemIvaError={itemIvaValidationError}
             receptorFiscalError={receptorFiscalValidationError}
+            facturarPayload={facturarPayloadForEmit}
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
             onConfigure={() => setIsEmitModalOpen(true)}

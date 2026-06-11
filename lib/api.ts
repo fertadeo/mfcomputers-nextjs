@@ -1,9 +1,6 @@
 import { getApiUrl } from '@/config/api';
-import {
-  getStoredFacturacionCuitEmisor,
-  getStoredFacturacionPuntoVenta,
-  getStoredFacturadorApiKey,
-} from '@/lib/facturacion-settings';
+import { mergeFacturarSaleRequestBody } from '@/lib/facturacion-request-preview';
+import { getStoredFacturadorApiKey } from '@/lib/facturacion-settings';
 import {
   extractFacturacionEmisionFromResponse,
   extractFacturacionErrorFromPayload,
@@ -1204,13 +1201,7 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
     }
   }
 
-  const storedCuit = typeof window !== 'undefined' ? getStoredFacturacionCuitEmisor() : null
-  const storedPv = typeof window !== 'undefined' ? getStoredFacturacionPuntoVenta() : undefined
-  const bodyMerged: FacturarSaleRequest = {
-    ...body,
-    ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
-    ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
-  }
+  const bodyMerged = mergeFacturarSaleRequestBody(body)
 
   const url = `${apiUrl}sales/${id}/facturar`
   const bodySerialized = JSON.stringify(bodyMerged)
