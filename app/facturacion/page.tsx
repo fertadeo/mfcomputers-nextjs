@@ -31,6 +31,7 @@ import {
 import {
   facturarSale,
   getClienteById,
+  getFacturarSugerencia,
   getRepairOrders,
   getSale,
   getSales,
@@ -94,6 +95,13 @@ import {
   loadFacturacionPreview,
   type FacturacionPreviewLine,
 } from "@/lib/facturacion-preview-lines"
+import {
+  applyClienteToFacturarForm,
+  buildFacturarFormForSale,
+  buildFacturarPayload,
+  clienteCuitDigitos,
+  validateFacturarReceptorFiscal,
+} from "@/lib/facturacion-form-from-cliente"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -149,42 +157,6 @@ function formatCuitMostrar(raw?: string | null): string {
   const d = soloDigitos(raw)
   if (d.length !== 11) return raw?.trim() || "—"
   return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
-}
-
-/**
- * Arma el body definitivo para consumidor final (condición IVA 5):
- * - Sin CUIT/CUIL de 11 dígitos en cliente → AFIP docTipo 99, docNro 0.
- * - Con CUIT/CUIL válido → docTipo 80 y número sin sobrescribir si el usuario ya eligió otro tipo distinto de 99.
- */
-function buildFacturarPayload(form: FacturarSaleRequest, cliente: Cliente | null): FacturarSaleRequest {
-  const payload: FacturarSaleRequest = { ...form }
-
-  if (form.docTipo === 99) {
-    payload.docTipo = 99
-    payload.docNro = 0
-    return payload
-  }
-
-  if (form.docTipo === 80 && form.docNro != null && form.docNro > 0) {
-    payload.docTipo = 80
-    payload.docNro = form.docNro
-    return payload
-  }
-
-  if (payload.condicionIvaReceptor !== 5) return payload
-
-  const cuil = soloDigitos(cliente?.cuil_cuit)
-  const tieneCuit11 = cuil.length === 11
-
-  if (!tieneCuit11) {
-    payload.docTipo = 99
-    payload.docNro = 0
-    return payload
-  }
-
-  payload.docTipo = 80
-  payload.docNro = parseInt(cuil, 10)
-  return payload
 }
 
 function getBillableEmittedTipo(row: BillableRow): number | null {
@@ -256,7 +228,6 @@ export default function FacturacionPage() {
 
   useEffect(() => {
     if ((!isEmitModalOpen && !isConfirmEmitOpen) || invoiceModalMode !== "emit") return
-    setForm(buildDefaultFacturarFormRequest())
     setShowAdvancedEmitForm(!getEmitirConDefaultsGuardados())
     setDefaultsSavedHint(false)
   }, [isEmitModalOpen, isConfirmEmitOpen, invoiceModalMode, selectedBillableKey])
@@ -358,65 +329,48 @@ export default function FacturacionPage() {
     setModalClienteLoading(true)
     setModalCliente(null)
 
-    setForm(buildDefaultFacturarFormRequest())
-
     const cargar = async () => {
       try {
+        let saleId = sale.id
+        if (selectedBillable?.kind === "repair_order" && selectedBillable.linkedSaleId) {
+          saleId = selectedBillable.linkedSaleId
+        }
+
+        const sugerenciaPromise =
+          saleId > 0 ? getFacturarSugerencia(saleId).catch(() => null) : Promise.resolve(null)
+
         if (!sale.client_id) {
+          const sugerencia = await sugerenciaPromise
           if (!cancelled) {
             setModalCliente(null)
-            const fiscal = resolveFacturacionDesdeCliente(null)
-            setForm((prev) => ({
-              ...prev,
-              docTipo: 99,
-              docNro: 0,
-              condicionIvaReceptor: fiscal.condicionIvaReceptor,
-              tipo: fiscal.tipoComprobante,
-            }))
+            setForm(buildFacturarFormForSale(null, sugerencia))
             console.log("[FACTURAR UI] Venta sin client_id → consumidor final (docTipo 99 / docNro 0).")
           }
           return
         }
 
-        const cliente = await getClienteById(sale.client_id)
+        const [cliente, sugerencia] = await Promise.all([
+          getClienteById(sale.client_id),
+          sugerenciaPromise,
+        ])
         if (cancelled) return
         setModalCliente(cliente)
-
-        const fiscal = resolveFacturacionDesdeCliente(cliente)
-        const cuil = soloDigitos(cliente.cuil_cuit)
-        if (cuil.length === 11) {
-          setForm((prev) => ({
-            ...prev,
-            docTipo: 80,
-            docNro: parseInt(cuil, 10),
-            condicionIvaReceptor: fiscal.condicionIvaReceptor,
-            tipo: fiscal.tipoComprobante,
-          }))
-          console.log("[FACTURAR UI] Cliente con CUIT/CUIL 11 dígitos → docTipo 80, docNro derivado del cliente.")
-        } else {
-          setForm((prev) => ({
-            ...prev,
-            docTipo: 99,
-            docNro: 0,
-            condicionIvaReceptor: fiscal.condicionIvaReceptor,
-            tipo: fiscal.tipoComprobante,
-          }))
-          console.log(
-            "[FACTURAR UI] Cliente sin CUIT válido o venta informal → consumidor final (docTipo 99 / docNro 0)."
-          )
-        }
+        const nextForm = buildFacturarFormForSale(cliente, sugerencia)
+        setForm(nextForm)
+        console.log("[FACTURAR UI] Formulario fiscal desde cliente ERP:", {
+          clientId: sale.client_id,
+          docTipo: nextForm.docTipo,
+          docNro: nextForm.docNro,
+          condicionIvaReceptor: nextForm.condicionIvaReceptor,
+          tipo: nextForm.tipo,
+          cuil_cuit: cliente.cuil_cuit,
+          primary_tax_id: cliente.primary_tax_id,
+        })
       } catch (e) {
-        console.warn("[FACTURAR UI] No se pudo obtener el cliente; se usa consumidor final (docTipo 99 / docNro 0).", e)
+        console.warn("[FACTURAR UI] No se pudo cargar cliente/sugerencia fiscal:", e)
         if (!cancelled) {
           setModalCliente(null)
-          const fiscal = resolveFacturacionDesdeCliente(null)
-          setForm((prev) => ({
-            ...prev,
-            docTipo: 99,
-            docNro: 0,
-            condicionIvaReceptor: fiscal.condicionIvaReceptor,
-            tipo: fiscal.tipoComprobante,
-          }))
+          setForm(buildFacturarFormForSale(null, null))
         }
       } finally {
         if (!cancelled) setModalClienteLoading(false)
@@ -456,6 +410,12 @@ export default function FacturacionPage() {
     const tipo = form.tipo ?? resolveFacturacionDesdeCliente(modalCliente).tipoComprobante
     return validateFacturacionItemIva(tipo, confirmLines)
   }, [isConfirmEmitOpen, confirmLines, form.tipo, modalCliente])
+
+  const receptorFiscalValidationError = useMemo(() => {
+    if (!isConfirmEmitOpen || modalClienteLoading || !selectedSale) return null
+    const payload = buildFacturarPayload(form, modalCliente)
+    return validateFacturarReceptorFiscal(selectedSale, modalCliente, payload)
+  }, [isConfirmEmitOpen, modalClienteLoading, selectedSale, form, modalCliente])
 
   const startEmitFromTable = (rowKey: string) => {
     setSelectedBillableKey(rowKey)
@@ -677,6 +637,19 @@ export default function FacturacionPage() {
       return
     }
 
+    const payloadPreview = buildFacturarPayload(form, modalCliente)
+    const receptorErr = validateFacturarReceptorFiscal(selectedSale, modalCliente, payloadPreview)
+    if (receptorErr) {
+      setErrorMsg(receptorErr)
+      setErrorTitle("Datos fiscales del receptor incompletos")
+      return
+    }
+
+    if (modalClienteLoading) {
+      setErrorMsg("Esperá a que terminen de cargarse los datos fiscales del cliente.")
+      return
+    }
+
     setIsSubmitting(true)
     setErrorMsg(null)
     setErrorTitle(null)
@@ -708,7 +681,7 @@ export default function FacturacionPage() {
         receptorDoc: {
           docTipo: payload.docTipo,
           docNro: payload.docNro,
-          clienteCuilEnErp: modalCliente?.cuil_cuit ?? null,
+          clienteCuilEnErp: modalCliente?.cuil_cuit ?? modalCliente?.primary_tax_id ?? null,
         },
       })
 
@@ -1177,8 +1150,8 @@ export default function FacturacionPage() {
                       CUIT/CUIL receptor (ERP):{" "}
                       {modalClienteLoading
                         ? "Cargando…"
-                        : soloDigitos(modalCliente?.cuil_cuit).length === 11
-                          ? formatCuitMostrar(modalCliente?.cuil_cuit)
+                        : clienteCuitDigitos(modalCliente).length === 11
+                          ? formatCuitMostrar(clienteCuitDigitos(modalCliente))
                           : !selectedSale.client_id
                             ? "Sin cliente en la venta — consumidor final (docTipo 99 / docNro 0)."
                             : "Sin CUIT/CUIL válido en cliente — consumidor final (docTipo 99 / docNro 0)."}
@@ -1503,6 +1476,7 @@ export default function FacturacionPage() {
             linesLoading={confirmLinesLoading}
             linesError={confirmLinesError}
             itemIvaError={itemIvaValidationError}
+            receptorFiscalError={receptorFiscalValidationError}
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
             onConfigure={() => setIsEmitModalOpen(true)}
@@ -1515,16 +1489,7 @@ export default function FacturacionPage() {
             }
             onPadronReset={() => {
               if (modalCliente) {
-                const fiscal = resolveFacturacionDesdeCliente(modalCliente)
-                const cuil = soloDigitos(modalCliente.cuil_cuit)
-                setForm((prev) => ({
-                  ...prev,
-                  condicionIvaReceptor: fiscal.condicionIvaReceptor,
-                  tipo: fiscal.tipoComprobante,
-                  ...(cuil.length === 11
-                    ? { docTipo: 80, docNro: parseInt(cuil, 10) }
-                    : { docTipo: 99, docNro: 0 }),
-                }))
+                setForm((prev) => applyClienteToFacturarForm(prev, modalCliente))
               } else {
                 setForm((prev) => applyReceptorCuitToFacturarForm(prev, "", null))
               }

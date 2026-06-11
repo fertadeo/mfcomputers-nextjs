@@ -2,6 +2,7 @@ import type { FacturarSaleRequest } from "@/lib/api"
 import type { ArcaPadronResult } from "@/lib/arca-padron"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import { resolveTipoComprobanteFromCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
+import { clienteCuitDigitos } from "@/lib/facturacion-form-from-cliente"
 
 export function soloDigitosDoc(s?: string | null): string {
   return (s ?? "").replace(/\D/g, "")
@@ -17,15 +18,21 @@ export function formatCuitInputDisplay(value: string): string {
 
 export function receptorCuitInputFromForm(
   form: FacturarSaleRequest,
-  clienteCuil?: string | null
+  clienteCuil?: string | null,
+  clientePrimaryTaxId?: string | null
 ): string {
   if (form.docTipo === 99) return ""
   if (form.docTipo === 80 && form.docNro != null && form.docNro > 0) {
     return formatCuitInputDisplay(String(form.docNro))
   }
-  const d = soloDigitosDoc(clienteCuil)
+  const d = soloDigitosDoc(clienteCuil) || soloDigitosDoc(clientePrimaryTaxId)
   if (d.length === 11) return formatCuitInputDisplay(d)
   return ""
+}
+
+/** CUIT del cliente ERP para mostrar en confirmación (cuil_cuit o primary_tax_id). */
+export function clienteCuitForDisplay(cliente?: { cuil_cuit?: string | null; primary_tax_id?: string } | null): string {
+  return clienteCuitDigitos(cliente as Parameters<typeof clienteCuitDigitos>[0])
 }
 
 export function isReceptorCuitInputInvalid(rawInput: string): boolean {
@@ -114,10 +121,11 @@ export function buildVentaDestinatarioSnapshot(
   saleClientName: string | null | undefined,
   billableClientName: string | null | undefined,
   clienteCuil?: string | null,
-  taxCondition?: string | null
+  taxCondition?: string | null,
+  clientePrimaryTaxId?: string | null
 ): FacturacionVentaDestinatario {
   const name = (saleClientName || billableClientName || "Consumidor final").trim()
-  const cuitDigits = soloDigitosDoc(clienteCuil)
+  const cuitDigits = soloDigitosDoc(clienteCuil) || soloDigitosDoc(clientePrimaryTaxId)
   return {
     name,
     cuitDigits,

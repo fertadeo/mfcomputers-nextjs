@@ -61,6 +61,8 @@ export interface FacturacionEmitConfirmDialogProps {
   linesError: string | null
   /** Factura C con ítems gravados: bloquear emisión. */
   itemIvaError?: string | null
+  /** Cliente con CUIT en ERP pero payload a consumidor final. */
+  receptorFiscalError?: string | null
   emisorCuitLabel: string
   isSubmitting: boolean
   onConfigure: () => void
@@ -86,6 +88,7 @@ export function FacturacionEmitConfirmDialog({
   linesLoading,
   linesError,
   itemIvaError = null,
+  receptorFiscalError = null,
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
@@ -101,21 +104,22 @@ export function FacturacionEmitConfirmDialog({
 
   useEffect(() => {
     if (!open) return
-    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit))
+    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id))
     setPadronDisplayName(null)
     setPadronVerifiedDigits(null)
   }, [open, billable?.key, selectedBillableKey])
 
   useEffect(() => {
     if (!open) return
-    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit))
-  }, [open, form.docTipo, form.docNro, cliente?.cuil_cuit, form])
+    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id))
+  }, [open, form.docTipo, form.docNro, cliente?.cuil_cuit, cliente?.primary_tax_id, form])
 
   const ventaDestinatario = buildVentaDestinatarioSnapshot(
     sale?.client_name,
     billable?.clientName,
     cliente?.cuil_cuit,
-    cliente?.tax_condition
+    cliente?.tax_condition,
+    cliente?.primary_tax_id
   )
 
   const linesSubtotal = lines.reduce((acc, l) => acc + l.subtotal, 0)
@@ -441,6 +445,10 @@ export function FacturacionEmitConfirmDialog({
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>
               </div>
 
+              {receptorFiscalError ? (
+                <Alert variant="destructive" title="Receptor fiscal incorrecto" description={receptorFiscalError} />
+              ) : null}
+
               {itemIvaError ? (
                 <Alert variant="destructive" title="No se puede emitir" description={itemIvaError} />
               ) : null}
@@ -475,7 +483,8 @@ export function FacturacionEmitConfirmDialog({
                 lines.length === 0 ||
                 cuitInvalid ||
                 padronPending ||
-                !!itemIvaError
+                !!itemIvaError ||
+                !!receptorFiscalError
               }
             >
               {isSubmitting ? (
