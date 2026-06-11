@@ -29,7 +29,7 @@ export interface PosCartItemRowProps {
   onSetUnitPrice: (lineKey: string, unit_price: number) => void
   onSetIvaRate: (lineKey: string, iva_rate: SaleIvaRate) => void
   onRemove: (lineKey: string) => void
-  /** Factura B/C: alícuota fija en 0% (exento). */
+  /** Factura C: alícuota fija en 0% (exento). */
   ivaRateDisabled?: boolean
 }
 

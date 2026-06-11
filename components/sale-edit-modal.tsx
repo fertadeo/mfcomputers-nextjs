@@ -517,8 +517,8 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                 {requiresZeroItemIva ? (
                   <Alert
                     variant="warning"
-                    title="Sin IVA discriminado"
-                    description="Este cliente recibe Factura B o C: los ítems deben estar al 0% (exento) para que ARCA acepte el comprobante."
+                    title="Factura C — sin IVA discriminado"
+                    description="Este cliente recibe Factura C: los ítems deben estar al 0% (exento) para que ARCA acepte el comprobante."
                   />
                 ) : null}
               </div>

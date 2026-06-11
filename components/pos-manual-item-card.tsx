@@ -25,7 +25,7 @@ export interface PosManualItemCardProps {
   disabled?: boolean
   addLabel?: string
   inputIdPrefix?: string
-  /** Factura B/C: solo permite ítems exentos (0%). */
+  /** Factura C: solo permite ítems exentos (0%). */
   lockIvaToZero?: boolean
 }
 

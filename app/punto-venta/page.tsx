@@ -746,7 +746,7 @@ export default function PuntoVentaPage() {
                   </p>
                   {requiresZeroItemIva ? (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
-                      Factura B/C: los ítems se registran sin IVA discriminado (0% exento) para evitar rechazo en ARCA.
+                      Factura C: los ítems deben ir al 0% (exento); ARCA no admite IVA discriminado en este comprobante.
                     </p>
                   ) : null}
                   {selectedClientId && (

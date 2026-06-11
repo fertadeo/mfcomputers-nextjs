@@ -77,14 +77,14 @@ export function labelCondicionIvaReceptor(codigo: number): string {
   return found?.label ?? `Condición ${codigo}`
 }
 
-/** Factura B/C (y NC asociadas): AFIP rechaza IVA discriminado por ítem en el payload. */
+/** Solo Factura C (y NC C): no admite IVA discriminado por ítem en el payload AFIP. Factura B sí puede llevarlo (opcional). */
 export function tipoComprobanteRequiresZeroItemIva(tipo: number): boolean {
-  return tipo === 6 || tipo === 11 || tipo === 8 || tipo === 13
+  return tipo === 11 || tipo === 13
 }
 
 /**
- * Consumidor final, monotributo y demás receptores de Factura B/C no admiten alícuota gravada en ítems.
- * Sin cliente se asume consumidor final → Factura B.
+ * Obligatorio IVA 0% solo para circuito Factura C (receptor monotributo o emisor monotributo).
+ * Consumidor final / Factura B: el IVA por ítem es opcional.
  */
 export function clienteRequiresZeroItemIva(cliente: Cliente | null): boolean {
   const tipo = resolveFacturacionDesdeCliente(cliente).tipoComprobante
@@ -111,5 +111,5 @@ export function validateFacturacionItemIva(
 ): string | null {
   if (!tipoComprobanteRequiresZeroItemIva(tipoComprobante)) return null
   if (!saleLinesHaveGravadoIva(lines)) return null
-  return "Esta venta tiene ítems con IVA gravado (21% o 10,5%), pero el comprobante es Factura B o C. Editá la venta y poné todos los ítems en 0% (exento) antes de facturar; ARCA rechazará el comprobante si se envía con IVA discriminado."
+  return "Esta venta tiene ítems con IVA gravado (21% o 10,5%), pero el comprobante es Factura C. Editá la venta y poné todos los ítems en 0% (exento) antes de facturar; ARCA rechazará el comprobante si se envía con IVA discriminado."
 }

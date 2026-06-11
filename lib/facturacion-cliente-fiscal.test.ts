@@ -21,19 +21,21 @@ function cliente(partial: Partial<Cliente> & Pick<Cliente, "id" | "name" | "code
 }
 
 describe("facturacion-cliente-fiscal — IVA por ítem", () => {
-  it("Factura B/C exigen ítems sin alícuota gravada", () => {
-    expect(tipoComprobanteRequiresZeroItemIva(6)).toBe(true)
+  it("solo Factura C exige ítems sin alícuota gravada", () => {
+    expect(tipoComprobanteRequiresZeroItemIva(6)).toBe(false)
+    expect(tipoComprobanteRequiresZeroItemIva(8)).toBe(false)
     expect(tipoComprobanteRequiresZeroItemIva(11)).toBe(true)
+    expect(tipoComprobanteRequiresZeroItemIva(13)).toBe(true)
     expect(tipoComprobanteRequiresZeroItemIva(1)).toBe(false)
   })
 
-  it("consumidor final y monotributo requieren IVA 0% en ítems", () => {
-    expect(clienteRequiresZeroItemIva(null)).toBe(true)
+  it("consumidor final (Factura B) permite IVA; monotributo (Factura C) no", () => {
+    expect(clienteRequiresZeroItemIva(null)).toBe(false)
     expect(
       clienteRequiresZeroItemIva(
         cliente({ id: 1, name: "CF", code: "C1", tax_condition: "consumidor_final" })
       )
-    ).toBe(true)
+    ).toBe(false)
     expect(
       clienteRequiresZeroItemIva(
         cliente({ id: 2, name: "Mono", code: "M1", tax_condition: "monotributo" })
@@ -46,20 +48,27 @@ describe("facturacion-cliente-fiscal — IVA por ítem", () => {
     ).toBe(false)
   })
 
-  it("effectiveSaleItemIvaRate fuerza 0% cuando el cliente es B/C", () => {
-    expect(effectiveSaleItemIvaRate(21, null)).toBe(0)
+  it("effectiveSaleItemIvaRate solo fuerza 0% en Factura C", () => {
+    expect(effectiveSaleItemIvaRate(21, null)).toBe(21)
     expect(
       effectiveSaleItemIvaRate(
         21,
-        cliente({ id: 1, name: "RI", code: "R1", tax_condition: "responsable_inscripto" })
+        cliente({ id: 1, name: "CF", code: "C1", tax_condition: "consumidor_final" })
       )
     ).toBe(21)
+    expect(
+      effectiveSaleItemIvaRate(
+        21,
+        cliente({ id: 2, name: "Mono", code: "M1", tax_condition: "monotributo" })
+      )
+    ).toBe(0)
   })
 
-  it("validateFacturacionItemIva detecta ítems gravados en Factura B", () => {
-    const err = validateFacturacionItemIva(6, [{ ivaRate: 21 }])
-    expect(err).toMatch(/ARCA rechazará/)
-    expect(validateFacturacionItemIva(6, [{ ivaRate: 0 }])).toBeNull()
+  it("validateFacturacionItemIva bloquea ítems gravados solo en Factura C", () => {
+    expect(validateFacturacionItemIva(6, [{ ivaRate: 21 }])).toBeNull()
+    const err = validateFacturacionItemIva(11, [{ ivaRate: 21 }])
+    expect(err).toMatch(/Factura C/)
+    expect(validateFacturacionItemIva(11, [{ ivaRate: 0 }])).toBeNull()
     expect(validateFacturacionItemIva(1, [{ ivaRate: 21 }])).toBeNull()
   })
 })

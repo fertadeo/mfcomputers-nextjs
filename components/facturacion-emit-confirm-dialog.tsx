@@ -59,7 +59,7 @@ export interface FacturacionEmitConfirmDialogProps {
   fechaCbte?: string | null
   linesLoading: boolean
   linesError: string | null
-  /** Factura B/C con ítems gravados: bloquear emisión. */
+  /** Factura C con ítems gravados: bloquear emisión. */
   itemIvaError?: string | null
   emisorCuitLabel: string
   isSubmitting: boolean
