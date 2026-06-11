@@ -7,6 +7,7 @@ import {
   formatNumeroComprobanteAfip,
   formatPuntoVentaAfip,
   getCodigoComprobanteAfip,
+  getComprobanteArcaTitulo,
   getLetraComprobanteAfip,
 } from "@/lib/facturacion-comprobantes"
 
@@ -39,6 +40,7 @@ export function ArcaInvoiceHeader({
 }: ArcaInvoiceHeaderProps) {
   const letra = comprobante.letra ?? getLetraComprobanteAfip(comprobante.tipo)
   const codigo = getCodigoComprobanteAfip(comprobante.tipo)
+  const titulo = getComprobanteArcaTitulo(comprobante.tipo)
   const cuit = String(emisor.cuit).replace(/\D/g, "")
 
   return (
@@ -131,8 +133,16 @@ export function ArcaInvoiceHeader({
         </div>
 
         <div style={{ borderTop: border, padding: "10px 10px 10px 8px" }}>
-          <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px", letterSpacing: "0.02em" }}>
-            FACTURA
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: titulo.length > 10 ? "11px" : "13px",
+              marginBottom: "4px",
+              letterSpacing: "0.02em",
+              lineHeight: 1.2,
+            }}
+          >
+            {titulo}
           </div>
           <LabelValue label="Punto de Venta: " value={formatPuntoVentaAfip(comprobante.puntoVenta)} />
           <LabelValue

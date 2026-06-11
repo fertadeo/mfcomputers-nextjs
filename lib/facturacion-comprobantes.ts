@@ -99,8 +99,26 @@ export function formatComprobanteAfipReferencia(
 /** Solo facturas (no notas de crédito) para badges en listados. */
 const FACTURA_TIPOS = [1, 6, 11] as const
 
+const NOTA_CREDITO_TIPOS = [3, 8, 13] as const
+
 export function isFacturaTipoAfip(tipo: number): boolean {
   return (FACTURA_TIPOS as readonly number[]).includes(tipo)
+}
+
+export function isNotaCreditoTipoAfip(tipo: number): boolean {
+  return (NOTA_CREDITO_TIPOS as readonly number[]).includes(tipo)
+}
+
+/** Título en cabecera ARCA (columna derecha del comprobante). */
+export function getComprobanteArcaTitulo(tipo: number): string {
+  const letra = getLetraComprobanteAfip(tipo)
+  if (isNotaCreditoTipoAfip(tipo)) {
+    return `NOTA DE CRÉDITO ${letra}`
+  }
+  if (isFacturaTipoAfip(tipo)) {
+    return `FACTURA ${letra}`
+  }
+  return "FACTURA"
 }
 
 export interface TipoComprobanteBadgeStyle {

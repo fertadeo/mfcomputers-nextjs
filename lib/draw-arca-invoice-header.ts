@@ -7,6 +7,7 @@ import { fmtDateAr } from "@/lib/arca-invoice-format"
 import {
   formatNumeroComprobanteAfip,
   formatPuntoVentaAfip,
+  getComprobanteArcaTitulo,
 } from "@/lib/facturacion-comprobantes"
 import type { FacturaCopia } from "@/lib/generate-arca-invoice-pdf"
 
@@ -56,11 +57,14 @@ export interface DrawArcaInvoiceHeaderArgs {
   comprobante: ArcaHeaderComprobante
   letra: string
   codigo: string
+  tipoComprobante: number
 }
 
 /** Dibuja la cabecera y devuelve la coordenada Y donde continúa el comprobante (bloque receptor). */
 export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
-  const { doc, margin, innerW, startY, copia, emisor, comprobante, letra, codigo } = args
+  const { doc, margin, innerW, startY, copia, emisor, comprobante, letra, codigo, tipoComprobante } =
+    args
+  const titulo = getComprobanteArcaTitulo(tipoComprobante)
   const centerX = margin + innerW / 2
   const sepY = startY + COPY_BAR_H
   const headerBottom = sepY + BODY_H
@@ -127,8 +131,8 @@ export function drawArcaInvoiceHeader(args: DrawArcaInvoiceHeaderArgs): number {
 
   let yR = textY0
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(12)
-  doc.text("FACTURA", rightX, yR)
+  doc.setFontSize(titulo.length > 10 ? 10 : 12)
+  doc.text(titulo, rightX, yR)
   yR += 4.8
   doc.setFontSize(8)
 

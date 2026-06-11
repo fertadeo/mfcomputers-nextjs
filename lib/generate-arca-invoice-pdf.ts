@@ -305,6 +305,7 @@ async function drawInvoicePage(
     comprobante: params.comprobante,
     letra,
     codigo,
+    tipoComprobante: params.comprobante.tipo,
   })
 
 
