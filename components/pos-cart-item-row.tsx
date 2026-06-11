@@ -29,6 +29,8 @@ export interface PosCartItemRowProps {
   onSetUnitPrice: (lineKey: string, unit_price: number) => void
   onSetIvaRate: (lineKey: string, iva_rate: SaleIvaRate) => void
   onRemove: (lineKey: string) => void
+  /** Factura B/C: alícuota fija en 0% (exento). */
+  ivaRateDisabled?: boolean
 }
 
 export function PosCartItemRow({
@@ -38,6 +40,7 @@ export function PosCartItemRow({
   onSetUnitPrice,
   onSetIvaRate,
   onRemove,
+  ivaRateDisabled = false,
 }: PosCartItemRowProps) {
   const lineKey = getPosCartLineKey(line)
   const label = getPosCartLineLabel(line)
@@ -82,6 +85,7 @@ export function PosCartItemRow({
       value={line.iva_rate}
       onChange={(rate) => onSetIvaRate(lineKey, rate)}
       size="sm"
+      disabled={ivaRateDisabled}
     />
   )
 

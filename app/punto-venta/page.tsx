@@ -53,6 +53,10 @@ import {
 import { posCartLinesToCreateSaleItems, posCartLinesToReceiptItems } from "@/lib/sale-items"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { PosCartItemRow } from "@/components/pos-cart-item-row"
+import {
+  clienteRequiresZeroItemIva,
+  effectiveSaleItemIvaRate,
+} from "@/lib/facturacion-cliente-fiscal"
 import { computeSaleIvaBreakdown, DEFAULT_SALE_IVA_RATE, productIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
 
 const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
@@ -77,6 +81,7 @@ export default function PuntoVentaPage() {
   const [clientSearch, setClientSearch] = useState("")
   const [clients, setClients] = useState<Cliente[]>([])
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("efectivo")
   const [paymentDetails, setPaymentDetails] = useState({ efectivo: 0, tarjeta: 0, transferencia: 0 })
   const [notes, setNotes] = useState("")
@@ -116,6 +121,20 @@ export default function PuntoVentaPage() {
       ),
     [cart]
   )
+
+  const requiresZeroItemIva = useMemo(
+    () => clienteRequiresZeroItemIva(selectedCliente),
+    [selectedCliente]
+  )
+
+  useEffect(() => {
+    if (!requiresZeroItemIva) return
+    setCart((prev) =>
+      prev.some((line) => line.iva_rate !== 0)
+        ? prev.map((line) => (line.iva_rate === 0 ? line : { ...line, iva_rate: 0 as SaleIvaRate }))
+        : prev
+    )
+  }, [requiresZeroItemIva, selectedCliente?.id])
 
   useEffect(() => {
     loadProducts()
@@ -243,7 +262,7 @@ export default function PuntoVentaPage() {
           product,
           quantity: Math.min(qty, maxQty),
           unit_price: product.price,
-          iva_rate: productIvaRate(product),
+          iva_rate: effectiveSaleItemIvaRate(productIvaRate(product), selectedCliente),
         },
       ]
     })
@@ -263,7 +282,7 @@ export default function PuntoVentaPage() {
         description: payload.description,
         quantity: payload.quantity,
         unit_price: payload.unit_price,
-        iva_rate: payload.iva_rate,
+        iva_rate: effectiveSaleItemIvaRate(payload.iva_rate, selectedCliente),
       },
     ])
     setError(null)
@@ -353,8 +372,8 @@ export default function PuntoVentaPage() {
         sale,
         cartItems: posCartLinesToReceiptItems(cartSnapshot),
         clientName: clientDisplay,
-        clientPhone: selectedClient?.phone ?? undefined,
-        clientAddress: selectedClient?.address ?? undefined,
+        clientPhone: selectedCliente?.phone ?? undefined,
+        clientAddress: selectedCliente?.address ?? undefined,
       })
       setCart([])
       setNotes("")
@@ -366,11 +385,8 @@ export default function PuntoVentaPage() {
     }
   }
 
-  const selectedClient = selectedClientId
-    ? clients.find((c) => c.id === selectedClientId)
-    : null
   const clientDisplay =
-    selectedClient?.name ?? (selectedClientId ? `Cliente #${selectedClientId}` : "Consumidor final")
+    selectedCliente?.name ?? (selectedClientId ? `Cliente #${selectedClientId}` : "Consumidor final")
 
   return (
     <Protected requiredRoles={["gerencia", "ventas", "admin"]}>
@@ -582,7 +598,11 @@ export default function PuntoVentaPage() {
                 </CardContent>
               </Card>
 
-              <PosManualItemCard onAdd={addCustomToCart} disabled={submitting} />
+              <PosManualItemCard
+                onAdd={addCustomToCart}
+                disabled={submitting}
+                lockIvaToZero={requiresZeroItemIva}
+              />
 
               <Card>
                 <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
@@ -651,6 +671,7 @@ export default function PuntoVentaPage() {
                           onSetUnitPrice={setCartUnitPrice}
                           onSetIvaRate={setCartIvaRate}
                           onRemove={removeFromCart}
+                          ivaRateDisabled={requiresZeroItemIva}
                         />
                       ))}
                     </div>
@@ -665,6 +686,7 @@ export default function PuntoVentaPage() {
                           onSetUnitPrice={setCartUnitPrice}
                           onSetIvaRate={setCartIvaRate}
                           onRemove={removeFromCart}
+                          ivaRateDisabled={requiresZeroItemIva}
                         />
                       ))}
                     </div>
@@ -693,7 +715,10 @@ export default function PuntoVentaPage() {
                     value={clientSearch}
                     onChange={(e) => {
                       setClientSearch(e.target.value)
-                      if (!e.target.value) setSelectedClientId(null)
+                      if (!e.target.value) {
+                        setSelectedClientId(null)
+                        setSelectedCliente(null)
+                      }
                     }}
                   />
                   {clients.length > 0 && (
@@ -705,6 +730,7 @@ export default function PuntoVentaPage() {
                             className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                             onClick={() => {
                               setSelectedClientId(c.id)
+                              setSelectedCliente(c)
                               setClientSearch(c.name)
                               setClients([])
                             }}
@@ -718,12 +744,18 @@ export default function PuntoVentaPage() {
                   <p className="text-xs text-muted-foreground">
                     Actual: <strong>{clientDisplay}</strong>
                   </p>
+                  {requiresZeroItemIva ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Factura B/C: los ítems se registran sin IVA discriminado (0% exento) para evitar rechazo en ARCA.
+                    </p>
+                  ) : null}
                   {selectedClientId && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => {
                         setSelectedClientId(null)
+                        setSelectedCliente(null)
                         setClientSearch("")
                       }}
                     >
@@ -1045,6 +1077,7 @@ export default function PuntoVentaPage() {
                               onSetUnitPrice={setCartUnitPrice}
                               onSetIvaRate={setCartIvaRate}
                               onRemove={removeFromCart}
+                              ivaRateDisabled={requiresZeroItemIva}
                             />
                           ))}
                         </tbody>

@@ -59,6 +59,8 @@ export interface FacturacionEmitConfirmDialogProps {
   fechaCbte?: string | null
   linesLoading: boolean
   linesError: string | null
+  /** Factura B/C con ítems gravados: bloquear emisión. */
+  itemIvaError?: string | null
   emisorCuitLabel: string
   isSubmitting: boolean
   onConfigure: () => void
@@ -83,6 +85,7 @@ export function FacturacionEmitConfirmDialog({
   fechaCbte,
   linesLoading,
   linesError,
+  itemIvaError = null,
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
@@ -438,6 +441,10 @@ export function FacturacionEmitConfirmDialog({
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>
               </div>
 
+              {itemIvaError ? (
+                <Alert variant="destructive" title="No se puede emitir" description={itemIvaError} />
+              ) : null}
+
               {form.force ? (
                 <Alert
                   variant="warning"
@@ -467,7 +474,8 @@ export function FacturacionEmitConfirmDialog({
                 linesLoading ||
                 lines.length === 0 ||
                 cuitInvalid ||
-                padronPending
+                padronPending ||
+                !!itemIvaError
               }
             >
               {isSubmitting ? (

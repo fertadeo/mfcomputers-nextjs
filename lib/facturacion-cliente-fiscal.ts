@@ -5,6 +5,7 @@ import {
   type ClientTaxCondition,
 } from "@/lib/client-tax-condition"
 import { CONDICIONES_IVA_RECEPTOR } from "@/lib/facturacion-comprobantes"
+import { normalizeSaleIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
 
 export type EmisorCondicionIva = "responsable_inscripto" | "monotributo"
 
@@ -74,4 +75,41 @@ export function resolveFacturacionDesdeCliente(cliente: Cliente | null): {
 export function labelCondicionIvaReceptor(codigo: number): string {
   const found = CONDICIONES_IVA_RECEPTOR.find((c) => c.value === codigo)
   return found?.label ?? `Condición ${codigo}`
+}
+
+/** Factura B/C (y NC asociadas): AFIP rechaza IVA discriminado por ítem en el payload. */
+export function tipoComprobanteRequiresZeroItemIva(tipo: number): boolean {
+  return tipo === 6 || tipo === 11 || tipo === 8 || tipo === 13
+}
+
+/**
+ * Consumidor final, monotributo y demás receptores de Factura B/C no admiten alícuota gravada en ítems.
+ * Sin cliente se asume consumidor final → Factura B.
+ */
+export function clienteRequiresZeroItemIva(cliente: Cliente | null): boolean {
+  const tipo = resolveFacturacionDesdeCliente(cliente).tipoComprobante
+  return tipoComprobanteRequiresZeroItemIva(tipo)
+}
+
+export function effectiveSaleItemIvaRate(
+  ivaRate: number | null | undefined,
+  cliente: Cliente | null
+): SaleIvaRate {
+  if (clienteRequiresZeroItemIva(cliente)) return 0
+  return normalizeSaleIvaRate(ivaRate)
+}
+
+export function saleLinesHaveGravadoIva(
+  lines: Array<{ iva_rate?: number | null; ivaRate?: number | null }>
+): boolean {
+  return lines.some((line) => normalizeSaleIvaRate(line.iva_rate ?? line.ivaRate) > 0)
+}
+
+export function validateFacturacionItemIva(
+  tipoComprobante: number,
+  lines: Array<{ iva_rate?: number | null; ivaRate?: number | null }>
+): string | null {
+  if (!tipoComprobanteRequiresZeroItemIva(tipoComprobante)) return null
+  if (!saleLinesHaveGravadoIva(lines)) return null
+  return "Esta venta tiene ítems con IVA gravado (21% o 10,5%), pero el comprobante es Factura B o C. Editá la venta y poné todos los ítems en 0% (exento) antes de facturar; ARCA rechazará el comprobante si se envía con IVA discriminado."
 }

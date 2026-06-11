@@ -82,6 +82,7 @@ import {
   labelCondicionIvaReceptor,
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
+  validateFacturacionItemIva,
 } from "@/lib/facturacion-cliente-fiscal"
 import type { ArcaPadronResult } from "@/lib/arca-padron"
 import {
@@ -450,6 +451,12 @@ export default function FacturacionPage() {
     setIsConfirmEmitOpen(true)
   }
 
+  const itemIvaValidationError = useMemo(() => {
+    if (!isConfirmEmitOpen || confirmLines.length === 0) return null
+    const tipo = form.tipo ?? resolveFacturacionDesdeCliente(modalCliente).tipoComprobante
+    return validateFacturacionItemIva(tipo, confirmLines)
+  }, [isConfirmEmitOpen, confirmLines, form.tipo, modalCliente])
+
   const startEmitFromTable = (rowKey: string) => {
     setSelectedBillableKey(rowKey)
     setInvoiceModalMode("emit")
@@ -659,6 +666,14 @@ export default function FacturacionPage() {
 
     if ((form.concepto === 2 || form.concepto === 3) && (!form.fechaServicioDesde || !form.fechaServicioHasta)) {
       setErrorMsg("Para concepto 2 o 3 tenés que indicar fecha de servicio desde y hasta (YYYY-MM-DD).")
+      return
+    }
+
+    const tipo = form.tipo ?? resolveFacturacionDesdeCliente(modalCliente).tipoComprobante
+    const ivaErr = validateFacturacionItemIva(tipo, confirmLines)
+    if (ivaErr) {
+      setErrorMsg(ivaErr)
+      setErrorTitle("IVA incompatible con el comprobante")
       return
     }
 
@@ -1487,6 +1502,7 @@ export default function FacturacionPage() {
             fechaCbte={confirmFechaCbte}
             linesLoading={confirmLinesLoading}
             linesError={confirmLinesError}
+            itemIvaError={itemIvaValidationError}
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
             onConfigure={() => setIsEmitModalOpen(true)}

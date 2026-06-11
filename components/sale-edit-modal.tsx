@@ -26,6 +26,7 @@ import { BudgetProductCatalog } from "@/components/budget-product-catalog"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { PosCartItemRow } from "@/components/pos-cart-item-row"
 import {
+  getClienteById,
   getClientes,
   getProductById,
   getProducts,
@@ -47,6 +48,10 @@ import {
   saleItemCatalogProductIds,
   saleItemsToPosCartLines,
 } from "@/lib/sale-items"
+import {
+  clienteRequiresZeroItemIva,
+  effectiveSaleItemIvaRate,
+} from "@/lib/facturacion-cliente-fiscal"
 import { computeSaleIvaBreakdown, productIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
 import { SaleEditConfirmDialog } from "@/components/sale-edit-confirm-dialog"
 import {
@@ -87,6 +92,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
   const [cart, setCart] = useState<PosCartLine[]>([])
   const [originalTotal, setOriginalTotal] = useState(0)
   const [clientId, setClientId] = useState<number | null>(null)
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [clientDisplayName, setClientDisplayName] = useState("Consumidor final")
   const [originalSnapshot, setOriginalSnapshot] = useState<SaleEditOriginalSnapshot | null>(null)
   const [clientSearch, setClientSearch] = useState("")
@@ -123,7 +129,13 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       setCart(initialCart)
       setOriginalTotal(s.total_amount)
       setClientId(s.client_id)
+      setSelectedCliente(null)
       setClientDisplayName(clientLabel)
+      if (s.client_id) {
+        void getClienteById(s.client_id)
+          .then((cliente) => setSelectedCliente(cliente))
+          .catch(() => setSelectedCliente(null))
+      }
       setOriginalSnapshot({
         clientId: s.client_id,
         clientLabel,
@@ -218,6 +230,20 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
     [cart]
   )
 
+  const requiresZeroItemIva = useMemo(
+    () => clienteRequiresZeroItemIva(selectedCliente),
+    [selectedCliente]
+  )
+
+  useEffect(() => {
+    if (!isOpen || !requiresZeroItemIva) return
+    setCart((prev) =>
+      prev.some((line) => line.iva_rate !== 0)
+        ? prev.map((line) => (line.iva_rate === 0 ? line : { ...line, iva_rate: 0 as SaleIvaRate }))
+        : prev
+    )
+  }, [isOpen, requiresZeroItemIva, selectedCliente?.id])
+
   const lineProductIds = useMemo(
     () =>
       cart
@@ -252,7 +278,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
           product: p,
           quantity: 1,
           unit_price: Number(p.price) || 0,
-          iva_rate: productIvaRate(p),
+          iva_rate: effectiveSaleItemIvaRate(productIvaRate(p), selectedCliente),
         },
       ])
     }
@@ -274,7 +300,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
         description: payload.description,
         quantity: payload.quantity,
         unit_price: payload.unit_price,
-        iva_rate: payload.iva_rate ?? 21,
+        iva_rate: effectiveSaleItemIvaRate(payload.iva_rate ?? 21, selectedCliente),
       },
     ])
     markDirty()
@@ -461,6 +487,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                           className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
                           onClick={() => {
                             setClientId(c.id)
+                            setSelectedCliente(c)
                             setClientDisplayName(c.name)
                             setClientSearch("")
                             setClients([])
@@ -487,6 +514,13 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                     </>
                   )}
                 </div>
+                {requiresZeroItemIva ? (
+                  <Alert
+                    variant="warning"
+                    title="Sin IVA discriminado"
+                    description="Este cliente recibe Factura B o C: los ítems deben estar al 0% (exento) para que ARCA acepte el comprobante."
+                  />
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -517,6 +551,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                   onAdd={addCustomLine}
                   addLabel="Agregar ítem manual"
                   inputIdPrefix="sale-edit-manual"
+                  lockIvaToZero={requiresZeroItemIva}
                 />
                 <div className="rounded-md border overflow-x-auto">
                   <table className="w-full text-sm min-w-[520px]">
@@ -548,6 +583,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                             onSetUnitPrice={setCartUnitPrice}
                             onSetIvaRate={setCartIvaRate}
                             onRemove={removeFromCart}
+                            ivaRateDisabled={requiresZeroItemIva}
                           />
                         ))
                       )}

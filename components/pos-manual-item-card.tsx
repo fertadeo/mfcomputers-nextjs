@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,8 @@ export interface PosManualItemCardProps {
   disabled?: boolean
   addLabel?: string
   inputIdPrefix?: string
+  /** Factura B/C: solo permite ítems exentos (0%). */
+  lockIvaToZero?: boolean
 }
 
 export function PosManualItemCard({
@@ -32,12 +34,17 @@ export function PosManualItemCard({
   disabled,
   addLabel = "Agregar al carrito",
   inputIdPrefix = "pos-manual",
+  lockIvaToZero = false,
 }: PosManualItemCardProps) {
   const [description, setDescription] = useState("")
   const [quantity, setQuantity] = useState("1")
   const [unitPrice, setUnitPrice] = useState(0)
-  const [ivaRate, setIvaRate] = useState<SaleIvaRate>(DEFAULT_SALE_IVA_RATE)
+  const [ivaRate, setIvaRate] = useState<SaleIvaRate>(lockIvaToZero ? 0 : DEFAULT_SALE_IVA_RATE)
   const [localError, setLocalError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (lockIvaToZero) setIvaRate(0)
+  }, [lockIvaToZero])
 
   function handleAdd() {
     const desc = description.trim()
@@ -55,11 +62,16 @@ export function PosManualItemCard({
       return
     }
     setLocalError(null)
-    onAdd({ description: desc, quantity: q, unit_price: unitPrice, iva_rate: ivaRate })
+    onAdd({
+      description: desc,
+      quantity: q,
+      unit_price: unitPrice,
+      iva_rate: lockIvaToZero ? 0 : ivaRate,
+    })
     setDescription("")
     setQuantity("1")
     setUnitPrice(0)
-    setIvaRate(DEFAULT_SALE_IVA_RATE)
+    setIvaRate(lockIvaToZero ? 0 : DEFAULT_SALE_IVA_RATE)
   }
 
   return (
@@ -119,9 +131,9 @@ export function PosManualItemCard({
             <Label htmlFor={`${inputIdPrefix}-iva`}>IVA</Label>
             <IvaRateSelect
               id={`${inputIdPrefix}-iva`}
-              value={ivaRate}
+              value={lockIvaToZero ? 0 : ivaRate}
               onChange={setIvaRate}
-              disabled={disabled}
+              disabled={disabled || lockIvaToZero}
             />
           </div>
         </div>

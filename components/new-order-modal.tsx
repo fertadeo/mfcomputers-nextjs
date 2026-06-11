@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,10 @@ import {
 } from "lucide-react"
 import { getClientes, type Cliente } from "@/lib/api"
 import { IvaRateSelect } from "@/components/iva-rate-select"
+import {
+  clienteRequiresZeroItemIva,
+  effectiveSaleItemIvaRate,
+} from "@/lib/facturacion-cliente-fiscal"
 import { computeSaleIvaBreakdown, DEFAULT_SALE_IVA_RATE, formatSaleIvaRateLabel, type SaleIvaRate } from "@/lib/sale-iva"
 
 interface NewOrderModalProps {
@@ -110,6 +114,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
   })
 
   const [items, setItems] = useState<OrderItem[]>([])
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
 
   // Cargar clientes al abrir el modal
   useEffect(() => {
@@ -157,6 +162,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
   }
 
   const handleClientSelect = (client: Cliente) => {
+    setSelectedCliente(client)
     setFormData(prev => ({ ...prev, client: client.name }))
     setClientSearch(client.name)
     setShowClientDropdown(false)
@@ -168,8 +174,24 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
     setShowClientDropdown(true)
     if (value !== formData.client) {
       setFormData(prev => ({ ...prev, client: "" }))
+      setSelectedCliente(null)
     }
   }
+
+  const requiresZeroItemIva = useMemo(
+    () => clienteRequiresZeroItemIva(selectedCliente),
+    [selectedCliente]
+  )
+
+  useEffect(() => {
+    if (!requiresZeroItemIva) return
+    setItems((prev) =>
+      prev.some((item) => item.ivaRate !== 0)
+        ? prev.map((item) => (item.ivaRate === 0 ? item : { ...item, ivaRate: 0 as SaleIvaRate }))
+        : prev
+    )
+    setCurrentItem((prev) => (prev.ivaRate === 0 ? prev : { ...prev, ivaRate: 0 }))
+  }, [requiresZeroItemIva, selectedCliente?.id])
 
   const handleInputChange = (field: keyof FormData, value: string | number | boolean) => {
     setFormData(prev => ({
@@ -198,7 +220,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
       product: currentItem.product,
       description: currentItem.description,
       quantity: currentItem.quantity,
-      ivaRate: currentItem.ivaRate,
+      ivaRate: effectiveSaleItemIvaRate(currentItem.ivaRate, selectedCliente),
       recovery: currentItem.recovery,
       unitPrice: currentItem.unitPrice,
       subtotal
@@ -211,7 +233,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
       product: "",
       description: "",
       quantity: 1,
-      ivaRate: DEFAULT_SALE_IVA_RATE,
+      ivaRate: requiresZeroItemIva ? 0 : DEFAULT_SALE_IVA_RATE,
       recovery: 0.0,
       unitPrice: 0
     })
@@ -315,6 +337,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
     })
     setClientSearch("")
     setShowClientDropdown(false)
+    setSelectedCliente(null)
     setError(null)
     setSuccess(false)
   }
@@ -618,8 +641,9 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Alícuota IVA</Label>
                     <IvaRateSelect
-                      value={currentItem.ivaRate}
+                      value={requiresZeroItemIva ? 0 : currentItem.ivaRate}
                       onChange={(rate) => handleItemChange("ivaRate", rate)}
+                      disabled={requiresZeroItemIva}
                     />
                   </div>
 
