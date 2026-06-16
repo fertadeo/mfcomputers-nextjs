@@ -775,7 +775,33 @@ export interface SaleItemResponse {
   total_price?: number
 }
 
-export interface SaleResponseData {
+/** Campos ARCA de factura original y nota de crédito (GET /api/sales) */
+export interface SaleArcaFields {
+  arca_status?: 'pending' | 'success' | 'error' | null
+  arca_factura_id?: string | null
+  arca_cae?: string | null
+  arca_cae_vto?: string | null
+  arca_tipo?: number | null
+  arca_punto_venta?: number | null
+  arca_numero?: number | null
+  arca_last_attempt_at?: string | null
+  arca_error_code?: string | null
+  arca_error_message?: string | null
+  arca_nc_status?: 'pending' | 'success' | 'error' | null
+  arca_nc_cae?: string | null
+  arca_nc_cae_vto?: string | null
+  arca_nc_factura_id?: string | null
+  arca_nc_tipo?: number | null
+  arca_nc_punto_venta?: number | null
+  arca_nc_numero?: number | null
+  arca_nc_motivo?: string | null
+  arca_nc_observaciones?: string | null
+  arca_nc_error_code?: string | null
+  arca_nc_error_message?: string | null
+  arca_nc_last_attempt_at?: string | null
+}
+
+export interface SaleResponseData extends SaleArcaFields {
   id: number
   sale_number: string
   client_id: number | null
@@ -786,7 +812,6 @@ export interface SaleResponseData {
   notes?: string | null
   sale_date: string
   sync_status?: string
-  arca_status?: 'pending' | 'success' | 'error' | null
   items: SaleItemResponse[]
   created_at: string
   updated_at: string
@@ -929,7 +954,7 @@ export async function updateSale(id: number, body: UpdateSaleRequest): Promise<S
 export type ApiErrorWithStatus = Error & { status?: number }
 
 /** Venta POS en listado (campos que devuelve GET /api/sales) */
-export interface Sale {
+export interface Sale extends SaleArcaFields {
   id: number
   sale_number: string
   client_id: number | null
@@ -938,13 +963,6 @@ export interface Sale {
   payment_method: SalePaymentMethod
   sale_date: string
   sync_status?: 'pending' | 'synced' | 'error'
-  arca_status?: 'pending' | 'success' | 'error' | null
-  arca_factura_id?: string | null
-  arca_cae?: string | null
-  arca_cae_vto?: string | null
-  arca_last_attempt_at?: string | null
-  arca_error_code?: string | null
-  arca_error_message?: string | null
   items?: SaleItemResponse[]
   created_at: string
   updated_at: string
@@ -1293,6 +1311,117 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
     emision,
     timestamp: data?.timestamp,
   })
+
+  return data
+}
+
+export type NotaCreditoMotivo = 'error_emision' | 'devolucion' | 'descuento' | 'otro'
+
+export interface EmitirNotaCreditoRequest {
+  confirmar: boolean
+  motivo?: NotaCreditoMotivo
+  observaciones?: string
+  importe?: number | null
+  puntoVenta?: number
+  cuitEmisor?: number
+}
+
+export interface NotaCreditoEmisionData {
+  cae?: string
+  vencimientoCae?: string
+  vencimientoCaeIso?: string
+  tipo?: number
+  puntoVenta?: number
+  numero?: number
+  facturaId?: string
+  cbtesAsoc?: Array<{ tipo: number; ptoVta: number; nro: number }>
+  idempotencyKey?: string
+  response?: unknown
+}
+
+export interface EmitirNotaCreditoResponseData {
+  sale?: Sale
+  notaCredito?: NotaCreditoEmisionData
+  code?: string
+  status?: number
+  retryAfter?: number | string | null
+  requestId?: string | null
+}
+
+export interface EmitirNotaCreditoResponse {
+  success: boolean
+  message: string
+  data?: EmitirNotaCreditoResponseData
+  error?: string
+  timestamp?: string
+}
+
+export type EmitirNotaCreditoError = Error & {
+  status?: number
+  code?: string
+  data?: EmitirNotaCreditoResponseData
+  facturacionError?: import('@/lib/facturacion-errors').FacturacionErrorInfo
+}
+
+/**
+ * Emite nota de crédito ARCA para una venta ya facturada (POST /api/sales/:id/nota-credito).
+ */
+export async function emitirNotaCreditoSale(
+  id: number,
+  body: EmitirNotaCreditoRequest
+): Promise<EmitirNotaCreditoResponse> {
+  const apiUrl = getApiUrl()
+  const headers: HeadersInit = { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+
+  if (typeof window !== 'undefined') {
+    const apiKey = localStorage.getItem('posApiKey') || localStorage.getItem('apiKey')
+    if (apiKey) (headers as Record<string, string>)['x-api-key'] = apiKey
+    const facturadorKey = getStoredFacturadorApiKey()
+    if (facturadorKey) {
+      ;(headers as Record<string, string>)['x-facturador-api-key'] = facturadorKey
+    }
+  }
+
+  const url = `${apiUrl}sales/${id}/nota-credito`
+  const bodySerialized = JSON.stringify(body)
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: bodySerialized,
+  })
+
+  const rawText = await response.text()
+  let data = {} as EmitirNotaCreditoResponse
+  try {
+    if (rawText) data = JSON.parse(rawText) as EmitirNotaCreditoResponse
+  } catch {
+    /* respuesta no JSON */
+  }
+
+  if (!response.ok) {
+    const extracted = extractFacturacionErrorFromPayload(data, response.status)
+    const resolved = resolveFacturacionError({
+      code: extracted.code ?? (data?.data?.code != null ? String(data.data.code) : undefined),
+      httpStatus: response.status,
+      rawMessage: extracted.message ?? data?.message ?? data?.error,
+      requestId: extracted.requestId,
+      sugerencias: extracted.sugerencias,
+    })
+    const msg = formatFacturacionErrorForUi(resolved, extracted.requestId)
+    const err = new Error(msg) as EmitirNotaCreditoError
+    err.status = response.status
+    err.code = resolved.code
+    err.data = data?.data
+    err.facturacionError = resolved
+    if (response.status === 401) logout()
+    throw err
+  }
+
+  const ncCae = data?.data?.notaCredito?.cae ?? data?.data?.sale?.arca_nc_cae
+  if (!ncCae?.trim()) {
+    throw new Error(data?.message || 'La nota de crédito no devolvió CAE válido.')
+  }
 
   return data
 }

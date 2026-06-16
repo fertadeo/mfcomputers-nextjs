@@ -29,6 +29,7 @@ import {
   Send,
 } from "lucide-react"
 import {
+  emitirNotaCreditoSale,
   facturarSale,
   getClienteById,
   getFacturarSugerencia,
@@ -37,6 +38,7 @@ import {
   getSales,
   resolveSaleIdForRepairOrderFacturacion,
   type Cliente,
+  type EmitirNotaCreditoError,
   type FacturarSaleRequest,
   type FacturarSaleError,
   type RepairOrder,
@@ -56,13 +58,15 @@ import {
   buildArcaInvoicePdfInputFromPreviewLines,
 } from "@/lib/build-arca-invoice-pdf-input"
 import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
-import { fetchSaleArcaEmision } from "@/lib/fetch-sale-arca-emision"
+import { fetchSaleArcaEmision, type ResolvedSaleArcaEmision } from "@/lib/fetch-sale-arca-emision"
 import {
   buildDefaultFacturarFormRequest,
   getEmitirConDefaultsGuardados,
   getStoredFacturacionCuitEmisor,
+  getStoredFacturacionPuntoVenta,
   saveFacturacionFormDefaults,
 } from "@/lib/facturacion-settings"
+import { canEmitNotaCredito, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
 import {
   CONDICIONES_IVA_RECEPTOR,
   formatComprobanteAfipReferencia,
@@ -166,7 +170,9 @@ function formatCuitMostrar(raw?: string | null): string {
 
 function getBillableEmittedTipo(row: BillableRow): number | null {
   if (row.arcaStatus !== "success") return null
-  const saleId = row.sale?.id ?? row.linkedSaleId ?? null
+  const sale = row.sale
+  if (sale?.arca_tipo != null && Number.isFinite(sale.arca_tipo)) return sale.arca_tipo
+  const saleId = sale?.id ?? row.linkedSaleId ?? null
   if (!saleId) return null
   const cached = getCachedFacturacionEmision(saleId)
   const tipo = cached?.emision?.tipo ?? cached?.facturarPayload?.tipo
@@ -193,9 +199,13 @@ export default function FacturacionPage() {
   const [defaultsSavedHint, setDefaultsSavedHint] = useState(false)
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
   const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
+  const [creditNoteArcaResolved, setCreditNoteArcaResolved] = useState<ResolvedSaleArcaEmision | null>(null)
   const [creditNoteArcaPreview, setCreditNoteArcaPreview] = useState<GenerateArcaInvoicePdfParams | null>(null)
   const [creditNoteArcaLoading, setCreditNoteArcaLoading] = useState(false)
   const [creditNoteArcaError, setCreditNoteArcaError] = useState<string | null>(null)
+  const [creditNoteSubmitting, setCreditNoteSubmitting] = useState(false)
+  const [creditNoteEmitError, setCreditNoteEmitError] = useState<string | null>(null)
+  const [creditNoteEmitSuccess, setCreditNoteEmitSuccess] = useState<string | null>(null)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
@@ -250,22 +260,56 @@ export default function FacturacionPage() {
   const creditNotePreview = useMemo(() => {
     if (!creditNoteSale) return null
     const cached = getCachedFacturacionEmision(creditNoteSale.id)
+    const resolved = creditNoteArcaResolved
     const tipoFactura =
-      cached?.emision.tipo ?? cached?.facturarPayload.tipo ?? buildDefaultFacturarFormRequest().tipo ?? 6
+      creditNoteSale.arca_tipo ??
+      resolved?.emision.tipo ??
+      cached?.emision.tipo ??
+      cached?.facturarPayload.tipo ??
+      buildDefaultFacturarFormRequest().tipo ??
+      6
     const ncTipo = getNotaCreditoTipoForFactura(tipoFactura)
-    const pv = cached?.emision.puntoVenta ?? cached?.facturarPayload.puntoVenta
-    const numero = cached?.emision.numero
+    const pv =
+      creditNoteSale.arca_punto_venta ??
+      resolved?.emision.puntoVenta ??
+      cached?.emision.puntoVenta ??
+      cached?.facturarPayload.puntoVenta ??
+      getStoredFacturacionPuntoVenta() ??
+      undefined
+    const numero =
+      creditNoteSale.arca_numero ??
+      resolved?.emision.numero ??
+      cached?.emision.numero ??
+      undefined
     return {
       cached,
+      resolved,
       tipoFactura,
       ncTipo,
       ncLabel: ncTipo != null ? getTipoComprobanteLabel(ncTipo) : null,
       facturaRef:
-        numero != null
-          ? formatComprobanteAfipReferencia(tipoFactura, pv, numero)
-          : null,
-      importe: cached?.emision.importe ?? creditNoteSale.total_amount,
-      cae: creditNoteSale.arca_cae ?? cached?.emision.cae,
+        numero != null ? formatComprobanteAfipReferencia(tipoFactura, pv, numero) : null,
+      importe: resolved?.emision.importe ?? cached?.emision.importe ?? creditNoteSale.total_amount,
+      cae: creditNoteSale.arca_cae ?? resolved?.emision.cae ?? cached?.emision.cae,
+      fechaEmision:
+        resolved?.emision.fechaEmision ??
+        (creditNoteSale.sale_date ? String(creditNoteSale.sale_date).slice(0, 10) : null),
+    }
+  }, [creditNoteSale, creditNoteArcaResolved])
+
+  useEffect(() => {
+    if (!creditNoteSale) {
+      setCreditNoteArcaResolved(null)
+      setCreditNoteEmitError(null)
+      setCreditNoteEmitSuccess(null)
+      return
+    }
+    let cancelled = false
+    void fetchSaleArcaEmision(creditNoteSale).then((resolved) => {
+      if (!cancelled) setCreditNoteArcaResolved(resolved)
+    })
+    return () => {
+      cancelled = true
     }
   }, [creditNoteSale])
 
@@ -301,16 +345,19 @@ export default function FacturacionPage() {
         }
 
         const facturarPayload =
-          creditNotePreview.cached?.facturarPayload ?? buildDefaultFacturarFormRequest()
+          creditNotePreview.resolved?.facturarPayload ??
+          creditNotePreview.cached?.facturarPayload ??
+          buildDefaultFacturarFormRequest()
 
         const preview = buildArcaInvoicePdfInputFromPreviewLines({
           facturarPayload,
           lines: items,
           receptorRazonSocial: cliente?.name ?? sale.client_name ?? "Consumidor final",
           cliente,
-          fechaEmision: new Date().toISOString().slice(0, 10),
+          fechaEmision:
+            creditNotePreview.fechaEmision ?? new Date().toISOString().slice(0, 10),
           totalAmount: creditNotePreview.importe,
-          tipoComprobante: creditNotePreview.ncTipo,
+          tipoComprobante: creditNotePreview.ncTipo!,
           previewAviso: creditNotePreview.facturaRef
             ? `Anula comprobante ${creditNotePreview.facturaRef}`
             : "Nota de crédito — borrador previo a emisión",
@@ -379,6 +426,40 @@ export default function FacturacionPage() {
   useEffect(() => {
     void loadBillables()
   }, [])
+
+  const handleEmitCreditNote = async () => {
+    if (!creditNoteSale) return
+    setCreditNoteSubmitting(true)
+    setCreditNoteEmitError(null)
+    setCreditNoteEmitSuccess(null)
+    try {
+      const puntoVenta = getStoredFacturacionPuntoVenta()
+      const res = await emitirNotaCreditoSale(creditNoteSale.id, {
+        motivo: "error_emision",
+        confirmar: true,
+        observaciones: "Factura emitida por error operativo",
+        ...(puntoVenta != null ? { puntoVenta } : {}),
+      })
+      const nc = res.data?.notaCredito
+      const ncRef =
+        nc?.tipo != null && nc?.puntoVenta != null && nc?.numero != null
+          ? formatComprobanteAfipReferencia(nc.tipo, nc.puntoVenta, nc.numero)
+          : null
+      const cae = nc?.cae ?? res.data?.sale?.arca_nc_cae ?? "—"
+      setCreditNoteEmitSuccess(
+        ncRef
+          ? `Nota de crédito ${ncRef} emitida. CAE: ${cae}`
+          : `Nota de crédito emitida. CAE: ${cae}`
+      )
+      if (res.data?.sale) setCreditNoteSale(res.data.sale)
+      await loadBillables()
+    } catch (e) {
+      const err = e as EmitirNotaCreditoError
+      setCreditNoteEmitError(err.message || "No se pudo emitir la nota de crédito.")
+    } finally {
+      setCreditNoteSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     if (
@@ -1014,6 +1095,16 @@ export default function FacturacionPage() {
                           <TableCell className="whitespace-normal">
                             <div className="space-y-1">
                               <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
+                              {row.arcaNcStatus === "success" || (row.sale && saleHasNotaCreditoEmitida(row.sale)) ? (
+                                <Badge variant="outline" className="text-xs font-normal text-amber-800 dark:text-amber-300">
+                                  Anulada por NC
+                                  {row.arcaNcCae ? ` · CAE ${row.arcaNcCae}` : ""}
+                                </Badge>
+                              ) : row.arcaNcStatus === "error" && row.sale?.arca_nc_error_message ? (
+                                <p className="text-muted-foreground max-w-[220px] text-xs leading-snug">
+                                  NC: {row.sale.arca_nc_error_message}
+                                </p>
+                              ) : null}
                               {status === "error" && (row.arcaErrorCode || row.arcaErrorMessage) ? (
                                 <p
                                   className="text-muted-foreground max-w-[220px] text-xs leading-snug"
@@ -1063,7 +1154,7 @@ export default function FacturacionPage() {
                                 >
                                   Reemitir
                                 </Button>
-                                {row.sale ? (
+                                {row.sale && canEmitNotaCredito(row.sale) ? (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -1639,18 +1730,24 @@ export default function FacturacionPage() {
                     defaultOpen
                   />
 
-                  <Alert
-                    variant="info"
-                    title="Próximo paso: backend"
-                    description={
-                      <>
-                        Pedí al equipo MF API el endpoint{" "}
-                        <code className="rounded bg-muted px-1 text-xs">POST /api/sales/:id/nota-credito</code>.
-                        Especificación en{" "}
-                        <code className="rounded bg-muted px-1 text-xs">docs/nota-credito-arca-backend.md</code>.
-                      </>
-                    }
-                  />
+                  {creditNoteEmitSuccess ? (
+                    <Alert variant="success" title="Nota de crédito emitida" description={creditNoteEmitSuccess} />
+                  ) : null}
+                  {creditNoteEmitError ? (
+                    <Alert variant="error" title="Error al emitir NC" description={creditNoteEmitError} />
+                  ) : null}
+
+                  {saleHasNotaCreditoEmitida(creditNoteSale) ? (
+                    <Alert
+                      variant="info"
+                      title="Nota de crédito ya emitida"
+                      description={
+                        creditNoteSale.arca_nc_cae
+                          ? `CAE NC: ${creditNoteSale.arca_nc_cae}`
+                          : "Esta venta ya tiene una nota de crédito registrada."
+                      }
+                    />
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1658,8 +1755,24 @@ export default function FacturacionPage() {
                 <Button variant="outline" onClick={() => setCreditNoteSale(null)}>
                   Cerrar
                 </Button>
-                <Button disabled title="Disponible cuando MF API implemente POST /api/sales/:id/nota-credito">
-                  Emitir nota de crédito
+                <Button
+                  disabled={
+                    creditNoteSubmitting ||
+                    creditNoteArcaLoading ||
+                    !creditNoteSale ||
+                    !canEmitNotaCredito(creditNoteSale) ||
+                    creditNotePreview?.ncTipo == null
+                  }
+                  onClick={() => void handleEmitCreditNote()}
+                >
+                  {creditNoteSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Emitiendo…
+                    </>
+                  ) : (
+                    "Emitir nota de crédito"
+                  )}
                 </Button>
               </DialogFooter>
             </DialogContent>

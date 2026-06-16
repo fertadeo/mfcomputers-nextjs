@@ -22,6 +22,9 @@ export interface BillableRow {
   arcaErrorCode?: string | null
   arcaErrorMessage?: string | null
   arcaLastAttemptAt?: string | null
+  arcaNcStatus?: "pending" | "success" | "error" | null
+  arcaNcCae?: string | null
+  arcaNcNumero?: number | null
   sale?: Sale
   repairOrder?: RepairOrder
   linkedSaleId?: number | null
@@ -77,6 +80,9 @@ export function saleToBillable(sale: Sale): BillableRow {
     arcaErrorCode: sale.arca_error_code,
     arcaErrorMessage: sale.arca_error_message,
     arcaLastAttemptAt: sale.arca_last_attempt_at,
+    arcaNcStatus: sale.arca_nc_status ?? null,
+    arcaNcCae: sale.arca_nc_cae ?? null,
+    arcaNcNumero: sale.arca_nc_numero ?? null,
     sale,
     linkedSaleId: sale.id,
   }
