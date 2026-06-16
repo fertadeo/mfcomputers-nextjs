@@ -18,8 +18,24 @@ export function clienteTieneDatosFiscalesErp(cliente?: Cliente | null): boolean 
   return false
 }
 
+/** docTipo 80 + condición 5 es rechazado por AFIP (causa frecuente al cargar CUIT/CUIL). */
+export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest): string | null {
+  const docTipo = payload.docTipo ?? 99
+  const docNro = payload.docNro ?? 0
+  const condicion = payload.condicionIvaReceptor ?? 5
+
+  if (docTipo === 80 && docNro > 0 && condicion === 5) {
+    return "Con CUIT/CUIL en el comprobante (docTipo 80) AFIP no acepta condición «Consumidor final» (5). Consultá el padrón ARCA en la confirmación o completá la condición IVA del cliente en el ERP (monotributo, RI, exento, etc.)."
+  }
+
+  return null
+}
+
 /** Evita combinaciones inválidas (ej. Factura A + consumidor final sin CUIT). */
 export function validateFacturarPayloadCoherence(payload: FacturarSaleRequest): string | null {
+  const docCondicionErr = validateReceptorDocumentoCondicion(payload)
+  if (docCondicionErr) return docCondicionErr
+
   const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
   const condicion = payload.condicionIvaReceptor ?? 5
   const docTipo = payload.docTipo ?? 99
@@ -185,6 +201,18 @@ export function validateFacturarReceptorFiscal(
     const enviada = payload.condicionIvaReceptor ?? 5
     if (esperada !== 5 && enviada === 5 && cuit.length === 11) {
       return `La condición IVA del cliente no es consumidor final, pero el comprobante se enviaría como condición ${enviada}. Revisá los datos fiscales del cliente antes de emitir.`
+    }
+
+    const tieneCondicionEnErp =
+      normalizeTaxConditionFromApi(cliente.tax_condition) != null ||
+      (cliente.condicion_iva_receptor != null && cliente.condicion_iva_receptor > 0)
+    if (
+      cuit.length === 11 &&
+      !tieneCondicionEnErp &&
+      cliente.personeria !== "persona_juridica" &&
+      (payload.docTipo ?? 99) === 80
+    ) {
+      return "El cliente tiene CUIT/CUIL pero falta la condición IVA en el ERP. Editá el cliente, consultá padrón ARCA en la confirmación, o verificá que la condición fiscal sea la correcta antes de emitir."
     }
   }
 

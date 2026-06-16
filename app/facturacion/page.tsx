@@ -83,10 +83,11 @@ import {
   resolveFacturacionErrorFromSale,
   type FacturacionErrorInfo,
 } from "@/lib/facturacion-errors"
+import { resolveFacturacionApiError } from "@/lib/resolve-facturacion-api-error"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
-import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
+import { FacturacionErrorAlert } from "@/components/facturacion-error-alert"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import {
@@ -209,6 +210,7 @@ export default function FacturacionPage() {
   const [creditNoteArcaError, setCreditNoteArcaError] = useState<string | null>(null)
   const [creditNoteSubmitting, setCreditNoteSubmitting] = useState(false)
   const [creditNoteEmitError, setCreditNoteEmitError] = useState<string | null>(null)
+  const [creditNoteErrorDetail, setCreditNoteErrorDetail] = useState<FacturacionErrorInfo | null>(null)
   const [creditNoteEmitSuccess, setCreditNoteEmitSuccess] = useState<string | null>(null)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
@@ -306,6 +308,7 @@ export default function FacturacionPage() {
     if (!creditNoteSale) {
       setCreditNoteArcaResolved(null)
       setCreditNoteEmitError(null)
+      setCreditNoteErrorDetail(null)
       setCreditNoteEmitSuccess(null)
       return
     }
@@ -436,6 +439,7 @@ export default function FacturacionPage() {
     if (!creditNoteSale) return
     setCreditNoteSubmitting(true)
     setCreditNoteEmitError(null)
+    setCreditNoteErrorDetail(null)
     setCreditNoteEmitSuccess(null)
     try {
       const puntoVenta = getStoredFacturacionPuntoVenta()
@@ -472,7 +476,17 @@ export default function FacturacionPage() {
       }
     } catch (e) {
       const err = e as EmitirNotaCreditoError
-      setCreditNoteEmitError(err.message || "No se pudo emitir la nota de crédito.")
+      const resolved = resolveFacturacionApiError(err)
+      setCreditNoteErrorDetail(resolved)
+      setCreditNoteEmitError(formatFacturacionErrorForUi(resolved, err.requestId))
+      console.error("[FACTURAR UI] Error al emitir nota de crédito:", {
+        message: err.message,
+        status: err.status,
+        code: resolved.code,
+        diagnosis: resolved.diagnosis,
+        remoteDetail: resolved.remoteDetail,
+        data: err.data,
+      })
     } finally {
       setCreditNoteSubmitting(false)
     }
@@ -940,14 +954,11 @@ export default function FacturacionPage() {
         err?.name === "TypeError" ||
         /failed to fetch|network|load failed/i.test(String(err?.message ?? ""))
 
-      const resolved =
-        err?.facturacionError ??
-        resolveFacturacionError({
-          code: isNetwork ? "NETWORK_ERROR" : err?.code,
-          httpStatus: err?.status,
-          rawMessage: err?.message,
-          requestId: err?.requestId,
-        })
+      const payloadAttempt = buildFacturarPayload(form, modalCliente)
+      const resolved = resolveFacturacionApiError(err, {
+        isNetwork,
+        payload: payloadAttempt,
+      })
 
       console.error("[FACTURAR UI] Error al emitir comprobante:", {
         message: err?.message,
@@ -957,9 +968,14 @@ export default function FacturacionPage() {
         retryAfter: err?.retryAfter,
         requestId: err?.requestId,
         facturacionError: resolved,
+        diagnosis: resolved.diagnosis,
+        receptorContext: resolved.receptorContext,
+        remoteDetail: resolved.remoteDetail,
+        issues: resolved.issues,
         data: err?.data,
         responsePayload: err?.responsePayload,
         rawResponseText: err?.rawResponseText,
+        payloadEnviado: payloadAttempt,
         stack: err?.stack,
       })
 
@@ -1040,23 +1056,17 @@ export default function FacturacionPage() {
             </Card>
           </div>
 
-          {errorMsg ? (
+          {errorMsg && errorDetail ? (
+            <FacturacionErrorAlert
+              info={errorDetail}
+              title={errorTitle ?? undefined}
+              requestId={undefined}
+            />
+          ) : errorMsg ? (
             <Alert
-              variant={errorDetail?.severity === "warning" ? "warning" : "error"}
+              variant="error"
               title={errorTitle ?? "No se pudo completar la facturación"}
-              description={
-                <span className="block space-y-2">
-                  <span className="block">{errorMsg}</span>
-                  {errorDetail?.code ? (
-                    <span className="text-muted-foreground block text-xs font-mono">Código: {errorDetail.code}</span>
-                  ) : null}
-                  {errorDetail?.blockBlindReemit ? (
-                    <span className="block text-xs font-medium">
-                      No reemitas con un número nuevo hasta reconciliar con soporte o MultiCUIT.
-                    </span>
-                  ) : null}
-                </span>
-              }
+              description={errorMsg}
             />
           ) : null}
           {retryAfterHint ? <Alert variant="warning" title="Backoff recomendado" description={retryAfterHint} /> : null}
@@ -1398,12 +1408,10 @@ export default function FacturacionPage() {
                     />
                   ) : null}
 
-                  {errorMsg && isEmitModalOpen ? (
-                    <Alert
-                      variant={errorDetail?.severity === "warning" ? "warning" : "error"}
-                      title={errorTitle ?? "Error al facturar"}
-                      description={errorMsg}
-                    />
+                  {errorMsg && isEmitModalOpen && errorDetail ? (
+                    <FacturacionErrorAlert info={errorDetail} title={errorTitle ?? "Error al facturar"} />
+                  ) : errorMsg && isEmitModalOpen ? (
+                    <Alert variant="error" title={errorTitle ?? "Error al facturar"} description={errorMsg} />
                   ) : null}
 
                   {modalClienteLoading ? (
@@ -1783,7 +1791,9 @@ export default function FacturacionPage() {
                   {creditNoteEmitSuccess ? (
                     <Alert variant="success" title="Nota de crédito emitida" description={creditNoteEmitSuccess} />
                   ) : null}
-                  {creditNoteEmitError ? (
+                  {creditNoteEmitError && creditNoteErrorDetail ? (
+                    <FacturacionErrorAlert info={creditNoteErrorDetail} title="Error al emitir NC" />
+                  ) : creditNoteEmitError ? (
                     <Alert variant="error" title="Error al emitir NC" description={creditNoteEmitError} />
                   ) : null}
 

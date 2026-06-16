@@ -7,8 +7,10 @@ import {
   formatFacturacionErrorForUi,
   isCaeValido,
   resolveFacturacionError,
+  resolveFacturacionErrorFromExtracted,
   type FacturacionErrorInfo,
 } from '@/lib/facturacion-errors';
+import { labelCondicionIvaReceptor } from '@/lib/facturacion-cliente-fiscal';
 import {
   formatArcaPadronError,
   normalizeArcaPadronPayload,
@@ -1257,18 +1259,32 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
     })
   }
 
-  if (!response.ok) {
+  if (!response.ok || data.success === false) {
     const extracted = extractFacturacionErrorFromPayload(data, response.status)
-    const resolved = resolveFacturacionError({
-      code: extracted.code ?? (data?.data?.code != null ? String(data.data.code) : undefined),
-      httpStatus: response.status,
-      rawMessage: extracted.message ?? data?.message ?? data?.error,
-      requestId: extracted.requestId,
-      sugerencias: extracted.sugerencias,
-    })
+    const extractedWithPayload = {
+      ...extracted,
+      docTipo: extracted.docTipo ?? bodyMerged.docTipo,
+      docNro: extracted.docNro ?? bodyMerged.docNro,
+      condicionIvaReceptor: extracted.condicionIvaReceptor ?? bodyMerged.condicionIvaReceptor,
+      tipoComprobante: extracted.tipoComprobante ?? bodyMerged.tipo,
+    }
+    const resolved = resolveFacturacionErrorFromExtracted(
+      extractedWithPayload,
+      response.ok ? (data?.data?.status as number | undefined) ?? 400 : response.status
+    )
+    if (!resolved.receptorContext) {
+      const condicion = bodyMerged.condicionIvaReceptor
+      resolved.receptorContext = {
+        docTipo: bodyMerged.docTipo,
+        docNro: bodyMerged.docNro,
+        condicionIvaReceptor: condicion,
+        condicionLabel: condicion != null ? labelCondicionIvaReceptor(condicion) : undefined,
+        tipoComprobante: bodyMerged.tipo,
+      }
+    }
     const msg = formatFacturacionErrorForUi(resolved, extracted.requestId)
     const err = new Error(msg) as FacturarSaleError
-    err.status = response.status
+    err.status = response.ok ? (data?.data?.status as number | undefined) ?? 400 : response.status
     err.code = resolved.code
     err.retryAfter = data?.data?.retryAfter
     err.requestId = extracted.requestId
@@ -1278,13 +1294,17 @@ export async function facturarSale(id: number, body: FacturarSaleRequest): Promi
     err.facturacionError = resolved
 
     console.error('[FACTURAR] Error HTTP:', {
-      status: response.status,
+      status: err.status,
       statusText: response.statusText,
       url,
       saleId: id,
       code: resolved.code,
       message: msg,
       requestId: extracted.requestId,
+      diagnosis: resolved.diagnosis,
+      receptorContext: resolved.receptorContext,
+      remoteDetail: resolved.remoteDetail,
+      issues: resolved.issues,
       bodyEnviado: bodyMerged,
       bodyEnviadoJson: bodySerialized,
       respuestaParseada: data,
@@ -1362,7 +1382,9 @@ export interface EmitirNotaCreditoResponse {
 export type EmitirNotaCreditoError = Error & {
   status?: number
   code?: string
+  requestId?: string
   data?: EmitirNotaCreditoResponseData
+  responsePayload?: EmitirNotaCreditoResponse | Record<string, unknown>
   facturacionError?: import('@/lib/facturacion-errors').FacturacionErrorInfo
 }
 
@@ -1402,21 +1424,30 @@ export async function emitirNotaCreditoSale(
     /* respuesta no JSON */
   }
 
-  if (!response.ok) {
+  if (!response.ok || data.success === false) {
     const extracted = extractFacturacionErrorFromPayload(data, response.status)
-    const resolved = resolveFacturacionError({
-      code: extracted.code ?? (data?.data?.code != null ? String(data.data.code) : undefined),
-      httpStatus: response.status,
-      rawMessage: extracted.message ?? data?.message ?? data?.error,
-      requestId: extracted.requestId,
-      sugerencias: extracted.sugerencias,
-    })
+    const resolved = resolveFacturacionErrorFromExtracted(
+      extracted,
+      response.ok ? (data?.data?.status as number | undefined) ?? 400 : response.status
+    )
     const msg = formatFacturacionErrorForUi(resolved, extracted.requestId)
     const err = new Error(msg) as EmitirNotaCreditoError
-    err.status = response.status
+    err.status = response.ok ? (data?.data?.status as number | undefined) ?? 400 : response.status
     err.code = resolved.code
+    err.requestId = extracted.requestId
     err.data = data?.data
+    err.responsePayload = data
     err.facturacionError = resolved
+
+    console.error('[NOTA CREDITO] Error:', {
+      status: err.status,
+      saleId: id,
+      code: resolved.code,
+      diagnosis: resolved.diagnosis,
+      remoteDetail: resolved.remoteDetail,
+      respuesta: data,
+    })
+
     if (response.status === 401) logout()
     throw err
   }

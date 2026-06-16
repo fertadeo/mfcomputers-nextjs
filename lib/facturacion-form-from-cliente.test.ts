@@ -144,6 +144,16 @@ describe("facturacion-form-from-cliente", () => {
     expect(err).toMatch(/no coincide/)
   })
 
+  it("validateFacturarPayloadCoherence rechaza CUIT con condición consumidor final", () => {
+    const err = validateFacturarPayloadCoherence({
+      tipo: 6,
+      condicionIvaReceptor: 5,
+      docTipo: 80,
+      docNro: 20355026656,
+    })
+    expect(err).toMatch(/docTipo 80/)
+  })
+
   it("validateFacturarReceptorFiscal detecta CUIT en ERP con payload CF", () => {
     const err = validateFacturarReceptorFiscal(
       { client_id: 10, client_name: "MINISTERIO" },

@@ -17,6 +17,22 @@ export interface FacturacionErrorInfo {
   /** No reemitir sin reconciliar (PERSIST_DB_ERROR, posible duplicado ARCA) */
   blockBlindReemit?: boolean
   showRequestId?: boolean
+  /** Mensaje técnico de ARCA / MultiCUIT cuando difiere del resumen */
+  remoteDetail?: string
+  /** Sugerencias del backend o del catálogo de errores */
+  suggestions?: string[]
+  /** Issues de validación fiscal (COMPROBANTE_TIPO_INVALIDO, etc.) */
+  issues?: Array<{ code?: string; message: string }>
+  /** Diagnóstico legible para operador (causa probable) */
+  diagnosis?: string
+  /** Datos del receptor enviados o inferidos (para depuración) */
+  receptorContext?: {
+    docTipo?: number
+    docNro?: number | string | null
+    condicionIvaReceptor?: number
+    condicionLabel?: string
+    tipoComprobante?: number
+  }
 }
 
 export interface ResolveFacturacionErrorInput {
@@ -25,6 +41,9 @@ export interface ResolveFacturacionErrorInput {
   rawMessage?: string | null
   requestId?: string | null
   sugerencias?: string[] | null
+  remoteDetail?: string | null
+  issues?: Array<{ code?: string; message: string }> | null
+  receptorContext?: FacturacionErrorInfo["receptorContext"]
 }
 
 export interface ExtractedFacturacionError {
@@ -33,6 +52,15 @@ export interface ExtractedFacturacionError {
   requestId?: string
   sugerencias?: string[]
   httpStatus?: number
+  remoteDetail?: string
+  issues?: Array<{ code?: string; message: string }>
+  action?: string
+  suggestedTipo?: number
+  suggestedLabel?: string
+  condicionIvaReceptor?: number
+  docTipo?: number
+  docNro?: number | string | null
+  tipoComprobante?: number
 }
 
 /** Convierte vencimiento CAE AFIP YYYYMMDD → YYYY-MM-DD */
@@ -76,6 +104,62 @@ function readSugerencias(obj: Record<string, unknown>): string[] | undefined {
   return s.filter((x): x is string => typeof x === "string")
 }
 
+function readIssues(obj: Record<string, unknown>): ExtractedFacturacionError["issues"] {
+  const raw = obj.issues
+  if (!Array.isArray(raw)) return undefined
+  return raw
+    .map((item) => {
+      if (!isRecord(item) || typeof item.message !== "string") return null
+      return {
+        code: item.code != null ? String(item.code) : undefined,
+        message: item.message,
+      }
+    })
+    .filter((x): x is { code?: string; message: string } => x != null)
+}
+
+function mergeExtracted(
+  base: ExtractedFacturacionError,
+  patch: ExtractedFacturacionError
+): ExtractedFacturacionError {
+  return {
+    ...base,
+    code: base.code ?? patch.code,
+    message: base.message ?? patch.message,
+    requestId: base.requestId ?? patch.requestId,
+    sugerencias: base.sugerencias?.length ? base.sugerencias : patch.sugerencias,
+    remoteDetail: base.remoteDetail ?? patch.remoteDetail,
+    issues: base.issues?.length ? base.issues : patch.issues,
+    action: base.action ?? patch.action,
+    suggestedTipo: base.suggestedTipo ?? patch.suggestedTipo,
+    suggestedLabel: base.suggestedLabel ?? patch.suggestedLabel,
+    condicionIvaReceptor: base.condicionIvaReceptor ?? patch.condicionIvaReceptor,
+    docTipo: base.docTipo ?? patch.docTipo,
+    docNro: base.docNro ?? patch.docNro,
+    tipoComprobante: base.tipoComprobante ?? patch.tipoComprobante,
+  }
+}
+
+function extractFromDataBlock(data: Record<string, unknown>): ExtractedFacturacionError {
+  const out: ExtractedFacturacionError = {}
+  if (data.code != null) out.code = String(data.code).trim()
+  if (typeof data.message === "string") out.message = data.message
+  if (typeof data.remoteMessage === "string") out.remoteDetail = data.remoteMessage
+  if (typeof data.action === "string") out.action = data.action
+  if (typeof data.requestId === "string") out.requestId = data.requestId
+  if (Array.isArray(data.suggestions)) {
+    out.sugerencias = data.suggestions.filter((x): x is string => typeof x === "string")
+  }
+  out.issues = readIssues(data)
+  if (data.suggestedTipo != null) out.suggestedTipo = Number(data.suggestedTipo)
+  if (typeof data.suggestedLabel === "string") out.suggestedLabel = data.suggestedLabel
+  if (data.condicionIvaReceptor != null) out.condicionIvaReceptor = Number(data.condicionIvaReceptor)
+  if (data.docTipo != null) out.docTipo = Number(data.docTipo)
+  if (data.docNro != null) out.docNro = data.docNro as number | string
+  if (data.tipo != null) out.tipoComprobante = Number(data.tipo)
+  return out
+}
+
 /**
  * Extrae código, mensaje y requestId desde respuestas MF API o MultiCUIT anidadas.
  */
@@ -103,14 +187,17 @@ export function extractFacturacionErrorFromPayload(
 
   const data = payload.data
   if (isRecord(data)) {
-    if (data.code != null) out.code = String(data.code).trim()
-    if (data.retryAfter != null && out.httpStatus == null) out.httpStatus = httpStatus
+    const fromData = extractFromDataBlock(data)
+    Object.assign(out, mergeExtracted(out, fromData))
 
     const sale = data.sale
     if (isRecord(sale)) {
       if (!out.code && sale.arca_error_code) out.code = String(sale.arca_error_code).trim()
       if (!out.message && typeof sale.arca_error_message === "string") {
         out.message = sale.arca_error_message
+      }
+      if (!out.remoteDetail && typeof sale.arca_error_message === "string") {
+        out.remoteDetail = sale.arca_error_message
       }
     }
 
@@ -119,10 +206,7 @@ export function extractFacturacionErrorFromPayload(
       const remote = arca.response
       if (isRecord(remote)) {
         const nested = extractFacturacionErrorFromPayload(remote, httpStatus)
-        if (!out.code && nested.code) out.code = nested.code
-        if (!out.message && nested.message) out.message = nested.message
-        if (!out.requestId && nested.requestId) out.requestId = nested.requestId
-        if (!out.sugerencias?.length && nested.sugerencias?.length) out.sugerencias = nested.sugerencias
+        Object.assign(out, mergeExtracted(out, nested))
       }
     }
   }
@@ -217,6 +301,15 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     severity: "error",
     canRetry: true,
   },
+  RECEPTOR_CUIT_CONDICION_INVALIDA: {
+    title: "CUIT/CUIL incompatible con consumidor final",
+    message:
+      "Con CUIT/CUIL del receptor (docTipo 80) AFIP no acepta condición IVA «Consumidor final» (5). Es la causa más frecuente al facturar con documento.",
+    actionHint:
+      "Consultá el padrón ARCA en la confirmación o completá la condición fiscal del cliente (monotributo, RI, exento). Para CF sin documento usá docTipo 99.",
+    severity: "error",
+    canRetry: true,
+  },
   SALE_ALREADY_INVOICED: {
     title: "Venta ya facturada",
     message: "Esta venta ya tiene comprobante autorizado en ARCA.",
@@ -276,30 +369,46 @@ const ARCA_NUMERIC_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = 
     blockBlindReemit: true,
   },
   "10016": {
+    title: "Datos del comprobante rechazados",
+    message: "AFIP rechazó el comprobante por datos inconsistentes (código 10016).",
+    actionHint: "Revisá receptor, importes, IVA, fechas y tipo de comprobante según el detalle de ARCA.",
+    severity: "error",
+    canRetry: true,
+  },
+  "10048": {
+    title: "Fecha del comprobante inválida",
+    message: "La fecha de emisión está fuera del rango permitido por AFIP (código 10048).",
+    actionHint: "Revisá la fecha del comprobante, fechas de servicio y el reloj del servidor.",
+    severity: "error",
+    canRetry: true,
+  },
+  "10051": {
     title: "Punto de venta no habilitado",
-    message: "El punto de venta no está habilitado para este tipo de comprobante (código 10016).",
+    message: "El punto de venta no está habilitado para este tipo de comprobante (código 10051).",
     actionHint: "Verificá el PV en Configuración y en AFIP / certificados del CUIT emisor.",
     severity: "error",
     canRetry: true,
   },
   "10054": {
-    title: "Fecha del comprobante inválida",
-    message: "La fecha de emisión está fuera del rango permitido por AFIP (código 10054).",
-    actionHint: "Revisá la fecha del comprobante y el reloj del servidor.",
+    title: "Documento del receptor inválido",
+    message: "El tipo o número de documento del receptor no es válido para AFIP (código 10054).",
+    actionHint:
+      "Revisá docTipo (80=CUIT, 99=sin documento), docNro y que el CUIT/CUIL tenga 11 dígitos. Consultá padrón ARCA si hace falta.",
     severity: "error",
     canRetry: true,
   },
   "10056": {
-    title: "Documento del receptor inválido",
-    message: "El tipo o número de documento del receptor no es válido para AFIP (código 10056).",
-    actionHint: "Revisá docTipo, docNro y CUIT/CUIL del cliente en el ERP.",
+    title: "Condición IVA del receptor incorrecta",
+    message: "La condición frente al IVA del receptor no coincide con lo esperado por AFIP (código 10056).",
+    actionHint:
+      "Ajustá condicionIvaReceptor según el padrón (ej. monotributo=6, RI=1). Con CUIT/CUIL no uses consumidor final (5).",
     severity: "error",
     canRetry: true,
   },
   "10071": {
-    title: "Condición IVA del receptor",
-    message: "La condición frente al IVA del receptor no coincide con lo esperado por AFIP (código 10071).",
-    actionHint: "Ajustá condicionIvaReceptor según el tipo de cliente.",
+    title: "Condición IVA del receptor (RG)",
+    message: "AFIP rechazó la condición frente al IVA del receptor (código 10071).",
+    actionHint: "Consultá padrón ARCA y alineá condicionIvaReceptor con el tipo de comprobante elegido.",
     severity: "error",
     canRetry: true,
   },
@@ -309,20 +418,117 @@ function isArcaNumericCode(code: string): boolean {
   return /^\d{4,6}$/.test(code)
 }
 
+function enrichResolvedError(
+  base: FacturacionErrorInfo,
+  input: ResolveFacturacionErrorInput
+): FacturacionErrorInfo {
+  const suggestions = input.sugerencias?.length ? [...input.sugerencias] : base.suggestions
+  const issues = input.issues?.length ? input.issues : base.issues
+  const remoteDetail =
+    input.remoteDetail?.trim() &&
+    input.remoteDetail.trim() !== base.message &&
+    !base.message.includes(input.remoteDetail.trim())
+      ? input.remoteDetail.trim()
+      : base.remoteDetail
+
+  const diagnosis = buildFacturacionErrorDiagnosis({
+    code: base.code,
+    rawMessage: input.rawMessage,
+    remoteDetail: remoteDetail ?? input.remoteDetail,
+    receptorContext: input.receptorContext,
+  })
+
+  return {
+    ...base,
+    remoteDetail: remoteDetail ?? undefined,
+    suggestions: suggestions?.length ? suggestions : undefined,
+    issues: issues?.length ? issues : undefined,
+    diagnosis: diagnosis ?? undefined,
+    receptorContext: input.receptorContext ?? base.receptorContext,
+    showRequestId: base.showRequestId || Boolean(input.requestId),
+  }
+}
+
+/** Causa probable legible para operador según código ARCA / validación local. */
+export function buildFacturacionErrorDiagnosis(input: {
+  code?: string | null
+  rawMessage?: string | null
+  remoteDetail?: string | null
+  receptorContext?: FacturacionErrorInfo["receptorContext"]
+}): string | null {
+  const code = input.code?.trim() ?? ""
+  const text = `${input.rawMessage ?? ""} ${input.remoteDetail ?? ""}`.toLowerCase()
+  const ctx = input.receptorContext
+
+  if (
+    code === "RECEPTOR_CUIT_CONDICION_INVALIDA" ||
+    (ctx?.docTipo === 80 && ctx?.condicionIvaReceptor === 5)
+  ) {
+    return "Se intentó emitir con CUIT/CUIL (docTipo 80) pero la condición IVA quedó como Consumidor final (5). AFIP rechaza esa combinación."
+  }
+
+  if (code === "10056" || code === "10071" || /condici[oó]n.*iva|10056|10071/.test(text)) {
+    return "La condición IVA del receptor no coincide con lo registrado en AFIP para ese CUIT/CUIL. Consultá el padrón ARCA y actualizá el cliente."
+  }
+
+  if (code === "10054" || /documento.*receptor|10054|docnro|doctipo/.test(text)) {
+    return "El documento del receptor (tipo o número) no es válido para AFIP. Verificá que el CUIT/CUIL tenga 11 dígitos y docTipo 80."
+  }
+
+  if (code === "COMPROBANTE_TIPO_INVALIDO" || code === "FACTURA_C_NO_APLICA_EMISOR_RI") {
+    return "El tipo de comprobante no corresponde al régimen del emisor o a la condición IVA del receptor."
+  }
+
+  if (ctx?.docTipo === 80 && ctx.condicionIvaReceptor === 5) {
+    return "El payload enviado mezcla CUIT/CUIL con condición Consumidor final — revisá padrón o datos del cliente."
+  }
+
+  return null
+}
+
+export function resolveFacturacionErrorFromExtracted(
+  extracted: ExtractedFacturacionError,
+  httpStatus?: number
+): FacturacionErrorInfo {
+  const receptorContext =
+    extracted.docTipo != null ||
+    extracted.docNro != null ||
+    extracted.condicionIvaReceptor != null ||
+    extracted.tipoComprobante != null
+      ? {
+          docTipo: extracted.docTipo,
+          docNro: extracted.docNro,
+          condicionIvaReceptor: extracted.condicionIvaReceptor,
+          tipoComprobante: extracted.tipoComprobante,
+        }
+      : undefined
+
+  return resolveFacturacionError({
+    code: extracted.code,
+    httpStatus: extracted.httpStatus ?? httpStatus,
+    rawMessage: extracted.message,
+    requestId: extracted.requestId,
+    sugerencias: extracted.sugerencias,
+    remoteDetail: extracted.remoteDetail ?? extracted.action,
+    issues: extracted.issues,
+    receptorContext,
+  })
+}
+
 export function resolveFacturacionError(input: ResolveFacturacionErrorInput): FacturacionErrorInfo {
   const code = (input.code?.trim() || "").toUpperCase() || undefined
   const numericCode = input.code?.trim() && isArcaNumericCode(input.code.trim()) ? input.code.trim() : undefined
 
   if (input.httpStatus === 429) {
-    return { code: "RATE_LIMITED", ...KNOWN_ERRORS.RATE_LIMITED }
+    return enrichResolvedError({ code: "RATE_LIMITED", ...KNOWN_ERRORS.RATE_LIMITED }, input)
   }
 
   if (code && KNOWN_ERRORS[code]) {
-    return { code, ...KNOWN_ERRORS[code] }
+    return enrichResolvedError({ code, ...KNOWN_ERRORS[code] }, input)
   }
 
   if (numericCode && ARCA_NUMERIC_ERRORS[numericCode]) {
-    return { code: numericCode, ...ARCA_NUMERIC_ERRORS[numericCode] }
+    return enrichResolvedError({ code: numericCode, ...ARCA_NUMERIC_ERRORS[numericCode] }, input)
   }
 
   const sugerenciasText =
@@ -337,18 +543,21 @@ export function resolveFacturacionError(input: ResolveFacturacionErrorInput): Fa
       ? `Error de facturación (${code}).${sugerenciasText}`
       : `Error al facturar en ARCA.${sugerenciasText}`
 
-  return {
-    code: code || numericCode || "UNKNOWN",
-    title: "No se pudo emitir el comprobante",
-    message: fallbackMessage,
-    actionHint:
-      input.httpStatus === 502
-        ? "Si el problema persiste, revisá certificados, entorno homologación/producción y contactá soporte."
-        : "Revisá los datos del comprobante. Si el error continúa, guardá el mensaje y el requestId para soporte.",
-    severity: "error",
-    canRetry: input.httpStatus !== 409,
-    showRequestId: Boolean(input.requestId),
-  }
+  return enrichResolvedError(
+    {
+      code: code || numericCode || "UNKNOWN",
+      title: "No se pudo emitir el comprobante",
+      message: fallbackMessage,
+      actionHint:
+        input.httpStatus === 502
+          ? "Si el problema persiste, revisá certificados, entorno homologación/producción y contactá soporte."
+          : "Revisá los datos del comprobante. Si el error continúa, guardá el mensaje y el requestId para soporte.",
+      severity: "error",
+      canRetry: input.httpStatus !== 409,
+      showRequestId: Boolean(input.requestId),
+    },
+    input
+  )
 }
 
 export function formatFacturacionErrorForUi(info: FacturacionErrorInfo, requestId?: string | null): string {
