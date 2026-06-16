@@ -978,25 +978,6 @@ export default function FacturacionPage() {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Contrato y reglas operativas</CardTitle>
-              <CardDescription>Precondiciones y postcondiciones para UI, QA y soporte.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <Alert
-                variant="info"
-                title="Precondiciones"
-                description="Venta existente con ítems válidos. Para concepto 2 o 3 se requieren fechas de servicio en formato YYYY-MM-DD."
-              />
-              <Alert
-                variant="success"
-                title="Postcondiciones"
-                description="Se persisten arca_status, arca_factura_id, arca_cae y trazabilidad de intento/error en sales."
-              />
-            </CardContent>
-          </Card>
-
           {errorMsg ? (
             <Alert
               variant={errorDetail?.severity === "warning" ? "warning" : "error"}
