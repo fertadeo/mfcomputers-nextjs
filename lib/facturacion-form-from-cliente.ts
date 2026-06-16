@@ -3,6 +3,7 @@ import { normalizeTaxConditionFromApi } from "@/lib/client-tax-condition"
 import {
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
+  setEmisorRegimenFromApi,
 } from "@/lib/facturacion-cliente-fiscal"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
@@ -99,6 +100,10 @@ export function mergeSugerenciaIntoFacturarForm(
   cliente?: Cliente | null
 ): FacturarSaleRequest {
   if (!sugerencia) return form
+
+  if (sugerencia.emisorRegimen) {
+    setEmisorRegimenFromApi(sugerencia.emisorRegimen)
+  }
 
   const next: FacturarSaleRequest = { ...form }
   const erpFiscal = clienteTieneDatosFiscalesErp(cliente)

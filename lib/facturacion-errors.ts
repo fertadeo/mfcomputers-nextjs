@@ -200,6 +200,23 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     severity: "error",
     canRetry: true,
   },
+  FACTURA_C_NO_APLICA_EMISOR_RI: {
+    title: "Factura C no corresponde con emisor RI",
+    message:
+      "El servidor tiene configurado el emisor como Responsable Inscripto. En ese caso, a un cliente monotributo se le factura con Factura B (tipo 6), no Factura C (11).",
+    actionHint:
+      "Si tu empresa es monotributo, pedí a sistemas que configure FACTURADOR_EMISOR_REGIMEN=monotributo en la API. Si sos RI, usá Factura B como sugiere GET /facturar/sugerencia.",
+    severity: "error",
+    canRetry: true,
+  },
+  COMPROBANTE_TIPO_INVALIDO: {
+    title: "Tipo de comprobante incorrecto",
+    message: "La combinación de tipo de factura, condición IVA del receptor y régimen del emisor no es válida.",
+    actionHint:
+      "Usá GET /facturar/sugerencia o el mensaje del backend (suggestedTipo). El padrón indica la condición del cliente, no el tipo B/C.",
+    severity: "error",
+    canRetry: true,
+  },
   SALE_ALREADY_INVOICED: {
     title: "Venta ya facturada",
     message: "Esta venta ya tiene comprobante autorizado en ARCA.",

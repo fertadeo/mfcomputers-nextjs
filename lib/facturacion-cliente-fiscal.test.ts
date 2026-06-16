@@ -4,6 +4,7 @@ import {
   clienteRequiresZeroItemIva,
   effectiveSaleItemIvaRate,
   resolveTipoComprobanteFromCondicionIvaReceptor,
+  setEmisorRegimenFromApi,
   tipoComprobanteRequiresZeroItemIva,
   validateFacturacionItemIva,
 } from "@/lib/facturacion-cliente-fiscal"
@@ -29,8 +30,10 @@ describe("facturacion-cliente-fiscal — tipo comprobante", () => {
   })
 
   it("emisor monotributo: siempre Factura C", () => {
+    setEmisorRegimenFromApi("monotributo")
     expect(resolveTipoComprobanteFromCondicionIvaReceptor(1, "monotributo")).toBe(11)
     expect(resolveTipoComprobanteFromCondicionIvaReceptor(6, "monotributo")).toBe(11)
+    setEmisorRegimenFromApi("responsable_inscripto")
   })
 })
 

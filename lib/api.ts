@@ -1101,6 +1101,7 @@ export interface FacturarSugerenciaDefaults {
 
 export interface FacturarSugerenciaData {
   totalAmount: number
+  emisorRegimen?: "responsable_inscripto" | "monotributo" | "exento"
   condicionIvaReceptor?: number
   sugerencia?: { tipo: number; label: string; motivo?: string }
   ivaDesglose?: FacturarSugerenciaIvaLine[]

@@ -88,6 +88,8 @@ import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-conf
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import {
+  getEmisorRegimenFromApi,
+  getEmisorRegimenLabel,
   labelCondicionIvaReceptor,
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
@@ -220,6 +222,7 @@ export default function FacturacionPage() {
   const [confirmFechaCbte, setConfirmFechaCbte] = useState<string | null>(null)
   const [confirmLinesLoading, setConfirmLinesLoading] = useState(false)
   const [confirmLinesError, setConfirmLinesError] = useState<string | null>(null)
+  const [fiscalSugerenciaMotivo, setFiscalSugerenciaMotivo] = useState<string | null>(null)
 
   const [emisorCuitMostrar, setEmisorCuitMostrar] = useState<string>(() => {
     const stored = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
@@ -497,6 +500,7 @@ export default function FacturacionPage() {
           if (!cancelled) {
             setModalCliente(null)
             setForm(buildFacturarFormForSale(null, sugerencia))
+            setFiscalSugerenciaMotivo(sugerencia?.sugerencia?.motivo ?? null)
             console.log("[FACTURAR UI] Venta sin client_id → consumidor final (docTipo 99 / docNro 0).")
           }
           return
@@ -510,6 +514,7 @@ export default function FacturacionPage() {
         setModalCliente(cliente)
         const nextForm = buildFacturarFormForSale(cliente, sugerencia)
         setForm(nextForm)
+        setFiscalSugerenciaMotivo(sugerencia?.sugerencia?.motivo ?? null)
         console.log("[FACTURAR UI] Formulario fiscal desde cliente ERP:", {
           clientId: sale.client_id,
           docTipo: nextForm.docTipo,
@@ -1378,9 +1383,10 @@ export default function FacturacionPage() {
                             del cliente.
                           </p>
                           <p className="text-muted-foreground text-xs">
-                            Con emisor responsable inscripto: receptor RI → Factura A; monotributo, consumidor
-                            final u otro → Factura B. Con emisor monotributo → Factura C. Podés ajustar en opciones
-                            avanzadas si hace falta.
+                            El padrón indica la condición IVA del <strong>cliente</strong> (receptor). El tipo B o C lo
+                            define el régimen de <strong>tu empresa</strong> en el servidor (
+                            {getEmisorRegimenLabel(getEmisorRegimenFromApi())}).{" "}
+                            {fiscalSugerenciaMotivo ? `Sugerencia API: ${fiscalSugerenciaMotivo}` : null}
                           </p>
                         </div>
                       }

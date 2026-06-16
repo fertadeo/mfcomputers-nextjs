@@ -9,8 +9,45 @@ import { normalizeSaleIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
 
 export type EmisorCondicionIva = "responsable_inscripto" | "monotributo"
 
+export type EmisorRegimenApi = "responsable_inscripto" | "monotributo" | "exento"
+
+/** Régimen del emisor según GET /facturar/sugerencia (prioridad sobre env del navegador). */
+let emisorRegimenFromApi: EmisorRegimenApi | null = null
+
+export function setEmisorRegimenFromApi(regimen?: string | null): void {
+  const r = (regimen ?? "").trim().toLowerCase()
+  if (r === "monotributo" || r === "mt") {
+    emisorRegimenFromApi = "monotributo"
+    return
+  }
+  if (r === "exento") {
+    emisorRegimenFromApi = "exento"
+    return
+  }
+  if (r === "responsable_inscripto" || r === "ri") {
+    emisorRegimenFromApi = "responsable_inscripto"
+  }
+}
+
+export function getEmisorRegimenFromApi(): EmisorRegimenApi | null {
+  return emisorRegimenFromApi
+}
+
+export function getEmisorRegimenLabel(regimen?: EmisorRegimenApi | null): string {
+  if (regimen === "monotributo") return "Monotributo"
+  if (regimen === "exento") return "Exento"
+  if (regimen === "responsable_inscripto") return "Responsable inscripto"
+  return "No informado"
+}
+
 /** Condición IVA del emisor (MF). Por defecto RI; monotributo emite solo Factura C. */
 export function getEmisorCondicionIva(): EmisorCondicionIva {
+  if (emisorRegimenFromApi === "monotributo" || emisorRegimenFromApi === "exento") {
+    return "monotributo"
+  }
+  if (emisorRegimenFromApi === "responsable_inscripto") {
+    return "responsable_inscripto"
+  }
   const raw =
     typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_FACTURADOR_EMISOR_CONDICION_IVA?.trim().toLowerCase()
@@ -37,8 +74,10 @@ export function condicionIvaReceptorFromCliente(cliente: Cliente | null): number
 
 /**
  * Tipo WSFE según condición IVA del receptor y régimen del emisor (alineado con API / ARCA).
- * Emisor monotributo → siempre Factura C (11).
+ * Emisor monotributo o exento → siempre Factura C (11).
  * Emisor RI → receptor RI → Factura A (1); resto (monotributo, CF, exento…) → Factura B (6).
+ *
+ * Nota: el padrón ARCA informa la condición del **cliente** (receptor), no el tipo de comprobante.
  */
 export function resolveTipoComprobanteFromCondicionIvaReceptor(
   condicionIvaReceptor: number,
