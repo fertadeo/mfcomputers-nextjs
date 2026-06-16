@@ -42,6 +42,8 @@ import {
 
   getLetraComprobanteAfip,
 
+  isNotaCreditoTipoAfip,
+
 } from "@/lib/facturacion-comprobantes"
 
 
@@ -717,7 +719,9 @@ export async function buildArcaInvoicePdf(
 
   const suffix = copias.length > 1 ? "-triplicado" : ""
 
-  const fileName = `factura-${letra}-${formatPuntoVentaAfip(params.comprobante.puntoVenta)}-${formatNumeroComprobanteAfip(params.comprobante.numero)}${suffix}.pdf`
+  const docKind = isNotaCreditoTipoAfip(tipo) ? "nota-credito" : "factura"
+
+  const fileName = `${docKind}-${letra}-${formatPuntoVentaAfip(params.comprobante.puntoVenta)}-${formatNumeroComprobanteAfip(params.comprobante.numero)}${suffix}.pdf`
 
   return { doc, fileName }
 

@@ -41,6 +41,7 @@ import {
   type EmitirNotaCreditoError,
   type FacturarSaleRequest,
   type FacturarSaleError,
+  type NotaCreditoEmisionData,
   type RepairOrder,
   type Sale,
 } from "@/lib/api"
@@ -59,6 +60,7 @@ import {
 } from "@/lib/build-arca-invoice-pdf-input"
 import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
 import { fetchSaleArcaEmision, type ResolvedSaleArcaEmision } from "@/lib/fetch-sale-arca-emision"
+import { fetchSaleArcaNotaCreditoEmision } from "@/lib/fetch-sale-arca-nota-credito-emision"
 import {
   buildDefaultFacturarFormRequest,
   getEmitirConDefaultsGuardados,
@@ -449,13 +451,25 @@ export default function FacturacionPage() {
           ? formatComprobanteAfipReferencia(nc.tipo, nc.puntoVenta, nc.numero)
           : null
       const cae = nc?.cae ?? res.data?.sale?.arca_nc_cae ?? "—"
-      setCreditNoteEmitSuccess(
+      const successBase =
         ncRef
           ? `Nota de crédito ${ncRef} emitida. CAE: ${cae}`
           : `Nota de crédito emitida. CAE: ${cae}`
-      )
-      if (res.data?.sale) setCreditNoteSale(res.data.sale)
+      const updatedSale = res.data?.sale
+      if (updatedSale) setCreditNoteSale(updatedSale)
       await loadBillables()
+
+      if (updatedSale) {
+        try {
+          await downloadArcaPdfForNotaCredito(updatedSale, nc ?? null, { reportErrorOnPage: false })
+          setCreditNoteEmitSuccess(`${successBase} PDF descargado.`)
+        } catch (pdfErr) {
+          const pdfMsg = pdfErr instanceof Error ? pdfErr.message : "No se pudo generar el PDF"
+          setCreditNoteEmitSuccess(`${successBase} (PDF no descargado: ${pdfMsg})`)
+        }
+      } else {
+        setCreditNoteEmitSuccess(successBase)
+      }
     } catch (e) {
       const err = e as EmitirNotaCreditoError
       setCreditNoteEmitError(err.message || "No se pudo emitir la nota de crédito.")
@@ -774,6 +788,54 @@ export default function FacturacionPage() {
       console.error("[FACTURAR UI] Error al generar PDF ARCA:", e)
       const msg = e instanceof Error ? e.message : "No se pudo generar el PDF del comprobante ARCA."
       if (options?.reportErrorOnPage !== false) setErrorMsg(msg)
+      throw e instanceof Error ? e : new Error(msg)
+    } finally {
+      setIsGeneratingArcaPdf(false)
+    }
+  }
+
+  const downloadArcaPdfForNotaCredito = async (
+    sale: Sale,
+    ncOverride?: NotaCreditoEmisionData | null,
+    options?: { reportErrorOnPage?: boolean }
+  ) => {
+    const resolved = await fetchSaleArcaNotaCreditoEmision(sale, ncOverride)
+    if (!resolved?.emision.cae) {
+      const msg =
+        "No hay datos de la nota de crédito guardados para esta venta. Emití la NC en esta sesión o verificá que el backend persista arca_nc_*."
+      if (options?.reportErrorOnPage !== false) setCreditNoteEmitError(msg)
+      throw new Error(msg)
+    }
+    if (resolved.incomplete) {
+      const msg = "No se puede generar el PDF: falta el número de comprobante AFIP de la nota de crédito."
+      if (options?.reportErrorOnPage !== false) setCreditNoteEmitError(msg)
+      throw new Error(msg)
+    }
+
+    setIsGeneratingArcaPdf(true)
+    try {
+      let cliente: Cliente | null = null
+      if (sale.client_id) {
+        try {
+          cliente = await getClienteById(sale.client_id)
+        } catch {
+          cliente = null
+        }
+      }
+      await generateArcaInvoicePdfFromBuildArgs({
+        saleId: sale.id,
+        emision: resolved.emision,
+        facturarPayload: resolved.facturarPayload,
+        cliente,
+        saleSnapshot: sale,
+        previewAviso: resolved.comprobanteAsociadoRef
+          ? `Anula comprobante ${resolved.comprobanteAsociadoRef}`
+          : undefined,
+      })
+    } catch (e) {
+      console.error("[FACTURAR UI] Error al generar PDF NC:", e)
+      const msg = e instanceof Error ? e.message : "No se pudo generar el PDF de la nota de crédito."
+      if (options?.reportErrorOnPage !== false) setCreditNoteEmitError(msg)
       throw e instanceof Error ? e : new Error(msg)
     } finally {
       setIsGeneratingArcaPdf(false)
@@ -1739,29 +1801,51 @@ export default function FacturacionPage() {
                 </div>
               ) : null}
 
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button variant="outline" onClick={() => setCreditNoteSale(null)}>
-                  Cerrar
-                </Button>
-                <Button
-                  disabled={
-                    creditNoteSubmitting ||
-                    creditNoteArcaLoading ||
-                    !creditNoteSale ||
-                    !canEmitNotaCredito(creditNoteSale) ||
-                    creditNotePreview?.ncTipo == null
-                  }
-                  onClick={() => void handleEmitCreditNote()}
-                >
-                  {creditNoteSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Emitiendo…
-                    </>
-                  ) : (
-                    "Emitir nota de crédito"
-                  )}
-                </Button>
+              <DialogFooter className="gap-2 sm:gap-0 sm:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {creditNoteSale && saleHasNotaCreditoEmitida(creditNoteSale) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={creditNoteSubmitting || isGeneratingArcaPdf}
+                      onClick={() =>
+                        void downloadArcaPdfForNotaCredito(creditNoteSale, null, { reportErrorOnPage: true })
+                      }
+                    >
+                      {isGeneratingArcaPdf ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
+                      Descargar PDF NC
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => setCreditNoteSale(null)}>
+                    Cerrar
+                  </Button>
+                  <Button
+                    disabled={
+                      creditNoteSubmitting ||
+                      creditNoteArcaLoading ||
+                      isGeneratingArcaPdf ||
+                      !creditNoteSale ||
+                      !canEmitNotaCredito(creditNoteSale) ||
+                      creditNotePreview?.ncTipo == null
+                    }
+                    onClick={() => void handleEmitCreditNote()}
+                  >
+                    {creditNoteSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Emitiendo…
+                      </>
+                    ) : (
+                      "Emitir nota de crédito"
+                    )}
+                  </Button>
+                </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>

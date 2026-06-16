@@ -42,6 +42,8 @@ export interface BuildArcaInvoicePdfInputArgs {
   saleSnapshot?: Sale | null
   /** Vista previa sin número AFIP: no lanza error; marca comprobante como incompleto. */
   previewAllowMissingNumero?: boolean
+  /** Texto bajo el título (ej. comprobante asociado en nota de crédito). */
+  previewAviso?: string | null
 }
 
 async function resolveCatalogProductNames(
@@ -88,7 +90,8 @@ function lineSubtotal(item: SaleItemResponse): number {
 export async function buildArcaInvoicePdfInput(
   args: BuildArcaInvoicePdfInputArgs
 ): Promise<GenerateArcaInvoicePdfParams> {
-  const { saleId, emision, facturarPayload, cliente, saleSnapshot, previewAllowMissingNumero } = args
+  const { saleId, emision, facturarPayload, cliente, saleSnapshot, previewAllowMissingNumero, previewAviso } =
+    args
 
   const saleRes = await getSale(saleId)
   const sale = saleRes.data
@@ -218,6 +221,7 @@ export async function buildArcaInvoicePdfInput(
     condicionVenta: "Contado",
     pagina: "1/1",
     comprobanteIncompleto: numeroMissing && previewAllowMissingNumero,
+    previewAviso: previewAviso ?? undefined,
   }
 }
 
