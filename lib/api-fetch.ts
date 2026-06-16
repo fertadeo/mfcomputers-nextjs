@@ -1,4 +1,4 @@
-import { getApiUrl } from '@/config/api'
+import { buildApiUrl } from '@/config/api'
 
 /**
  * Helper para realizar fetch autenticado con JWT
@@ -29,11 +29,8 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     headers.set('Content-Type', 'application/json')
   }
   
-  // Construir URL completa usando getApiUrl que normaliza la URL
-  const apiUrl = getApiUrl()
-  // Asegurar que path empiece con '/' para concatenación correcta
-  const cleanPath = path.startsWith('/') ? path : `/${path}`
-  const fullUrl = `${apiUrl}${cleanPath}`
+  // Construir URL completa sin doble slash (base termina en / y path puede empezar con /)
+  const fullUrl = buildApiUrl(path)
   
   console.log('🌐 [API_FETCH] Enviando request:', {
     url: fullUrl,

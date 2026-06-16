@@ -18,3 +18,10 @@ export function getApiUrl(): string {
   });
   return url;
 }
+
+/** Une la base de la API con un path relativo sin generar dobles slashes */
+export function buildApiUrl(path: string): string {
+  const base = getApiUrl();
+  const cleanPath = path.replace(/^\/+/, '');
+  return `${base}${cleanPath}`;
+}
