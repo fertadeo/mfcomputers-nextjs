@@ -3,9 +3,10 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
-import { canAccessRoute } from "@/app/lib/menuAuth"
+import { canAccessRoute, hasAnyRole } from "@/app/lib/menuAuth"
 import { MENU_GROUPS } from "@/app/config/menu"
 import type { Role } from "@/app/config/menu"
+import { useRole } from "@/app/hooks/useRole"
 
 interface ProtectedProps {
   children: React.ReactNode
@@ -46,8 +47,7 @@ export function Protected({
 
     const userRole = user.role as Role
     
-    // Verificar si el usuario tiene alguno de los roles requeridos
-    const hasAccess = requiredRoles.includes(userRole)
+    const hasAccess = hasAnyRole(userRole, requiredRoles)
     
     if (!hasAccess) {
       console.log('🔒 [PROTECTED] Usuario sin permisos:', { 
@@ -83,7 +83,7 @@ export function Protected({
   // Si hay roles requeridos, verificar permisos
   if (requiredRoles && requiredRoles.length > 0) {
     const userRole = user.role as Role
-    if (!requiredRoles.includes(userRole)) {
+    if (!hasAnyRole(userRole, requiredRoles)) {
       return fallback
     }
   }

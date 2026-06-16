@@ -43,47 +43,27 @@ export function useRole() {
    * @returns true si el usuario es admin
    */
   const isAdmin = (): boolean => {
-    return isRole('admin')
+    return hasAnyOfRoles(['admin', 'superadmin'])
   }
   
-  /**
-   * Verifica si el usuario es de gerencia o superior
-   * @returns true si el usuario es de gerencia o admin
-   */
   const isManagement = (): boolean => {
-    return hasAnyOfRoles(['admin', 'gerencia', 'manager'])
+    return hasAnyOfRoles(['admin', 'superadmin', 'gerencia', 'manager'])
   }
   
-  /**
-   * Verifica si el usuario puede ver módulos de ventas
-   * @returns true si el usuario puede ver ventas
-   */
   const canViewSales = (): boolean => {
-    return hasAnyOfRoles(['admin', 'gerencia', 'ventas'])
+    return hasAnyOfRoles(['admin', 'superadmin', 'gerencia', 'ventas'])
   }
   
-  /**
-   * Verifica si el usuario puede ver módulos de logística
-   * @returns true si el usuario puede ver logística
-   */
   const canViewLogistics = (): boolean => {
-    return hasAnyOfRoles(['admin', 'gerencia', 'logistica'])
+    return hasAnyOfRoles(['admin', 'superadmin', 'gerencia', 'logistica'])
   }
   
-  /**
-   * Verifica si el usuario puede ver módulos de finanzas
-   * @returns true si el usuario puede ver finanzas
-   */
   const canViewFinance = (): boolean => {
-    return hasAnyOfRoles(['admin', 'gerencia', 'finanzas'])
+    return hasAnyOfRoles(['admin', 'superadmin', 'gerencia', 'finanzas'])
   }
   
-  /**
-   * Verifica si el usuario puede ver módulos de administración
-   * @returns true si el usuario puede ver administración
-   */
   const canViewAdministration = (): boolean => {
-    return hasAnyOfRoles(['admin', 'gerencia'])
+    return hasAnyOfRoles(['admin', 'superadmin', 'gerencia'])
   }
   
   const isSuperAdmin = (): boolean => {

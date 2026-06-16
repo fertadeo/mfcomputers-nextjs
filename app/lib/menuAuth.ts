@@ -1,5 +1,17 @@
 import type { MenuItem, MenuGroup, Role } from "../config/menu"
 
+/** Rol de desarrollador con acceso total al ERP + módulo de salud */
+export function isSuperAdmin(userRole?: Role): boolean {
+  return userRole === "superadmin"
+}
+
+/** Verifica acceso a un conjunto de roles requeridos */
+export function roleCanAccess(userRole: Role, requiredRoles?: Role[]): boolean {
+  if (isSuperAdmin(userRole)) return true
+  if (!requiredRoles || requiredRoles.length === 0) return true
+  return requiredRoles.includes(userRole)
+}
+
 /**
  * Filtra los items de un menú según el rol del usuario
  * @param items Array de items del menú
@@ -8,17 +20,10 @@ import type { MenuItem, MenuGroup, Role } from "../config/menu"
  */
 export function filterMenuItemsByRole(items: MenuItem[], userRole?: Role): MenuItem[] {
   if (!userRole) return []
+  if (isSuperAdmin(userRole)) return items
   
   return items
-    .filter(item => {
-      // Si no hay roles requeridos, el item es visible para todos
-      if (!item.requiredRoles || item.requiredRoles.length === 0) {
-        return true
-      }
-      
-      // Verificar si el rol del usuario está en los roles requeridos
-      return item.requiredRoles.includes(userRole)
-    })
+    .filter(item => roleCanAccess(userRole, item.requiredRoles))
     .map(item => {
       // Si el item tiene children, filtrar también los children
       if (item.children && item.children.length > 0) {
@@ -39,20 +44,12 @@ export function filterMenuItemsByRole(items: MenuItem[], userRole?: Role): MenuI
  */
 export function filterMenuGroupsByRole(groups: MenuGroup[], userRole?: Role): MenuGroup[] {
   if (!userRole) return []
+  if (isSuperAdmin(userRole)) return groups
   
   return groups
     .filter(group => {
-      // Verificar si el usuario tiene acceso al grupo
-      const hasGroupAccess = !group.requiredRoles || group.requiredRoles.includes(userRole)
-      
-      // Verificar si el usuario tiene acceso a al menos un item del grupo
-      const hasAnyItemAccess = group.items.some(item => {
-        if (!item.requiredRoles || item.requiredRoles.length === 0) {
-          return true
-        }
-        return item.requiredRoles.includes(userRole)
-      })
-      
+      const hasGroupAccess = roleCanAccess(userRole, group.requiredRoles)
+      const hasAnyItemAccess = group.items.some(item => roleCanAccess(userRole, item.requiredRoles))
       return hasGroupAccess && hasAnyItemAccess
     })
     .map(group => ({
@@ -71,18 +68,16 @@ export function filterMenuGroupsByRole(groups: MenuGroup[], userRole?: Role): Me
  */
 export function canAccessRoute(route: string, userRole?: Role, groups: MenuGroup[] = []): boolean {
   if (!userRole) return false
+  if (isSuperAdmin(userRole)) return true
   
-  // Buscar la ruta en todos los grupos e items
   for (const group of groups) {
     for (const item of group.items) {
       if (item.href === route) {
-        return !item.requiredRoles || item.requiredRoles.includes(userRole)
+        return roleCanAccess(userRole, item.requiredRoles)
       }
     }
   }
   
-  // Si no se encuentra la ruta en el menú, permitir acceso por defecto
-  // (esto es útil para rutas que no están en el menú pero pueden ser accedidas)
   return true
 }
 
@@ -125,6 +120,7 @@ export function hasRole(userRole?: Role, requiredRole?: Role): boolean {
  */
 export function hasAnyRole(userRole?: Role, requiredRoles?: Role[]): boolean {
   if (!userRole || !requiredRoles || requiredRoles.length === 0) return false
+  if (isSuperAdmin(userRole)) return true
   return requiredRoles.includes(userRole)
 }
 
@@ -157,6 +153,7 @@ export function getRoleAccessLevel(role: Role): number {
  */
 export function hasRoleOrHigher(userRole?: Role, requiredRole?: Role): boolean {
   if (!userRole || !requiredRole) return false
+  if (isSuperAdmin(userRole)) return true
   
   const userLevel = getRoleAccessLevel(userRole)
   const requiredLevel = getRoleAccessLevel(requiredRole)

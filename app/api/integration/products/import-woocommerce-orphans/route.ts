@@ -73,7 +73,7 @@ async function assertGerenciaOrAdmin(authHeader: string | null): Promise<
   }
 
   const role = data.data?.user?.role ?? data.user?.role
-  if (role !== 'gerencia' && role !== 'admin') {
+  if (role !== 'gerencia' && role !== 'admin' && role !== 'superadmin') {
     return {
       ok: false,
       status: 403,

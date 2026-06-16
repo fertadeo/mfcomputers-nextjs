@@ -269,28 +269,28 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: "administracion",
     title: "Administración",
     icon: Settings,
-    requiredRoles: ['admin', 'gerencia'], // Solo admin y gerencia pueden ver administración
+    requiredRoles: ['admin', 'gerencia', 'superadmin'], // Admin, gerencia y superadmin
     items: [
       { 
         id: "proveedores", 
         label: "Proveedores", 
         icon: Truck, 
         href: "/proveedores",
-        requiredRoles: ['admin', 'gerencia']
+        requiredRoles: ['admin', 'gerencia', 'superadmin']
       },
       { 
         id: "bancos", 
         label: "Bancos", 
         icon: Building2, 
         href: "/bancos",
-        requiredRoles: ['admin', 'gerencia']
+        requiredRoles: ['admin', 'gerencia', 'superadmin']
       },
       { 
         id: "configuracion", 
         label: "Configuración", 
         icon: Shield, 
         href: "/configuracion",
-        requiredRoles: ['admin', 'gerencia'] // Admin y gerencia pueden gestionar roles y permisos
+        requiredRoles: ['admin', 'gerencia', 'superadmin'] // Admin y gerencia pueden gestionar roles y permisos
       },
     ]
   },
@@ -314,6 +314,7 @@ export const MENU_GROUPS: MenuGroup[] = [
 // Función helper para verificar si un rol tiene acceso a un item
 export function hasRoleAccess(userRole: Role | undefined, requiredRoles?: Role[]): boolean {
   if (!userRole) return false
+  if (userRole === 'superadmin') return true
   if (!requiredRoles || requiredRoles.length === 0) return true
   return requiredRoles.includes(userRole)
 }

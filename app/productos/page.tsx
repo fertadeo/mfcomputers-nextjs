@@ -368,7 +368,7 @@ export default function ProductosPage() {
 
   // Verificar si el usuario puede realizar acciones de administración
   const canManageProducts = isAdmin()
-  const canLinkWooCommerce = hasAnyOfRoles(['gerencia', 'admin'])
+  const canLinkWooCommerce = hasAnyOfRoles(['gerencia', 'admin', 'superadmin'])
   const canBatchPricing = hasAnyOfRoles(['gerencia'])
 
   const hasActiveFilters =
