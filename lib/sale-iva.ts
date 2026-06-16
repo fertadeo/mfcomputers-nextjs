@@ -84,11 +84,14 @@ export function computeSaleIvaBreakdown(
     const subtotal = item.subtotal
     subtotalInclIva += subtotal
     const rate = normalizeSaleIvaRate(item.iva_rate)
-    const { neto, iva } = splitIva(subtotal, rate)
-    netoGravado += neto
-    if (rate === 21) iva21 += iva
-    else if (rate === 10.5) iva105 += iva
-    else ivaExento += subtotal
+    if (rate === 0) {
+      ivaExento += subtotal
+    } else {
+      const { neto, iva } = splitIva(subtotal, rate)
+      netoGravado += neto
+      if (rate === 21) iva21 += iva
+      else if (rate === 10.5) iva105 += iva
+    }
   }
 
   iva21 = Math.round(iva21 * 100) / 100
@@ -174,4 +177,12 @@ export function buildFacturadorIvaArrayFromLines(
   return Array.from(buckets.entries())
     .map(([id, { base, cuota }]) => ({ id, base, cuota }))
     .sort((a, b) => a.id - b.id)
+}
+
+/** importe WSFE = suma(bases) + suma(cuotas) del array iva[] del facturador. */
+export function facturadorImporteFromIvaArray(
+  iva: Array<{ id: number; base: number; cuota: number }>
+): number {
+  const total = iva.reduce((sum, row) => sum + row.base + row.cuota, 0)
+  return Math.round(total * 100) / 100
 }

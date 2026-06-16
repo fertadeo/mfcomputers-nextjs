@@ -33,7 +33,14 @@ describe("sale-iva", () => {
     expect(breakdown.ivaExento).toBe(50)
     expect(breakdown.ivaTotal).toBe(31.5)
     expect(breakdown.subtotalInclIva).toBe(281.5)
-    expect(breakdown.netoGravado).toBe(250)
+    expect(breakdown.netoGravado).toBe(200)
+  })
+
+  it("producto exento no suma a neto gravado", () => {
+    const breakdown = computeSaleIvaBreakdown([{ subtotal: 2, iva_rate: 0 }])
+    expect(breakdown.netoGravado).toBe(0)
+    expect(breakdown.ivaExento).toBe(2)
+    expect(breakdown.ivaTotal).toBe(0)
   })
 
   it("arma IVA discriminado ARCA con alícuotas AFIP en cero si no aplican", () => {

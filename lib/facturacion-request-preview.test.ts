@@ -108,4 +108,60 @@ describe("facturacion-request-preview", () => {
     expect(preview.venta.fechaComprobante).toBe("2026-06-16")
     expect(preview.comprobante.notaFechasServicio).toContain("No aplica")
   })
+
+  it("Factura B con producto exento alinea totales ERP y facturadorPayload con MultiFacturador", () => {
+    const preview = buildFacturarFullPayloadPreview({
+      saleId: 46,
+      saleNumber: "SALE-202606-0001",
+      facturarPayload: {
+        tipo: 6,
+        docTipo: 80,
+        docNro: 20355026656,
+        condicionIvaReceptor: 6,
+        concepto: 1,
+        cuitEmisor: "20339985945",
+        puntoVenta: 5,
+      },
+      lines: [
+        {
+          description: "Producto de prueba. Testing Sistema",
+          quantity: 2,
+          unitPrice: 1,
+          subtotal: 2,
+          ivaRate: 0,
+        },
+      ],
+      receptor: {
+        razonSocial: "FERNANDO MANUEL TADEO SUAREZ",
+        docTipo: 80,
+        docNro: 20355026656,
+        condicionIvaReceptor: 6,
+        condicionIvaLabel: "Responsable Monotributo",
+      },
+      totalAmount: 2,
+    })
+
+    expect(preview.facturadorPayload).toEqual({
+      cuitEmisor: 20339985945,
+      tipo: 6,
+      puntoVenta: 5,
+      docTipo: 80,
+      docNro: "20355026656",
+      condicionIvaReceptor: 6,
+      concepto: 1,
+      importe: 2,
+      iva: [{ id: 3, base: 2, cuota: 0 }],
+      omitirPdf: true,
+    })
+    expect(preview.items[0].importe_exento).toBe(2)
+    expect(preview.items[0]).not.toHaveProperty("neto_gravado")
+    expect(preview.totales).toEqual({
+      neto_gravado: 0,
+      importe_exento: 2,
+      iva_discriminado: 0,
+      iva_21: 0,
+      iva_10_5: 0,
+      importe_total: 2,
+    })
+  })
 })

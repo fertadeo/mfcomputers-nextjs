@@ -8,6 +8,7 @@ import {
   afipAlicuotaIdFromRate,
   buildFacturadorIvaArrayFromLines,
   computeSaleIvaBreakdown,
+  facturadorImporteFromIvaArray,
   formatSaleIvaRateLabel,
   netFromInclusiveAmount,
   splitIva,
@@ -158,6 +159,20 @@ export function buildFacturarFullPayloadPreview(
 
   const items = requiereIva
     ? args.lines.map((line) => {
+        const isExento = line.ivaRate === 0
+        if (isExento) {
+          return {
+            descripcion: line.description,
+            quantity: line.quantity,
+            unit_price: line.unitPrice,
+            subtotal: line.subtotal,
+            iva_rate: 0,
+            iva_rate_label: formatSaleIvaRateLabel(0),
+            alicuota_afip_id: afipAlicuotaIdFromRate(0),
+            importe_exento: Math.round(line.subtotal * 100) / 100,
+            nota: "En iva[] del facturador va como { id: 3, base: subtotal, cuota: 0 }; no es neto gravado.",
+          }
+        }
         const neto = line.neto ?? splitIva(line.subtotal, line.ivaRate).neto
         const iva = line.iva ?? splitIva(line.subtotal, line.ivaRate).iva
         return {
@@ -190,6 +205,8 @@ export function buildFacturarFullPayloadPreview(
   const docTipo = body.docTipo ?? 99
   const docNroRaw = body.docNro != null ? String(body.docNro).replace(/\D/g, "") : ""
 
+  const ivaArray = requiereIva ? buildFacturadorIvaArrayFromLines(lineInputs) : undefined
+
   const facturadorPayload: FacturadorEmitirPayloadPreview = {
     cuitEmisor,
     tipo,
@@ -197,8 +214,8 @@ export function buildFacturarFullPayloadPreview(
     docTipo,
     condicionIvaReceptor: condicion,
     concepto,
-    importe: requiereIva
-      ? Math.round((ivaBreakdown.netoGravado + ivaBreakdown.ivaTotal) * 100) / 100
+    importe: requiereIva && ivaArray?.length
+      ? facturadorImporteFromIvaArray(ivaArray)
       : importeTotal,
     omitirPdf: true,
   }
@@ -207,9 +224,9 @@ export function buildFacturarFullPayloadPreview(
     facturadorPayload.docNro = docNroRaw
   }
 
-  if (requiereIva) {
-    facturadorPayload.iva = buildFacturadorIvaArrayFromLines(lineInputs)
-  } else {
+  if (requiereIva && ivaArray) {
+    facturadorPayload.iva = ivaArray
+  } else if (!requiereIva) {
     facturadorPayload.nota = "Factura C: no se envía el array iva[] al facturador ARCA."
   }
 
@@ -223,10 +240,10 @@ export function buildFacturarFullPayloadPreview(
   const totales = requiereIva
     ? {
         neto_gravado: Math.round(ivaBreakdown.netoGravado * 100) / 100,
+        importe_exento: Math.round(ivaBreakdown.ivaExento * 100) / 100,
         iva_discriminado: Math.round(ivaBreakdown.ivaTotal * 100) / 100,
         iva_21: Math.round(ivaBreakdown.iva21 * 100) / 100,
         iva_10_5: Math.round(ivaBreakdown.iva105 * 100) / 100,
-        importe_exento: Math.round(ivaBreakdown.ivaExento * 100) / 100,
         importe_total: importeTotal,
       }
     : {
@@ -253,8 +270,9 @@ export function buildFacturarFullPayloadPreview(
     descripcion: "Vista previa del comprobante fiscal (frontend + venta ERP)",
     nota:
       "httpRequest.body es lo que envía el navegador en POST /sales/:id/facturar. " +
-      "facturadorPayload es lo que el backend envía a ARCA (POST /api/facturas). " +
-      "receptor, items y totales reflejan la venta en el ERP; no van en el body del POST /facturar.",
+      "facturadorPayload es lo que el backend envía a POST /api/facturas (MultiFacturador). " +
+      "receptor, items y totales son solo ERP; importe = suma(iva[].base + iva[].cuota). " +
+      "Ítems exentos (0%): importe_exento en ERP, base en iva id 3 — no neto_gravado.",
     httpRequest: {
       method: "POST",
       url: `${getApiUrl()}sales/${args.saleId}/facturar`,
