@@ -1,11 +1,12 @@
 import { getApiUrl } from "@/config/api"
 import type { FacturarSaleRequest } from "@/lib/api"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
-import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
+import { facturadorTipoRequiereIva, getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { getStoredFacturacionCuitEmisor, getStoredFacturacionPuntoVenta } from "@/lib/facturacion-settings"
 import {
   afipAlicuotaIdFromRate,
+  buildFacturadorIvaArrayFromLines,
   computeSaleIvaBreakdown,
   formatSaleIvaRateLabel,
   netFromInclusiveAmount,
@@ -49,6 +50,24 @@ function conceptoLabel(concepto?: number): string {
   return "Productos"
 }
 
+function argentinaTodayYmd(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+}
+
+function normalizeFechaYmd(value?: string | null): string | undefined {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10)
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return undefined
+  return parsed.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+}
+
+function resolveFechaComprobante(fechaCbte?: string | null): string {
+  return normalizeFechaYmd(fechaCbte) ?? argentinaTodayYmd()
+}
+
 export interface FacturarFullPayloadPreviewReceptor {
   razonSocial: string
   docTipo: number
@@ -71,16 +90,35 @@ export interface BuildFacturarFullPayloadPreviewArgs {
   totalAmount?: number | null
 }
 
+export interface FacturadorEmitirPayloadPreview {
+  cuitEmisor: number
+  tipo: number
+  puntoVenta: number
+  docTipo: number
+  docNro?: string
+  condicionIvaReceptor: number
+  concepto: number
+  importe: number
+  iva?: Array<{ id: number; base: number; cuota: number }>
+  fechaServicioDesde?: string
+  fechaServicioHasta?: string
+  omitirPdf: boolean
+  nota?: string
+}
+
 export interface FacturarFullPayloadPreview {
   descripcion: string
   nota: string
   httpRequest: FacturarHttpRequestPreview
+  /** Payload que el backend arma y envía a POST /api/facturas del facturador ARCA. */
+  facturadorPayload: FacturadorEmitirPayloadPreview
   venta: {
     saleId: number
     saleNumber?: string | null
     clientId?: number | null
-    saleDate?: string | null
-    fechaComprobante?: string | null
+    saleDate?: string
+    fechaComprobante: string
+    notaFechaComprobante: string
   }
   emisor: {
     cuitEmisor?: string | null
@@ -92,30 +130,13 @@ export interface FacturarFullPayloadPreview {
     tipoLabel: string
     concepto: number
     conceptoLabel: string
-    fechaServicioDesde?: string | null
-    fechaServicioHasta?: string | null
+    fechaServicioDesde?: string
+    fechaServicioHasta?: string
+    notaFechasServicio?: string
     force?: boolean
   }
-  items: Array<{
-    descripcion: string
-    quantity: number
-    unit_price: number
-    iva_rate: number
-    iva_rate_label: string
-    alicuota_afip_id: number
-    subtotal: number
-    neto_gravado: number
-    iva: number
-    precio_unitario_neto: number
-  }>
-  totales: {
-    neto_gravado: number
-    iva_discriminado: number
-    iva_21: number
-    iva_10_5: number
-    importe_exento: number
-    importe_total: number
-  }
+  items: Array<Record<string, string | number>>
+  totales: Record<string, number>
 }
 
 /**
@@ -129,71 +150,134 @@ export function buildFacturarFullPayloadPreview(
   const tipo = body.tipo ?? 6
   const concepto = body.concepto ?? 1
   const condicion = body.condicionIvaReceptor ?? 5
+  const requiereIva = facturadorTipoRequiereIva(tipo)
+  const fechaComprobante = resolveFechaComprobante(args.fechaCbte)
+  const saleDate = normalizeFechaYmd(args.saleDate)
 
-  const items = args.lines.map((line) => {
-    const neto = line.neto ?? splitIva(line.subtotal, line.ivaRate).neto
-    const iva = line.iva ?? splitIva(line.subtotal, line.ivaRate).iva
-    return {
-      descripcion: line.description,
-      quantity: line.quantity,
-      unit_price: line.unitPrice,
-      iva_rate: line.ivaRate,
-      iva_rate_label: formatSaleIvaRateLabel(line.ivaRate),
-      alicuota_afip_id: afipAlicuotaIdFromRate(line.ivaRate),
-      subtotal: line.subtotal,
-      neto_gravado: Math.round(neto * 100) / 100,
-      iva: Math.round(iva * 100) / 100,
-      precio_unitario_neto: Math.round(netFromInclusiveAmount(line.unitPrice, line.ivaRate) * 100) / 100,
-    }
-  })
+  const lineInputs = args.lines.map((line) => ({ subtotal: line.subtotal, iva_rate: line.ivaRate }))
 
-  const ivaBreakdown = computeSaleIvaBreakdown(
-    args.lines.map((line) => ({ subtotal: line.subtotal, iva_rate: line.ivaRate }))
-  )
+  const items = requiereIva
+    ? args.lines.map((line) => {
+        const neto = line.neto ?? splitIva(line.subtotal, line.ivaRate).neto
+        const iva = line.iva ?? splitIva(line.subtotal, line.ivaRate).iva
+        return {
+          descripcion: line.description,
+          quantity: line.quantity,
+          unit_price: line.unitPrice,
+          iva_rate: line.ivaRate,
+          iva_rate_label: formatSaleIvaRateLabel(line.ivaRate),
+          alicuota_afip_id: afipAlicuotaIdFromRate(line.ivaRate),
+          subtotal: line.subtotal,
+          neto_gravado: Math.round(neto * 100) / 100,
+          iva: Math.round(iva * 100) / 100,
+          precio_unitario_neto: Math.round(netFromInclusiveAmount(line.unitPrice, line.ivaRate) * 100) / 100,
+        }
+      })
+    : args.lines.map((line) => ({
+        descripcion: line.description,
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+        subtotal: line.subtotal,
+      }))
+
+  const ivaBreakdown = computeSaleIvaBreakdown(lineInputs)
   const linesSubtotal = args.lines.reduce((acc, l) => acc + l.subtotal, 0)
-  const importeTotal = args.totalAmount ?? linesSubtotal
+  const importeTotal = Math.round((args.totalAmount ?? linesSubtotal) * 100) / 100
+
+  const cuitEmisorRaw = body.cuitEmisor ?? getStoredFacturacionCuitEmisor() ?? ""
+  const cuitEmisor = Number(String(cuitEmisorRaw).replace(/\D/g, ""))
+  const puntoVenta = body.puntoVenta ?? getStoredFacturacionPuntoVenta() ?? 1
+  const docTipo = body.docTipo ?? 99
+  const docNroRaw = body.docNro != null ? String(body.docNro).replace(/\D/g, "") : ""
+
+  const facturadorPayload: FacturadorEmitirPayloadPreview = {
+    cuitEmisor,
+    tipo,
+    puntoVenta,
+    docTipo,
+    condicionIvaReceptor: condicion,
+    concepto,
+    importe: requiereIva
+      ? Math.round((ivaBreakdown.netoGravado + ivaBreakdown.ivaTotal) * 100) / 100
+      : importeTotal,
+    omitirPdf: true,
+  }
+
+  if (docNroRaw && docNroRaw !== "0") {
+    facturadorPayload.docNro = docNroRaw
+  }
+
+  if (requiereIva) {
+    facturadorPayload.iva = buildFacturadorIvaArrayFromLines(lineInputs)
+  } else {
+    facturadorPayload.nota = "Factura C: no se envía el array iva[] al facturador ARCA."
+  }
+
+  if (concepto === 2 || concepto === 3) {
+    const desde = normalizeFechaYmd(body.fechaServicioDesde)
+    const hasta = normalizeFechaYmd(body.fechaServicioHasta)
+    if (desde) facturadorPayload.fechaServicioDesde = desde
+    if (hasta) facturadorPayload.fechaServicioHasta = hasta
+  }
+
+  const totales = requiereIva
+    ? {
+        neto_gravado: Math.round(ivaBreakdown.netoGravado * 100) / 100,
+        iva_discriminado: Math.round(ivaBreakdown.ivaTotal * 100) / 100,
+        iva_21: Math.round(ivaBreakdown.iva21 * 100) / 100,
+        iva_10_5: Math.round(ivaBreakdown.iva105 * 100) / 100,
+        importe_exento: Math.round(ivaBreakdown.ivaExento * 100) / 100,
+        importe_total: importeTotal,
+      }
+    : {
+        importe_total: importeTotal,
+      }
+
+  const comprobante: FacturarFullPayloadPreview["comprobante"] = {
+    tipo,
+    tipoLabel: getTipoComprobanteLabel(tipo),
+    concepto,
+    conceptoLabel: conceptoLabel(concepto),
+    force: body.force ?? false,
+  }
+
+  if (concepto === 2 || concepto === 3) {
+    comprobante.fechaServicioDesde = normalizeFechaYmd(body.fechaServicioDesde)
+    comprobante.fechaServicioHasta = normalizeFechaYmd(body.fechaServicioHasta)
+  } else {
+    comprobante.notaFechasServicio =
+      "No aplica: fechas de servicio solo son obligatorias con concepto 2 (servicios) o 3 (productos + servicios)."
+  }
 
   return {
     descripcion: "Vista previa del comprobante fiscal (frontend + venta ERP)",
     nota:
       "httpRequest.body es lo que envía el navegador en POST /sales/:id/facturar. " +
-      "receptor, items y totales reflejan lo que el backend debería armar desde la venta " +
-      "(sale_items + datos fiscales); no van en el body del POST.",
+      "facturadorPayload es lo que el backend envía a ARCA (POST /api/facturas). " +
+      "receptor, items y totales reflejan la venta en el ERP; no van en el body del POST /facturar.",
     httpRequest: {
       method: "POST",
       url: `${getApiUrl()}sales/${args.saleId}/facturar`,
       saleId: args.saleId,
       body,
     },
+    facturadorPayload,
     venta: {
       saleId: args.saleId,
       saleNumber: args.saleNumber,
       clientId: args.clientId,
-      saleDate: args.saleDate,
-      fechaComprobante: args.fechaCbte,
+      saleDate,
+      fechaComprobante,
+      notaFechaComprobante:
+        "ARCA asigna la fecha del comprobante al emitir (fecha de proceso). No se envía fechaCbte en el payload.",
     },
     emisor: {
       cuitEmisor: body.cuitEmisor ?? getStoredFacturacionCuitEmisor(),
       puntoVenta: body.puntoVenta ?? getStoredFacturacionPuntoVenta() ?? null,
     },
     receptor: args.receptor,
-    comprobante: {
-      tipo,
-      tipoLabel: getTipoComprobanteLabel(tipo),
-      concepto,
-      conceptoLabel: conceptoLabel(concepto),
-      fechaServicioDesde: body.fechaServicioDesde ?? null,
-      fechaServicioHasta: body.fechaServicioHasta ?? null,
-      force: body.force ?? false,
-    },
+    comprobante,
     items,
-    totales: {
-      neto_gravado: Math.round(ivaBreakdown.netoGravado * 100) / 100,
-      iva_discriminado: Math.round(ivaBreakdown.ivaTotal * 100) / 100,
-      iva_21: Math.round(ivaBreakdown.iva21 * 100) / 100,
-      iva_10_5: Math.round(ivaBreakdown.iva105 * 100) / 100,
-      importe_exento: Math.round(ivaBreakdown.ivaExento * 100) / 100,
-      importe_total: Math.round(importeTotal * 100) / 100,
-    },
+    totales,
   }
 }

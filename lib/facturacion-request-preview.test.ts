@@ -21,7 +21,7 @@ describe("facturacion-request-preview", () => {
     expect(merged.docTipo).toBe(80)
   })
 
-  it("arma JSON completo con receptor, ítems e IVA", () => {
+  it("arma JSON completo con receptor, ítems e IVA (Factura A)", () => {
     const preview = buildFacturarFullPayloadPreview({
       saleId: 42,
       saleNumber: "SALE-001",
@@ -62,6 +62,50 @@ describe("facturacion-request-preview", () => {
     expect(preview.items[0].quantity).toBe(2)
     expect(preview.items[0].iva_rate).toBe(21)
     expect(preview.totales.importe_total).toBe(200000)
+    expect(preview.facturadorPayload.iva).toBeDefined()
     expect(preview.httpRequest.body.tipo).toBe(1)
+  })
+
+  it("Factura C no incluye iva en facturadorPayload ni desglose IVA en ítems", () => {
+    const preview = buildFacturarFullPayloadPreview({
+      saleId: 46,
+      saleNumber: "SALE-202606-0001",
+      facturarPayload: {
+        tipo: 11,
+        docTipo: 80,
+        docNro: 20355026656,
+        condicionIvaReceptor: 6,
+        concepto: 1,
+        cuitEmisor: "20339985945",
+        puntoVenta: 5,
+      },
+      lines: [
+        {
+          description: "Producto de prueba",
+          quantity: 2,
+          unitPrice: 1,
+          subtotal: 2,
+          ivaRate: 0,
+        },
+      ],
+      receptor: {
+        razonSocial: "FERNANDO MANUEL TADEO SUAREZ",
+        docTipo: 80,
+        docNro: 20355026656,
+        condicionIvaReceptor: 6,
+        condicionIvaLabel: "Responsable Monotributo",
+      },
+      saleDate: "2026-06-02",
+      fechaCbte: "2026-06-16",
+      totalAmount: 2,
+    })
+
+    expect(preview.facturadorPayload.tipo).toBe(11)
+    expect(preview.facturadorPayload.iva).toBeUndefined()
+    expect(preview.facturadorPayload.importe).toBe(2)
+    expect(preview.items[0]).not.toHaveProperty("iva_rate")
+    expect(preview.totales).toEqual({ importe_total: 2 })
+    expect(preview.venta.fechaComprobante).toBe("2026-06-16")
+    expect(preview.comprobante.notaFechasServicio).toContain("No aplica")
   })
 })

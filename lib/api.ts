@@ -1095,6 +1095,8 @@ export interface FacturarSugerenciaDefaults {
   /** Fecha que el backend enviará al facturador (fechaCbte). */
   fechaCbte?: string
   fecha_cbte?: string
+  /** Alias devuelto por GET /facturar/sugerencia (fecha de proceso ARCA = hoy Argentina). */
+  fechaComprobanteEsperada?: string
 }
 
 export interface FacturarSugerenciaData {
@@ -1115,7 +1117,7 @@ export function parseFacturarSugerenciaDefaults(
   if (!d) return {}
   return {
     saleDate: d.saleDate ?? d.sale_date,
-    fechaCbte: d.fechaCbte ?? d.fecha_cbte,
+    fechaCbte: d.fechaCbte ?? d.fecha_cbte ?? d.fechaComprobanteEsperada,
   }
 }
 

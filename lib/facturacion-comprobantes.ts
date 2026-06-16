@@ -17,6 +17,14 @@ export const CONDICIONES_IVA_RECEPTOR = [
   { value: 10, label: "IVA Liberado" },
 ] as const
 
+/** Tipos WSFE que exigen array `iva[]` en POST /api/facturas (A y B; no Factura C). */
+const TIPOS_CON_IVA_DISCRIMINADO = new Set([1, 2, 3, 6, 7, 8])
+
+export function facturadorTipoRequiereIva(tipo: number | undefined | null): boolean {
+  if (tipo == null || !Number.isFinite(tipo)) return true
+  return TIPOS_CON_IVA_DISCRIMINADO.has(tipo)
+}
+
 export function getTipoComprobanteLabel(tipo: number | undefined | null): string {
   if (tipo == null) return "—"
   const found = TIPOS_COMPROBANTE_AFIP.find((t) => t.value === tipo)

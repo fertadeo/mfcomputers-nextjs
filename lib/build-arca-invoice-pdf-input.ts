@@ -17,6 +17,7 @@ import {
 } from "@/lib/facturacion-settings"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { mergeFacturarSaleRequestBody } from "@/lib/facturacion-request-preview"
+import { facturadorTipoRequiereIva } from "@/lib/facturacion-comprobantes"
 import {
   buildArcaIvaDiscriminado,
   computeSaleIvaBreakdown,
@@ -252,13 +253,22 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
   const docTipo = toNumber(payload.docTipo, 99)
   const docNro = toNumber(payload.docNro, 0)
   const condicionIva = payload.condicionIvaReceptor ?? 5
+  const requiereIva = facturadorTipoRequiereIva(tipo)
 
   const lineItemsForIva = args.lines.map((line) => ({
     subtotal: line.subtotal,
     iva_rate: line.ivaRate,
   }))
   const ivaBreakdown = computeSaleIvaBreakdown(lineItemsForIva)
-  const ivaDiscriminado = buildArcaIvaDiscriminado(lineItemsForIva)
+  const ivaDiscriminado = requiereIva ? buildArcaIvaDiscriminado(lineItemsForIva) : {
+    netoGravado: 0,
+    iva27: 0,
+    iva21: 0,
+    iva105: 0,
+    iva5: 0,
+    iva25: 0,
+    iva0: 0,
+  }
 
   const fechaEmision =
     args.fechaEmision?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
@@ -297,17 +307,22 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
       descripcion: line.description,
       cantidad: line.quantity,
       unidadMedida: "unidades",
-      precioUnitario: netFromInclusiveAmount(line.unitPrice, line.ivaRate),
+      precioUnitario: requiereIva
+        ? netFromInclusiveAmount(line.unitPrice, line.ivaRate)
+        : line.unitPrice,
       bonificacionPct: 0,
-      subtotal: netFromInclusiveAmount(line.subtotal, line.ivaRate),
-      alicuotaIva: formatAlicuotaIvaArca(line.ivaRate),
+      subtotal: requiereIva
+        ? netFromInclusiveAmount(line.subtotal, line.ivaRate)
+        : line.subtotal,
+      alicuotaIva: requiereIva ? formatAlicuotaIvaArca(line.ivaRate) : "0%",
       subtotalConIva: line.subtotal,
     })),
     totales: {
       otrosTributos: 0,
       total: args.totalAmount,
       ivaDiscriminado,
-      ivaContenido: ivaBreakdown.ivaTotal > 0 ? ivaBreakdown.ivaTotal : null,
+      ivaContenido:
+        requiereIva && ivaBreakdown.ivaTotal > 0 ? ivaBreakdown.ivaTotal : null,
     },
     cae: "",
     caeVencimiento: null,
