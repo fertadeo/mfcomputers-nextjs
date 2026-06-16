@@ -20,10 +20,7 @@ import {
   XCircle,
 } from "lucide-react"
 import {
-  getSystemHealthEvents,
-  getSystemHealthStats,
-  getSystemHealthStatus,
-  getSystemHealthModules,
+  getSystemHealthOverview,
   type SystemEvent,
   type SystemEventStats,
   type SystemEventType,
@@ -77,26 +74,21 @@ export default function SaludSistemaPage() {
   const loadData = useCallback(async (page = 1) => {
     try {
       setError(null)
-      const [statusData, statsData, modulesData, eventsData] = await Promise.all([
-        getSystemHealthStatus(),
-        getSystemHealthStats(),
-        getSystemHealthModules(),
-        getSystemHealthEvents({
-          page,
-          limit: 30,
-          event_type: eventType !== "all" ? (eventType as SystemEventType) : undefined,
-          module: module !== "all" ? module : undefined,
-          search: search.trim() || undefined,
-        }),
-      ])
-      setStatus(statusData)
-      setStats(statsData)
-      setModules(modulesData)
-      setEvents(eventsData.events)
+      const overview = await getSystemHealthOverview({
+        page,
+        limit: 30,
+        event_type: eventType !== "all" ? (eventType as SystemEventType) : undefined,
+        module: module !== "all" ? module : undefined,
+        search: search.trim() || undefined,
+      })
+      setStatus(overview.status)
+      setStats(overview.stats)
+      setModules(overview.modules)
+      setEvents(overview.events)
       setPagination({
-        page: eventsData.pagination.page,
-        totalPages: eventsData.pagination.totalPages,
-        total: eventsData.pagination.total,
+        page: overview.pagination.page,
+        totalPages: overview.pagination.totalPages,
+        total: overview.pagination.total,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar datos")

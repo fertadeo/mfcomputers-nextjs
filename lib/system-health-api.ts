@@ -55,6 +55,26 @@ export interface SystemEventsParams {
   limit?: number;
 }
 
+export async function getSystemHealthOverview(params: SystemEventsParams = {}): Promise<{
+  status: SystemStatus;
+  stats: SystemEventStats;
+  modules: string[];
+  events: SystemEvent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+  const searchParams = new URLSearchParams();
+  if (params.event_type) searchParams.set('event_type', params.event_type);
+  if (params.module) searchParams.set('module', params.module);
+  if (params.search) searchParams.set('search', params.search);
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.limit) searchParams.set('limit', String(params.limit));
+
+  const qs = searchParams.toString();
+  const res = await apiFetch(`/system-health/overview${qs ? `?${qs}` : ''}`);
+  const data = await res.json();
+  return data.data;
+}
+
 export async function getSystemHealthStatus(): Promise<SystemStatus> {
   const res = await apiFetch('/system-health/status');
   const data = await res.json();
