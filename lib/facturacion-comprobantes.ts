@@ -13,8 +13,10 @@ export const CONDICIONES_IVA_RECEPTOR = [
   { value: 4, label: "IVA Sujeto Exento" },
   { value: 5, label: "Consumidor final" },
   { value: 6, label: "Responsable Monotributo" },
+  { value: 7, label: "Sujeto no categorizado" },
   { value: 9, label: "Cliente del Exterior" },
   { value: 10, label: "IVA Liberado" },
+  { value: 15, label: "IVA No Alcanzado" },
 ] as const
 
 /** Tipos WSFE que exigen array `iva[]` en POST /api/facturas (A y B; no Factura C). */
@@ -141,27 +143,28 @@ export function isComprobanteClaseB(tipo: number): boolean {
 }
 
 /**
- * Normaliza condicionIvaReceptor al enviar a WSFE.
- * Monotributo (6) no es válido en Factura B: AFIP exige un código de clase B (usamos 5 + CUIT).
+ * Condición IVA para el payload WSFE según tipo de comprobante.
+ * Clase B no admite códigos 6/13/16 (monotributo A/M/C): se usa 7 (Sujeto no categorizado), nunca 5 (CF).
  */
-export function normalizeCondicionIvaReceptorForWsfe(tipo: number, condicionIvaReceptor: number): number {
+export function resolveCondicionIvaReceptorForWsfe(tipo: number, condicionErp: number): number {
   const clase = getWsfeComprobanteClase(tipo)
-  const condicion = Number(condicionIvaReceptor)
+  const condicion = Number(condicionErp)
 
   if (clase === "B" && CONDICION_IVA_SOLO_AMC.has(condicion)) {
     if (condicion === 1) return condicion
-    return 5
-  }
-
-  if (clase === "C" && condicion === 5 && CONDICION_IVA_SOLO_BC.has(5)) {
-    return condicion
+    return 7
   }
 
   return condicion
 }
 
+/** @deprecated Usar resolveCondicionIvaReceptorForWsfe */
+export function normalizeCondicionIvaReceptorForWsfe(tipo: number, condicionIvaReceptor: number): number {
+  return resolveCondicionIvaReceptorForWsfe(tipo, condicionIvaReceptor)
+}
+
 export function isCondicionIvaValidForWsfeTipo(tipo: number, condicionIvaReceptor: number): boolean {
-  const condicion = normalizeCondicionIvaReceptorForWsfe(tipo, condicionIvaReceptor)
+  const condicion = resolveCondicionIvaReceptorForWsfe(tipo, condicionIvaReceptor)
   const clase = getWsfeComprobanteClase(tipo)
   if (clase === "B") return CONDICION_IVA_SOLO_BC.has(condicion)
   if (clase === "A") return CONDICION_IVA_SOLO_AMC.has(condicion) || condicion === 4

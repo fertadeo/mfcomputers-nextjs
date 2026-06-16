@@ -144,7 +144,7 @@ describe("facturacion-form-from-cliente", () => {
     expect(err).toMatch(/no coincide/)
   })
 
-  it("buildFacturarPayload normaliza monotributo (6) a condición 5 en Factura B para WSFE", () => {
+  it("buildFacturarPayload normaliza monotributo (6) a condición 7 en Factura B para WSFE", () => {
     const payload = buildFacturarPayload(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
       cliente({
@@ -157,7 +157,22 @@ describe("facturacion-form-from-cliente", () => {
     )
     expect(payload.tipo).toBe(6)
     expect(payload.docTipo).toBe(80)
-    expect(payload.condicionIvaReceptor).toBe(5)
+    expect(payload.condicionIvaReceptor).toBe(7)
+  })
+
+  it("validateFacturarReceptorFiscal rechaza CF si cliente es monotributo", () => {
+    const err = validateFacturarReceptorFiscal(
+      { client_id: 37, client_name: "FERNANDO" },
+      cliente({
+        id: 37,
+        name: "FERNANDO MANUEL TADEO SUAREZ",
+        code: "F1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20355026656",
+      }),
+      { docTipo: 80, docNro: 20355026656, condicionIvaReceptor: 5, tipo: 6 }
+    )
+    expect(err).toMatch(/Consumidor final/)
   })
 
   it("validateFacturarPayloadCoherence rechaza CUIT con CF en Factura A", () => {
@@ -183,6 +198,6 @@ describe("facturacion-form-from-cliente", () => {
       }),
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 }
     )
-    expect(err).toMatch(/consumidor final/)
+    expect(err).toMatch(/Consumidor final/i)
   })
 })

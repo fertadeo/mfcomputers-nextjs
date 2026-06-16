@@ -319,9 +319,16 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
   RECEPTOR_CUIT_CONDICION_INVALIDA: {
     title: "CUIT/CUIL incompatible con consumidor final",
     message:
-      "Con CUIT/CUIL (docTipo 80) la condición Consumidor final (5) solo es válida en Factura B. En Factura A usá condición 1 (RI).",
+      "Con CUIT/CUIL (docTipo 80) la condición Consumidor final (5) solo es válida en Factura B para un consumidor final real.",
     actionHint:
-      "Para monotributo con Factura B el sistema envía condición 5 a WSFE (AFIP no admite código 6 en clase B). Verificá tipo de comprobante y padrón.",
+      "No emitas como consumidor final si el cliente tiene otra condición fiscal. Monotributo en Factura B se envía como condición 7.",
+    severity: "error",
+    canRetry: true,
+  },
+  RECEPTOR_CF_CON_CONDICION_ERP: {
+    title: "Consumidor final no corresponde al cliente",
+    message: "No se puede facturar como Consumidor final si el cliente tiene otra condición IVA en el ERP.",
+    actionHint: "Revisá tax_condition / condicion_iva_receptor del cliente o consultá padrón ARCA.",
     severity: "error",
     canRetry: true,
   },
@@ -330,7 +337,7 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     message:
       "Los datos del comprobante no coinciden con las tablas habilitadas en AFIP/WSFE para este CUIT y tipo de factura.",
     actionHint:
-      "Revisá condición IVA del receptor según clase del comprobante: Factura B no admite monotributo (6); monotributo con CUIT en Factura B debe ir como condición 5.",
+      "Revisá condición IVA del receptor según clase del comprobante: Factura B no admite monotributo (6); monotributo con CUIT en Factura B debe ir como condición 7.",
     severity: "error",
     canRetry: true,
   },
@@ -485,14 +492,18 @@ export function buildFacturacionErrorDiagnosis(input: {
   const ctx = input.receptorContext
 
   if (code === "WSFE_PREFLIGHT_VALIDATION" || /condici[oó]n.*iva.*receptor.*6.*clase b|lista: 4, 5, 7/.test(text)) {
-    return "AFIP no admite condición Monotributo (6) en Factura B. Para monotributo con CUIT en Factura B se envía condición 5 (válida en clase B)."
+    return "AFIP no admite condición Monotributo (6) en Factura B. Para monotributo con CUIT en Factura B se envía condición 7 (Sujeto no categorizado), nunca consumidor final (5)."
   }
 
   if (
     code === "RECEPTOR_CUIT_CONDICION_INVALIDA" ||
     (ctx?.docTipo === 80 && ctx?.condicionIvaReceptor === 5 && ctx?.tipoComprobante === 1)
   ) {
-    return "Se intentó emitir Factura A con CUIT pero condición Consumidor final (5). Para RI usá condición 1; para monotributo en Factura B el código 5 es correcto."
+    return "Se intentó emitir Factura A con CUIT pero condición Consumidor final (5). Para RI usá condición 1; no uses consumidor final si el cliente tiene otra condición fiscal."
+  }
+
+  if (code === "RECEPTOR_CF_CON_CONDICION_ERP") {
+    return "El comprobante se enviaría como Consumidor final (5) pero el cliente tiene otra condición IVA en el ERP. Revisá los datos fiscales o consultá padrón ARCA."
   }
 
   if (code === "10056" || code === "10071" || /condici[oó]n.*iva|10056|10071/.test(text)) {
@@ -508,7 +519,7 @@ export function buildFacturacionErrorDiagnosis(input: {
   }
 
   if (ctx?.docTipo === 80 && ctx.condicionIvaReceptor === 6 && ctx.tipoComprobante === 6) {
-    return "El payload llevaba monotributo (6) en Factura B; debe normalizarse a condición 5 antes de enviar a AFIP."
+    return "El payload llevaba monotributo (6) en Factura B; debe normalizarse a condición 7 (Sujeto no categorizado) antes de enviar a AFIP, nunca consumidor final (5)."
   }
 
   return null

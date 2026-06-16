@@ -1,5 +1,9 @@
 import type { Cliente, FacturarSaleRequest, FacturarSugerenciaData } from "@/lib/api"
-import { normalizeTaxConditionFromApi } from "@/lib/client-tax-condition"
+import {
+  afipCondicionFromTaxCondition,
+  formatTaxConditionLabel,
+  normalizeTaxConditionFromApi,
+} from "@/lib/client-tax-condition"
 import {
   resolveFacturacionDesdeCliente,
   resolveTipoComprobanteFromCondicionIvaReceptor,
@@ -7,7 +11,7 @@ import {
 } from "@/lib/facturacion-cliente-fiscal"
 import {
   isComprobanteClaseB,
-  normalizeCondicionIvaReceptorForWsfe,
+  resolveCondicionIvaReceptorForWsfe,
 } from "@/lib/facturacion-comprobantes"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
@@ -22,7 +26,61 @@ export function clienteTieneDatosFiscalesErp(cliente?: Cliente | null): boolean 
   return false
 }
 
-/** docTipo 80 + condición 5: válido en Factura B (monotributo con CUIT); inválido en Factura A. */
+/** Condición IVA fiscal del cliente en el ERP (no la enviada a WSFE). */
+export function clienteCondicionIvaErp(cliente?: Cliente | null): number | null {
+  if (!cliente) return null
+  if (cliente.condicion_iva_receptor != null && cliente.condicion_iva_receptor > 0) {
+    return cliente.condicion_iva_receptor
+  }
+  const tax = normalizeTaxConditionFromApi(cliente.tax_condition)
+  if (tax) return afipCondicionFromTaxCondition(tax)
+  if (cliente.personeria === "persona_juridica") return 1
+  if (cliente.personeria === "consumidor_final") return 5
+  return null
+}
+
+/** Bloquea emitir como consumidor final (5) si el cliente tiene otra condición fiscal. */
+export function validateNoConsumidorFinalSiOtraCondicion(
+  payload: FacturarSaleRequest,
+  cliente: Cliente | null
+): string | null {
+  const condicionPayload = payload.condicionIvaReceptor ?? 5
+  if (condicionPayload !== 5) return null
+
+  const condicionErp = clienteCondicionIvaErp(cliente)
+  if (condicionErp != null && condicionErp !== 5) {
+    return `El cliente tiene condición IVA ${condicionErp} (${labelCondicionIvaFromErp(condicionErp)}) en el ERP; no se puede facturar como Consumidor final (5). Revisá los datos fiscales o consultá padrón ARCA.`
+  }
+
+  const tax = normalizeTaxConditionFromApi(cliente?.tax_condition)
+  if (tax && tax !== "consumidor_final") {
+    return `El cliente está registrado como «${formatTaxConditionLabel(tax)}»; no corresponde emitir con condición Consumidor final (5).`
+  }
+
+  const cuit = clienteCuitDigitos(cliente)
+  if (
+    cuit.length === 11 &&
+    cliente?.personeria !== "consumidor_final" &&
+    (tax == null || tax !== "consumidor_final")
+  ) {
+    return "El cliente tiene CUIT/CUIL pero no está marcado como consumidor final. Completá la condición fiscal en el ERP o consultá padrón ARCA antes de emitir."
+  }
+
+  return null
+}
+
+function labelCondicionIvaFromErp(codigo: number): string {
+  const labels: Record<number, string> = {
+    1: "Responsable Inscripto",
+    4: "Exento",
+    5: "Consumidor final",
+    6: "Monotributo",
+    7: "Sujeto no categorizado",
+  }
+  return labels[codigo] ?? `código ${codigo}`
+}
+
+/** docTipo 80 + condición 5: solo consumidor final real o venta sin identificar; no monotributo/RI. */
 export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest): string | null {
   const docTipo = payload.docTipo ?? 99
   const docNro = payload.docNro ?? 0
@@ -30,7 +88,7 @@ export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest)
   const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(condicion)
 
   if (docTipo === 80 && docNro > 0 && condicion === 5 && !isComprobanteClaseB(tipo)) {
-    return "Con CUIT/CUIL (docTipo 80) y condición Consumidor final (5) solo corresponde Factura B a monotributo u otros receptores no RI. Para un RI usá Factura A (tipo 1) con condición 1."
+    return "Con CUIT/CUIL (docTipo 80) y condición Consumidor final (5) solo corresponde Factura B a un consumidor final identificado. Para RI usá Factura A (tipo 1) con condición 1."
   }
 
   if (docTipo === 80 && docNro > 0 && condicion === 1 && isComprobanteClaseB(tipo)) {
@@ -42,9 +100,9 @@ export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest)
 
 function applyWsfeCondicionToPayload(payload: FacturarSaleRequest): FacturarSaleRequest {
   const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
-  const condicionRaw = payload.condicionIvaReceptor ?? 5
-  const condicionWsfe = normalizeCondicionIvaReceptorForWsfe(tipo, condicionRaw)
-  if (condicionWsfe === condicionRaw) return payload
+  const condicionErp = payload.condicionIvaReceptor ?? 5
+  const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
+  if (condicionWsfe === condicionErp) return payload
   return { ...payload, tipo, condicionIvaReceptor: condicionWsfe }
 }
 
@@ -204,6 +262,9 @@ export function validateFacturarReceptorFiscal(
   cliente: Cliente | null,
   payload: FacturarSaleRequest
 ): string | null {
+  const cfErr = validateNoConsumidorFinalSiOtraCondicion(payload, cliente)
+  if (cfErr) return cfErr
+
   if (!sale.client_id) return null
 
   const cuit = clienteCuitDigitos(cliente)

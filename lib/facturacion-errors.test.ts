@@ -7,7 +7,7 @@ describe("facturacion-errors diagnosis", () => {
       code: "RECEPTOR_CUIT_CONDICION_INVALIDA",
       receptorContext: { docTipo: 80, docNro: 20355026656, condicionIvaReceptor: 5 },
     })
-    expect(diagnosis).toMatch(/docTipo 80/)
+    expect(diagnosis).toMatch(/Consumidor final/)
   })
 
   it("resuelve error ARCA 10056 con mensaje de condición IVA", () => {
