@@ -87,6 +87,7 @@ import { resolveFacturacionApiError } from "@/lib/resolve-facturacion-api-error"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
+import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
 import { FacturacionErrorAlert } from "@/components/facturacion-error-alert"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
@@ -945,7 +946,8 @@ export default function FacturacionPage() {
         }
       }
       setIsConfirmEmitOpen(false)
-      setIsEmitModalOpen(false)
+      setInvoiceModalMode("view")
+      setIsEmitModalOpen(true)
       await loadBillables()
     } catch (error: unknown) {
       const err = error as FacturarSaleError
@@ -1318,6 +1320,47 @@ export default function FacturacionPage() {
                         )}
                         {isGeneratingArcaPdf ? "Generando…" : "Descargar PDF"}
                       </Button>
+                      {selectedSale && saleHasNotaCreditoEmitida(selectedSale) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isGeneratingArcaPdf}
+                          onClick={() =>
+                            void (async () => {
+                              try {
+                                await downloadArcaPdfForNotaCredito(selectedSale, null, {
+                                  reportErrorOnPage: false,
+                                })
+                              } catch (e) {
+                                const msg =
+                                  e instanceof Error ? e.message : "No se pudo descargar la nota de crédito."
+                                setErrorTitle("Error al descargar nota de crédito")
+                                setErrorMsg(msg)
+                              }
+                            })()
+                          }
+                        >
+                          {isGeneratingArcaPdf ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-4 w-4" />
+                          )}
+                          Descargar nota de crédito
+                        </Button>
+                      ) : selectedSale && canEmitNotaCredito(selectedSale) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCreditNoteSale(selectedSale)
+                            setIsEmitModalOpen(false)
+                          }}
+                        >
+                          Emitir nota de crédito
+                        </Button>
+                      ) : null}
                       {selectedSale.arca_cae ? (
                         <Button
                           type="button"
