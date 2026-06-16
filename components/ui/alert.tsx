@@ -58,7 +58,7 @@ export interface AlertProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
   ({ className, variant = "info", title, description, floating, action, children, ...props }, ref) => {
-    const config = alertVariants[variant]
+    const config = alertVariants[variant] ?? alertVariants.error
     const Icon = config.Icon
 
     const content = (

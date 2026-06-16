@@ -587,11 +587,11 @@ export function FacturacionEmitConfirmDialog({
               </div>
 
               {receptorFiscalError ? (
-                <Alert variant="destructive" title="Receptor fiscal incorrecto" description={receptorFiscalError} />
+                <Alert variant="error" title="Receptor fiscal incorrecto" description={receptorFiscalError} />
               ) : null}
 
               {itemIvaError ? (
-                <Alert variant="destructive" title="No se puede emitir" description={itemIvaError} />
+                <Alert variant="error" title="No se puede emitir" description={itemIvaError} />
               ) : null}
 
               {form.force ? (
