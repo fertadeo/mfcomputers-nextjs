@@ -113,7 +113,12 @@ export function mergeSugerenciaIntoFacturarForm(
   }
 
   const condicionFinal = next.condicionIvaReceptor ?? 5
-  next.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(condicionFinal)
+  const tipoSugeridoApi = sugerencia.sugerencia?.tipo
+  if (tipoSugeridoApi != null && Number.isFinite(tipoSugeridoApi) && tipoSugeridoApi > 0) {
+    next.tipo = tipoSugeridoApi
+  } else {
+    next.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(condicionFinal)
+  }
 
   return next
 }

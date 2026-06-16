@@ -36,9 +36,9 @@ export function condicionIvaReceptorFromCliente(cliente: Cliente | null): number
 }
 
 /**
- * Tipo WSFE según condición IVA del receptor y del emisor.
- * RI receptor → Factura A (1); monotributo receptor → Factura C (11);
- * exento / consumidor final → Factura B (6). Emisor monotributo → siempre C (11).
+ * Tipo WSFE según condición IVA del receptor y régimen del emisor (alineado con API / ARCA).
+ * Emisor monotributo → siempre Factura C (11).
+ * Emisor RI → receptor RI → Factura A (1); resto (monotributo, CF, exento…) → Factura B (6).
  */
 export function resolveTipoComprobanteFromCondicionIvaReceptor(
   condicionIvaReceptor: number,
@@ -46,19 +46,8 @@ export function resolveTipoComprobanteFromCondicionIvaReceptor(
 ): number {
   if (emisorCondicion === "monotributo") return 11
 
-  switch (condicionIvaReceptor) {
-    case 1:
-      return 1
-    case 6:
-      return 11
-    case 4:
-    case 5:
-    case 9:
-    case 10:
-      return 6
-    default:
-      return 6
-  }
+  if (condicionIvaReceptor === 1) return 1
+  return 6
 }
 
 export function resolveFacturacionDesdeCliente(cliente: Cliente | null): {
@@ -83,8 +72,8 @@ export function tipoComprobanteRequiresZeroItemIva(tipo: number): boolean {
 }
 
 /**
- * Obligatorio IVA 0% solo para circuito Factura C (receptor monotributo o emisor monotributo).
- * Consumidor final / Factura B: el IVA por ítem es opcional.
+ * Obligatorio IVA 0% solo para circuito Factura C (tipo 11/13), típico de emisor monotributo.
+ * Receptor monotributo con emisor RI usa Factura B y puede discriminar IVA.
  */
 export function clienteRequiresZeroItemIva(cliente: Cliente | null): boolean {
   const tipo = resolveFacturacionDesdeCliente(cliente).tipoComprobante

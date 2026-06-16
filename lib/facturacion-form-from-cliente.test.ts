@@ -73,6 +73,45 @@ describe("facturacion-form-from-cliente", () => {
     expect(payload.condicionIvaReceptor).toBe(1)
   })
 
+  it("aplica Factura B a receptor monotributo cuando el emisor es RI", () => {
+    const form = applyClienteToFacturarForm(
+      { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 11 },
+      cliente({
+        id: 37,
+        name: "FERNANDO MANUEL TADEO SUAREZ",
+        code: "F1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20355026656",
+      })
+    )
+    expect(form.condicionIvaReceptor).toBe(6)
+    expect(form.tipo).toBe(6)
+    expect(form.docTipo).toBe(80)
+  })
+
+  it("usa tipo sugerido por la API (emisor RI → Factura B para monotributo)", () => {
+    const form = buildFacturarFormForSale(
+      cliente({
+        id: 37,
+        name: "FERNANDO MANUEL TADEO SUAREZ",
+        code: "F1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20355026656",
+      }),
+      {
+        totalAmount: 2,
+        condicionIvaReceptor: 6,
+        sugerencia: {
+          tipo: 6,
+          label: "Factura B",
+          motivo: "Emisor RI frente a monotributo: corresponde Factura B.",
+        },
+      }
+    )
+    expect(form.tipo).toBe(6)
+    expect(form.condicionIvaReceptor).toBe(6)
+  })
+
   it("no deja Factura A con consumidor final si sugerencia API contradice al cliente ERP", () => {
     const form = buildFacturarFormForSale(
       cliente({

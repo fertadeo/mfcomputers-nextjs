@@ -1378,8 +1378,9 @@ export default function FacturacionPage() {
                             del cliente.
                           </p>
                           <p className="text-muted-foreground text-xs">
-                            Responsable inscripto → Factura A; monotributo → Factura C; consumidor final / exento →
-                            Factura B. Podés ajustar en opciones avanzadas si hace falta.
+                            Con emisor responsable inscripto: receptor RI → Factura A; monotributo, consumidor
+                            final u otro → Factura B. Con emisor monotributo → Factura C. Podés ajustar en opciones
+                            avanzadas si hace falta.
                           </p>
                         </div>
                       }

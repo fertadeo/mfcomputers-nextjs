@@ -3,6 +3,7 @@ import type { Cliente } from "@/lib/api"
 import {
   clienteRequiresZeroItemIva,
   effectiveSaleItemIvaRate,
+  resolveTipoComprobanteFromCondicionIvaReceptor,
   tipoComprobanteRequiresZeroItemIva,
   validateFacturacionItemIva,
 } from "@/lib/facturacion-cliente-fiscal"
@@ -20,6 +21,19 @@ function cliente(partial: Partial<Cliente> & Pick<Cliente, "id" | "name" | "code
   }
 }
 
+describe("facturacion-cliente-fiscal — tipo comprobante", () => {
+  it("emisor RI: monotributo receptor usa Factura B, no Factura C", () => {
+    expect(resolveTipoComprobanteFromCondicionIvaReceptor(6, "responsable_inscripto")).toBe(6)
+    expect(resolveTipoComprobanteFromCondicionIvaReceptor(5, "responsable_inscripto")).toBe(6)
+    expect(resolveTipoComprobanteFromCondicionIvaReceptor(1, "responsable_inscripto")).toBe(1)
+  })
+
+  it("emisor monotributo: siempre Factura C", () => {
+    expect(resolveTipoComprobanteFromCondicionIvaReceptor(1, "monotributo")).toBe(11)
+    expect(resolveTipoComprobanteFromCondicionIvaReceptor(6, "monotributo")).toBe(11)
+  })
+})
+
 describe("facturacion-cliente-fiscal — IVA por ítem", () => {
   it("solo Factura C exige ítems sin alícuota gravada", () => {
     expect(tipoComprobanteRequiresZeroItemIva(6)).toBe(false)
@@ -29,7 +43,7 @@ describe("facturacion-cliente-fiscal — IVA por ítem", () => {
     expect(tipoComprobanteRequiresZeroItemIva(1)).toBe(false)
   })
 
-  it("consumidor final (Factura B) permite IVA; monotributo (Factura C) no", () => {
+  it("consumidor final y monotributo receptor (emisor RI) permiten IVA; solo Factura C no", () => {
     expect(clienteRequiresZeroItemIva(null)).toBe(false)
     expect(
       clienteRequiresZeroItemIva(
@@ -40,7 +54,7 @@ describe("facturacion-cliente-fiscal — IVA por ítem", () => {
       clienteRequiresZeroItemIva(
         cliente({ id: 2, name: "Mono", code: "M1", tax_condition: "monotributo" })
       )
-    ).toBe(true)
+    ).toBe(false)
     expect(
       clienteRequiresZeroItemIva(
         cliente({ id: 3, name: "RI", code: "R1", tax_condition: "responsable_inscripto" })
@@ -48,7 +62,7 @@ describe("facturacion-cliente-fiscal — IVA por ítem", () => {
     ).toBe(false)
   })
 
-  it("effectiveSaleItemIvaRate solo fuerza 0% en Factura C", () => {
+  it("effectiveSaleItemIvaRate solo fuerza 0% con emisor monotributo (Factura C)", () => {
     expect(effectiveSaleItemIvaRate(21, null)).toBe(21)
     expect(
       effectiveSaleItemIvaRate(
@@ -61,7 +75,7 @@ describe("facturacion-cliente-fiscal — IVA por ítem", () => {
         21,
         cliente({ id: 2, name: "Mono", code: "M1", tax_condition: "monotributo" })
       )
-    ).toBe(0)
+    ).toBe(21)
   })
 
   it("validateFacturacionItemIva bloquea ítems gravados solo en Factura C", () => {
