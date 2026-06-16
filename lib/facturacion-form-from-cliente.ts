@@ -5,6 +5,10 @@ import {
   resolveTipoComprobanteFromCondicionIvaReceptor,
   setEmisorRegimenFromApi,
 } from "@/lib/facturacion-cliente-fiscal"
+import {
+  isComprobanteClaseB,
+  normalizeCondicionIvaReceptorForWsfe,
+} from "@/lib/facturacion-comprobantes"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
 
@@ -18,17 +22,30 @@ export function clienteTieneDatosFiscalesErp(cliente?: Cliente | null): boolean 
   return false
 }
 
-/** docTipo 80 + condición 5 es rechazado por AFIP (causa frecuente al cargar CUIT/CUIL). */
+/** docTipo 80 + condición 5: válido en Factura B (monotributo con CUIT); inválido en Factura A. */
 export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest): string | null {
   const docTipo = payload.docTipo ?? 99
   const docNro = payload.docNro ?? 0
   const condicion = payload.condicionIvaReceptor ?? 5
+  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(condicion)
 
-  if (docTipo === 80 && docNro > 0 && condicion === 5) {
-    return "Con CUIT/CUIL en el comprobante (docTipo 80) AFIP no acepta condición «Consumidor final» (5). Consultá el padrón ARCA en la confirmación o completá la condición IVA del cliente en el ERP (monotributo, RI, exento, etc.)."
+  if (docTipo === 80 && docNro > 0 && condicion === 5 && !isComprobanteClaseB(tipo)) {
+    return "Con CUIT/CUIL (docTipo 80) y condición Consumidor final (5) solo corresponde Factura B a monotributo u otros receptores no RI. Para un RI usá Factura A (tipo 1) con condición 1."
+  }
+
+  if (docTipo === 80 && docNro > 0 && condicion === 1 && isComprobanteClaseB(tipo)) {
+    return "El receptor es Responsable Inscripto (condición 1): corresponde Factura A (tipo 1), no Factura B."
   }
 
   return null
+}
+
+function applyWsfeCondicionToPayload(payload: FacturarSaleRequest): FacturarSaleRequest {
+  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
+  const condicionRaw = payload.condicionIvaReceptor ?? 5
+  const condicionWsfe = normalizeCondicionIvaReceptorForWsfe(tipo, condicionRaw)
+  if (condicionWsfe === condicionRaw) return payload
+  return { ...payload, tipo, condicionIvaReceptor: condicionWsfe }
 }
 
 /** Evita combinaciones inválidas (ej. Factura A + consumidor final sin CUIT). */
@@ -165,13 +182,13 @@ export function buildFacturarPayload(
       puntoVenta: form.puntoVenta,
     }
     payload.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
-    return payload
+    return applyWsfeCondicionToPayload(payload)
   }
 
   const payload: FacturarSaleRequest = { ...form }
 
   if (payload.docTipo === 80 && payload.docNro != null && payload.docNro > 0) {
-    return payload
+    return applyWsfeCondicionToPayload(payload)
   }
 
   payload.docTipo = 99
@@ -179,7 +196,7 @@ export function buildFacturarPayload(
   payload.condicionIvaReceptor = payload.condicionIvaReceptor ?? 5
   payload.tipo =
     payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor)
-  return payload
+  return applyWsfeCondicionToPayload(payload)
 }
 
 export function validateFacturarReceptorFiscal(

@@ -144,14 +144,30 @@ describe("facturacion-form-from-cliente", () => {
     expect(err).toMatch(/no coincide/)
   })
 
-  it("validateFacturarPayloadCoherence rechaza CUIT con condición consumidor final", () => {
+  it("buildFacturarPayload normaliza monotributo (6) a condición 5 en Factura B para WSFE", () => {
+    const payload = buildFacturarPayload(
+      { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
+      cliente({
+        id: 37,
+        name: "FERNANDO MANUEL TADEO SUAREZ",
+        code: "F1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20355026656",
+      })
+    )
+    expect(payload.tipo).toBe(6)
+    expect(payload.docTipo).toBe(80)
+    expect(payload.condicionIvaReceptor).toBe(5)
+  })
+
+  it("validateFacturarPayloadCoherence rechaza CUIT con CF en Factura A", () => {
     const err = validateFacturarPayloadCoherence({
-      tipo: 6,
+      tipo: 1,
       condicionIvaReceptor: 5,
       docTipo: 80,
       docNro: 20355026656,
     })
-    expect(err).toMatch(/docTipo 80/)
+    expect(err).toMatch(/Factura B/)
   })
 
   it("validateFacturarReceptorFiscal detecta CUIT en ERP con payload CF", () => {

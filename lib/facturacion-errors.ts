@@ -104,6 +104,16 @@ function readSugerencias(obj: Record<string, unknown>): string[] | undefined {
   return s.filter((x): x is string => typeof x === "string")
 }
 
+function readNestedErrores(obj: Record<string, unknown>): string[] | undefined {
+  const err = obj.error
+  if (!isRecord(err)) return undefined
+  const details = err.details
+  if (!isRecord(details)) return undefined
+  const raw = details.errores
+  if (!Array.isArray(raw)) return undefined
+  return raw.filter((x): x is string => typeof x === "string")
+}
+
 function readIssues(obj: Record<string, unknown>): ExtractedFacturacionError["issues"] {
   const raw = obj.issues
   if (!Array.isArray(raw)) return undefined
@@ -178,6 +188,11 @@ export function extractFacturacionErrorFromPayload(
     out.message = readNestedMessage(payload)
     out.requestId = readNestedRequestId(payload)
     out.sugerencias = readSugerencias(payload)
+    const errores = readNestedErrores(payload)
+    if (errores?.length) {
+      out.remoteDetail = errores.join(" ")
+      out.sugerencias = [...(out.sugerencias ?? []), ...errores]
+    }
     return out
   }
 
@@ -304,9 +319,18 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
   RECEPTOR_CUIT_CONDICION_INVALIDA: {
     title: "CUIT/CUIL incompatible con consumidor final",
     message:
-      "Con CUIT/CUIL del receptor (docTipo 80) AFIP no acepta condición IVA «Consumidor final» (5). Es la causa más frecuente al facturar con documento.",
+      "Con CUIT/CUIL (docTipo 80) la condición Consumidor final (5) solo es válida en Factura B. En Factura A usá condición 1 (RI).",
     actionHint:
-      "Consultá el padrón ARCA en la confirmación o completá la condición fiscal del cliente (monotributo, RI, exento). Para CF sin documento usá docTipo 99.",
+      "Para monotributo con Factura B el sistema envía condición 5 a WSFE (AFIP no admite código 6 en clase B). Verificá tipo de comprobante y padrón.",
+    severity: "error",
+    canRetry: true,
+  },
+  WSFE_PREFLIGHT_VALIDATION: {
+    title: "Validación WSFE del comprobante",
+    message:
+      "Los datos del comprobante no coinciden con las tablas habilitadas en AFIP/WSFE para este CUIT y tipo de factura.",
+    actionHint:
+      "Revisá condición IVA del receptor según clase del comprobante: Factura B no admite monotributo (6); monotributo con CUIT en Factura B debe ir como condición 5.",
     severity: "error",
     canRetry: true,
   },
@@ -460,11 +484,15 @@ export function buildFacturacionErrorDiagnosis(input: {
   const text = `${input.rawMessage ?? ""} ${input.remoteDetail ?? ""}`.toLowerCase()
   const ctx = input.receptorContext
 
+  if (code === "WSFE_PREFLIGHT_VALIDATION" || /condici[oó]n.*iva.*receptor.*6.*clase b|lista: 4, 5, 7/.test(text)) {
+    return "AFIP no admite condición Monotributo (6) en Factura B. Para monotributo con CUIT en Factura B se envía condición 5 (válida en clase B)."
+  }
+
   if (
     code === "RECEPTOR_CUIT_CONDICION_INVALIDA" ||
-    (ctx?.docTipo === 80 && ctx?.condicionIvaReceptor === 5)
+    (ctx?.docTipo === 80 && ctx?.condicionIvaReceptor === 5 && ctx?.tipoComprobante === 1)
   ) {
-    return "Se intentó emitir con CUIT/CUIL (docTipo 80) pero la condición IVA quedó como Consumidor final (5). AFIP rechaza esa combinación."
+    return "Se intentó emitir Factura A con CUIT pero condición Consumidor final (5). Para RI usá condición 1; para monotributo en Factura B el código 5 es correcto."
   }
 
   if (code === "10056" || code === "10071" || /condici[oó]n.*iva|10056|10071/.test(text)) {
@@ -479,8 +507,8 @@ export function buildFacturacionErrorDiagnosis(input: {
     return "El tipo de comprobante no corresponde al régimen del emisor o a la condición IVA del receptor."
   }
 
-  if (ctx?.docTipo === 80 && ctx.condicionIvaReceptor === 5) {
-    return "El payload enviado mezcla CUIT/CUIL con condición Consumidor final — revisá padrón o datos del cliente."
+  if (ctx?.docTipo === 80 && ctx.condicionIvaReceptor === 6 && ctx.tipoComprobante === 6) {
+    return "El payload llevaba monotributo (6) en Factura B; debe normalizarse a condición 5 antes de enviar a AFIP."
   }
 
   return null

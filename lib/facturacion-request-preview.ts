@@ -1,7 +1,7 @@
 import { getApiUrl } from "@/config/api"
 import type { FacturarSaleRequest } from "@/lib/api"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
-import { facturadorTipoRequiereIva, getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
+import { facturadorTipoRequiereIva, getTipoComprobanteLabel, normalizeCondicionIvaReceptorForWsfe } from "@/lib/facturacion-comprobantes"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { getStoredFacturacionCuitEmisor, getStoredFacturacionPuntoVenta } from "@/lib/facturacion-settings"
 import {
@@ -18,11 +18,18 @@ import {
 export function mergeFacturarSaleRequestBody(body: FacturarSaleRequest): FacturarSaleRequest {
   const storedCuit = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
   const storedPv = typeof window !== "undefined" ? getStoredFacturacionPuntoVenta() : undefined
-  return {
+  const merged: FacturarSaleRequest = {
     ...body,
     ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
     ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
   }
+  const tipo = merged.tipo ?? 6
+  const condicionRaw = merged.condicionIvaReceptor ?? 5
+  const condicionWsfe = normalizeCondicionIvaReceptorForWsfe(tipo, condicionRaw)
+  if (condicionWsfe !== condicionRaw) {
+    return { ...merged, condicionIvaReceptor: condicionWsfe }
+  }
+  return merged
 }
 
 export interface FacturarHttpRequestPreview {

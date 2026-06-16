@@ -117,6 +117,57 @@ export function isNotaCreditoTipoAfip(tipo: number): boolean {
   return (NOTA_CREDITO_TIPOS as readonly number[]).includes(tipo)
 }
 
+/** Clase WSFE según RG 5616 / FEParamGetCondicionIvaReceptor. */
+export type WsfeComprobanteClase = "A" | "B" | "C"
+
+const TIPOS_CLASE_A = new Set([1, 2, 3, 4, 5])
+const TIPOS_CLASE_B = new Set([6, 7, 8, 9, 10])
+const TIPOS_CLASE_C = new Set([11, 12, 13, 15])
+
+/** Condiciones permitidas solo en comprobantes clase A/M/C (p. ej. RI=1, Monotributo=6). */
+const CONDICION_IVA_SOLO_AMC = new Set([1, 6, 13, 16])
+
+/** Condiciones permitidas en comprobantes clase B/C (p. ej. CF=5, Exento=4). */
+const CONDICION_IVA_SOLO_BC = new Set([4, 5, 7, 8, 9, 10, 15])
+
+export function getWsfeComprobanteClase(tipo: number): WsfeComprobanteClase {
+  if (TIPOS_CLASE_A.has(tipo)) return "A"
+  if (TIPOS_CLASE_B.has(tipo)) return "B"
+  return "C"
+}
+
+export function isComprobanteClaseB(tipo: number): boolean {
+  return getWsfeComprobanteClase(tipo) === "B"
+}
+
+/**
+ * Normaliza condicionIvaReceptor al enviar a WSFE.
+ * Monotributo (6) no es válido en Factura B: AFIP exige un código de clase B (usamos 5 + CUIT).
+ */
+export function normalizeCondicionIvaReceptorForWsfe(tipo: number, condicionIvaReceptor: number): number {
+  const clase = getWsfeComprobanteClase(tipo)
+  const condicion = Number(condicionIvaReceptor)
+
+  if (clase === "B" && CONDICION_IVA_SOLO_AMC.has(condicion)) {
+    if (condicion === 1) return condicion
+    return 5
+  }
+
+  if (clase === "C" && condicion === 5 && CONDICION_IVA_SOLO_BC.has(5)) {
+    return condicion
+  }
+
+  return condicion
+}
+
+export function isCondicionIvaValidForWsfeTipo(tipo: number, condicionIvaReceptor: number): boolean {
+  const condicion = normalizeCondicionIvaReceptorForWsfe(tipo, condicionIvaReceptor)
+  const clase = getWsfeComprobanteClase(tipo)
+  if (clase === "B") return CONDICION_IVA_SOLO_BC.has(condicion)
+  if (clase === "A") return CONDICION_IVA_SOLO_AMC.has(condicion) || condicion === 4
+  return true
+}
+
 /** Título en cabecera ARCA (columna derecha del comprobante). */
 export function getComprobanteArcaTitulo(tipo: number): string {
   const letra = getLetraComprobanteAfip(tipo)
