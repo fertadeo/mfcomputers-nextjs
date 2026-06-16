@@ -86,8 +86,11 @@ export function useRole() {
     return hasAnyOfRoles(['admin', 'gerencia'])
   }
   
+  const isSuperAdmin = (): boolean => {
+    return isRole('superadmin')
+  }
+
   /**
-   * Obtiene el rol actual del usuario
    * @returns El rol actual del usuario o undefined
    */
   const getCurrentRole = (): Role | undefined => {
@@ -109,7 +112,8 @@ export function useRole() {
       gerencia: 'Gerencia',
       ventas: 'Ventas',
       logistica: 'Logística',
-      finanzas: 'Finanzas'
+      finanzas: 'Finanzas',
+      superadmin: 'Super Admin (Dev)',
     }
     
     return roleLabels[userRole] || userRole
@@ -126,6 +130,7 @@ export function useRole() {
     canViewLogistics,
     canViewFinance,
     canViewAdministration,
+    isSuperAdmin,
     getCurrentRole,
     getCurrentRoleLabel
   }

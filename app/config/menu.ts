@@ -26,6 +26,8 @@ import {
   Wrench,
   Table2,
   BadgePercent,
+  Activity,
+  HeartPulse,
 } from "lucide-react"
 
 // Definición de roles disponibles según el backend
@@ -38,6 +40,7 @@ export type Role =
   | 'ventas' 
   | 'logistica' 
   | 'finanzas'
+  | 'superadmin'
 
 // Interfaz para items del menú
 export interface MenuItem {
@@ -64,14 +67,14 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: "principal",
     title: "Principal",
     icon: BarChart3,
-    requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas', 'admin', 'manager', 'viewer'],
+    requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas', 'admin', 'manager', 'viewer', 'superadmin'],
     items: [
       { 
         id: "dashboard", 
         label: "Dashboard", 
         icon: BarChart3, 
         href: "/dashboard",
-        requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas', 'admin', 'manager', 'viewer']
+        requiredRoles: ['gerencia', 'ventas', 'logistica', 'finanzas', 'admin', 'manager', 'viewer', 'superadmin']
       },
       // Módulo Caja oculto temporalmente
       // {
@@ -290,7 +293,22 @@ export const MENU_GROUPS: MenuGroup[] = [
         requiredRoles: ['admin', 'gerencia'] // Admin y gerencia pueden gestionar roles y permisos
       },
     ]
-  }
+  },
+  {
+    id: "desarrollo",
+    title: "Desarrollo",
+    icon: HeartPulse,
+    requiredRoles: ['superadmin'],
+    items: [
+      {
+        id: "salud-sistema",
+        label: "Salud del sistema",
+        icon: Activity,
+        href: "/salud-sistema",
+        requiredRoles: ['superadmin'],
+      },
+    ],
+  },
 ]
 
 // Función helper para verificar si un rol tiene acceso a un item
@@ -314,5 +332,6 @@ export const ROLE_LABELS: Record<Role, string> = {
   gerencia: 'Gerencia',
   ventas: 'Ventas',
   logistica: 'Logística',
-  finanzas: 'Finanzas'
+  finanzas: 'Finanzas',
+  superadmin: 'Super Admin (Dev)',
 }

@@ -135,6 +135,7 @@ export function hasAnyRole(userRole?: Role, requiredRoles?: Role[]): boolean {
  */
 export function getRoleAccessLevel(role: Role): number {
   const accessLevels: Record<Role, number> = {
+    superadmin: 110,
     admin: 100,
     gerencia: 90,
     manager: 80,
