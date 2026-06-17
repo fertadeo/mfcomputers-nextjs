@@ -3,6 +3,7 @@ import type { Cliente } from "@/lib/api"
 import {
   clienteRequiresZeroItemIva,
   effectiveSaleItemIvaRate,
+  labelCondicionIvaReceptorForDisplay,
   resolveTipoComprobanteFromCondicionIvaReceptor,
   setEmisorRegimenFromApi,
   tipoComprobanteRequiresZeroItemIva,
@@ -87,5 +88,16 @@ describe("facturacion-cliente-fiscal — IVA por ítem", () => {
     expect(err).toMatch(/Factura C/)
     expect(validateFacturacionItemIva(11, [{ ivaRate: 0 }])).toBeNull()
     expect(validateFacturacionItemIva(1, [{ ivaRate: 21 }])).toBeNull()
+  })
+})
+
+describe("labelCondicionIvaReceptorForDisplay", () => {
+  it("muestra Responsable Monotributo aunque WSFE use código 7", () => {
+    expect(
+      labelCondicionIvaReceptorForDisplay(
+        7,
+        cliente({ id: 37, name: "FERNANDO", code: "F1", tax_condition: "monotributo" })
+      )
+    ).toBe("Responsable Monotributo")
   })
 })

@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
 import type { BillableRow } from "@/lib/facturacion-billables"
-import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
+import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
@@ -195,7 +195,7 @@ export function FacturacionEmitConfirmDialog({
         docTipo,
         docNro,
         condicionIvaReceptor: condicion,
-        condicionIvaLabel: labelCondicionIvaReceptor(condicion),
+        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicion, cliente),
         taxConditionEnErp: cliente?.tax_condition ?? null,
         domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null,
       },
@@ -318,7 +318,7 @@ export function FacturacionEmitConfirmDialog({
                     <span className="text-sm">{getTipoComprobanteLabel(form.tipo)}</span>
                     <span className="text-muted-foreground text-xs">
                       · IVA receptor {form.condicionIvaReceptor} (
-                      {labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)})
+                      {labelCondicionIvaReceptorForDisplay(form.condicionIvaReceptor ?? 5, cliente)})
                     </span>
                   </div>
                   <div>
@@ -388,7 +388,7 @@ export function FacturacionEmitConfirmDialog({
                       {comprobanteDestinatarioCuit ?? "Sin CUIT (consumidor final)"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)} ·{" "}
+                      {labelCondicionIvaReceptorForDisplay(form.condicionIvaReceptor ?? 5, cliente)} ·{" "}
                       {getTipoComprobanteLabel(form.tipo)}
                     </p>
                     {padronDisplayName ? (

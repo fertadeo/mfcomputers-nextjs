@@ -1,6 +1,7 @@
 import type { Cliente } from "@/lib/api"
 import {
   afipCondicionFromTaxCondition,
+  CLIENT_TAX_CONDITION_OPTIONS,
   normalizeTaxConditionFromApi,
   type ClientTaxCondition,
 } from "@/lib/client-tax-condition"
@@ -103,6 +104,28 @@ export function resolveFacturacionDesdeCliente(cliente: Cliente | null): {
 export function labelCondicionIvaReceptor(codigo: number): string {
   const found = CONDICIONES_IVA_RECEPTOR.find((c) => c.value === codigo)
   return found?.label ?? `Condición ${codigo}`
+}
+
+/**
+ * Etiqueta legible para PDF/UI: prioriza la condición fiscal del cliente en el ERP
+ * (ej. monotributo) aunque el payload WSFE use otro código (ej. 7 en Factura B).
+ */
+export function labelCondicionIvaReceptorForDisplay(
+  codigoWsfe: number,
+  cliente?: Cliente | null
+): string {
+  if (cliente) {
+    const tax = normalizeTaxConditionFromApi(cliente.tax_condition)
+    if (tax) {
+      const opt = CLIENT_TAX_CONDITION_OPTIONS.find((o) => o.value === tax)
+      if (opt) return opt.label
+    }
+    const erpCodigo = condicionIvaReceptorFromCliente(cliente)
+    if (erpCodigo !== codigoWsfe) {
+      return labelCondicionIvaReceptor(erpCodigo)
+    }
+  }
+  return labelCondicionIvaReceptor(codigoWsfe)
 }
 
 /** Solo Factura C (y NC C): no admite IVA discriminado por ítem en el payload AFIP. Factura B sí puede llevarlo (opcional). */

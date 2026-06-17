@@ -18,6 +18,7 @@ import {
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { mergeFacturarSaleRequestBody } from "@/lib/facturacion-request-preview"
 import { facturadorTipoRequiereIva } from "@/lib/facturacion-comprobantes"
+import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
 import {
   buildArcaIvaDiscriminado,
   computeSaleIvaBreakdown,
@@ -158,15 +159,6 @@ export async function buildArcaInvoicePdfInput(
           cae: emision.cae,
         })
 
-  const condicionLabels: Record<number, string> = {
-    1: "IVA Responsable Inscripto",
-    4: "IVA Sujeto Exento",
-    5: "Consumidor Final",
-    6: "Responsable Monotributo",
-    9: "Cliente del Exterior",
-    10: "IVA Liberado",
-  }
-
   const receptorNombre =
     cliente?.name ?? saleSnapshot?.client_name ?? (docNro === 0 ? "" : "Consumidor final")
 
@@ -190,7 +182,7 @@ export async function buildArcaInvoicePdfInput(
       razonSocial: receptorNombre,
       docTipo,
       docNro,
-      condicionIvaLabel: condicionLabels[condicionIva] ?? `Condición ${condicionIva}`,
+      condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicionIva, cliente),
       domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || undefined,
     },
     items: items.map((item) => {
@@ -225,14 +217,6 @@ export async function buildArcaInvoicePdfInput(
   }
 }
 
-const CONDICION_IVA_LABELS: Record<number, string> = {
-  1: "IVA Responsable Inscripto",
-  4: "IVA Sujeto Exento",
-  5: "Consumidor Final",
-  6: "Responsable Monotributo",
-  9: "Cliente del Exterior",
-  10: "IVA Liberado",
-}
 
 export interface BuildArcaInvoicePreviewFromLinesArgs {
   facturarPayload: FacturarSaleRequest
@@ -303,7 +287,7 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
       razonSocial: args.receptorRazonSocial,
       docTipo,
       docNro,
-      condicionIvaLabel: CONDICION_IVA_LABELS[condicionIva] ?? `Condición ${condicionIva}`,
+      condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicionIva, args.cliente),
       domicilio: [args.cliente?.address, args.cliente?.city].filter(Boolean).join(", ") || undefined,
     },
     items: args.lines.map((line, index) => ({
