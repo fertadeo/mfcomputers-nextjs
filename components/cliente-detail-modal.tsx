@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,6 +33,13 @@ import {
 import { EditClientModal } from "./edit-client-modal"
 import { deleteCliente, type Cliente as ClienteApi } from "@/lib/api"
 import { CuentaCorrienteModal } from "./cuenta-corriente-modal"
+import {
+  fetchClienteCompras,
+  fetchClienteFacturas,
+  computeClienteComprasStats,
+  type ClienteCompra,
+  type ClienteFactura,
+} from "@/lib/cliente-compras"
 
 interface Cliente {
   id: string // Código del cliente (MAY001, etc)
@@ -61,94 +68,12 @@ interface Cliente {
   vendedor?: string
 }
 
-interface Compra {
-  id: string
-  fecha: string
-  producto: string
-  cantidad: number
-  precioUnitario: number
-  total: number
-  estado: string
-}
-
-interface Factura {
-  id: string
-  numero: string
-  fecha: string
-  monto: number
-  estado: string
-  vencimiento?: string
-  tipo: string
-}
-
 interface ClienteDetailModalProps {
   cliente: Cliente | null
   isOpen: boolean
   onClose: () => void
   onClientUpdated?: (updated?: ClienteApi) => void
 }
-
-// Datos de ejemplo para el historial de compras
-const comprasData: Compra[] = [
-  {
-    id: "COMP001",
-    fecha: "2024-01-15",
-    producto: "Ecofan Pocket Aire Black",
-    cantidad: 2,
-    precioUnitario: 45000,
-    total: 90000,
-    estado: "Entregado"
-  },
-  {
-    id: "COMP002",
-    fecha: "2024-01-10",
-    producto: "Ecofan Pocket Aire Orange",
-    cantidad: 5,
-    precioUnitario: 25000,
-    total: 125000,
-    estado: "Entregado"
-  },
-  {
-    id: "COMP003",
-    fecha: "2024-01-05",
-    producto: "Laptop Professional Standard",
-    cantidad: 3,
-    precioUnitario: 18000,
-    total: 54000,
-    estado: "En Proceso"
-  }
-]
-
-// Datos de ejemplo para facturación
-const facturasData: Factura[] = [
-  {
-    id: "FAC001",
-    numero: "0001-00012345",
-    fecha: "2024-01-15",
-    monto: 90000,
-    estado: "Pagada",
-    vencimiento: "2024-02-15",
-    tipo: "Factura A"
-  },
-  {
-    id: "FAC002",
-    numero: "0001-00012344",
-    fecha: "2024-01-10",
-    monto: 125000,
-    estado: "Pagada",
-    vencimiento: "2024-02-10",
-    tipo: "Factura A"
-  },
-  {
-    id: "FAC003",
-    numero: "0001-00012343",
-    fecha: "2024-01-05",
-    monto: 54000,
-    estado: "Pendiente",
-    vencimiento: "2024-02-05",
-    tipo: "Factura A"
-  }
-]
 
 const TAX_CONDITION_LABELS: Record<string, string> = {
   responsable_inscripto: "Responsable Inscripto",
@@ -170,16 +95,49 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isCuentaCorrienteModalOpen, setIsCuentaCorrienteModalOpen] = useState(false)
+  const [compras, setCompras] = useState<ClienteCompra[]>([])
+  const [facturas, setFacturas] = useState<ClienteFactura[]>([])
+  const [loadingCompras, setLoadingCompras] = useState(false)
 
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
   })
 
+  useEffect(() => {
+    if (!isOpen || !cliente?.dbId) return
+    let cancelled = false
+    setLoadingCompras(true)
+    Promise.all([
+      fetchClienteCompras(cliente.dbId),
+      fetchClienteFacturas(cliente.dbId),
+    ])
+      .then(([comprasData, facturasData]) => {
+        if (!cancelled) {
+          setCompras(comprasData)
+          setFacturas(facturasData)
+        }
+      })
+      .catch((err) => {
+        console.error("Error al cargar actividad del cliente:", err)
+        if (!cancelled) {
+          setCompras([])
+          setFacturas([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCompras(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, cliente?.dbId])
+
   if (!cliente) return null
 
-  const totalCompras = comprasData.reduce((sum, compra) => sum + compra.total, 0)
-  const totalFacturado = facturasData.reduce((sum, factura) => sum + factura.monto, 0)
-  const facturasPendientes = facturasData.filter(f => f.estado === 'Pendiente').length
+  const comprasStats = computeClienteComprasStats(compras)
+  const totalCompras = comprasStats.totalMonto
+  const totalFacturado = facturas.reduce((sum, f) => sum + f.monto, 0)
+  const facturasPendientes = facturas.filter((f) => f.estado === "Pendiente").length
 
   const personType = cliente.personType ?? (cliente.cuit ? "Persona Jurídica" : "Consumidor final")
   const taxCondition = formatTaxCondition(
@@ -386,7 +344,9 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                       <Calendar className="h-5 w-5 text-gray-600 dark:text-gray-400 mt-0.5 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Última Compra</p>
-                        <p className="text-base text-gray-900 dark:text-white">{cliente.ultimaCompra}</p>
+                        <p className="text-base text-gray-900 dark:text-white">
+                          {comprasStats.ultimaCompra ?? cliente.ultimaCompra}
+                        </p>
                       </div>
                     </div>
                     
@@ -395,7 +355,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-turquoise-600 dark:text-turquoise-400">Total Compras</p>
                         <p className="text-xl font-bold text-turquoise-700 dark:text-turquoise-300">
-                          ${cliente.totalCompras.toLocaleString()}
+                          ${totalCompras.toLocaleString("es-AR")}
                         </p>
                       </div>
                     </div>
@@ -526,7 +486,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                     ${totalFacturado.toLocaleString()}
                   </div>
                   <p className="text-xs text-turquoise-600 dark:text-turquoise-400 mt-1">
-                    {facturasData.length} facturas emitidas
+                    {facturas.length} facturas emitidas
                   </p>
                 </CardContent>
               </Card>
@@ -545,7 +505,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                     ${totalCompras.toLocaleString()}
                   </div>
                   <p className="text-xs text-turquoise-600 dark:text-turquoise-400 mt-1">
-                    {comprasData.length} transacciones realizadas
+                    {comprasStats.totalTransacciones} transacciones realizadas
                   </p>
                 </CardContent>
               </Card>
@@ -585,6 +545,11 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {loadingCompras ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    Cargando historial de compras...
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -599,15 +564,22 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {comprasData.map((compra) => (
+                      {compras.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            No hay compras registradas para este cliente
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                      compras.map((compra) => (
                         <TableRow key={compra.id}>
                           <TableCell className="font-medium text-sm">{compra.id}</TableCell>
                           <TableCell className="text-sm">{compra.fecha}</TableCell>
                           <TableCell className="text-sm">{compra.producto}</TableCell>
                           <TableCell className="text-sm">{compra.cantidad}</TableCell>
-                          <TableCell className="text-sm">${compra.precioUnitario.toLocaleString()}</TableCell>
+                          <TableCell className="text-sm">${compra.precioUnitario.toLocaleString("es-AR")}</TableCell>
                           <TableCell className="font-medium text-sm">
-                            ${compra.total.toLocaleString()}
+                            ${compra.total.toLocaleString("es-AR")}
                           </TableCell>
                           <TableCell>
                             <Badge 
@@ -618,10 +590,12 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                             </Badge>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
+                )}
               </CardContent>
             </Card>
 
@@ -633,18 +607,16 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Ecofan Pocket Aire Black</span>
-                      <Badge variant="secondary">2 unidades</Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Ecofan Pocket Aire Orange</span>
-                      <Badge variant="secondary">5 unidades</Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm">Laptop Professional Standard</span>
-                      <Badge variant="secondary">3 unidades</Badge>
-                    </div>
+                    {comprasStats.topProductos.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sin datos de productos</p>
+                    ) : (
+                      comprasStats.topProductos.map((p) => (
+                        <div key={p.nombre} className="flex justify-between items-center">
+                          <span className="text-sm">{p.nombre}</span>
+                          <Badge variant="secondary">{p.cantidad} unidades</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -656,16 +628,18 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm">Promedio mensual</span>
-                      <span className="font-medium">0 compras</span>
+                      <span className="text-sm">Transacciones</span>
+                      <span className="font-medium">{comprasStats.totalTransacciones}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Valor promedio</span>
-                      <span className="font-medium">$0</span>
+                      <span className="font-medium">
+                        ${comprasStats.promedioMonto.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                      </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Última compra</span>
-                      <span className="font-medium">Sin datos</span>
+                      <span className="font-medium">{comprasStats.ultimaCompra ?? "Sin datos"}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -700,7 +674,14 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {facturasData.map((factura) => (
+                      {facturas.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                            No hay facturas emitidas para este cliente
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                      facturas.map((factura) => (
                         <TableRow key={factura.id}>
                           <TableCell className="font-medium text-sm">{factura.numero}</TableCell>
                           <TableCell className="text-sm">{factura.fecha}</TableCell>
@@ -708,19 +689,20 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                             <Badge variant="outline" className="text-xs">{factura.tipo}</Badge>
                           </TableCell>
                           <TableCell className="font-medium text-sm">
-                            ${factura.monto.toLocaleString()}
+                            ${factura.monto.toLocaleString("es-AR")}
                           </TableCell>
-                          <TableCell className="text-sm">{factura.vencimiento}</TableCell>
+                          <TableCell className="text-sm">{factura.vencimiento ?? "—"}</TableCell>
                           <TableCell>
                             <Badge 
-                              variant={factura.estado === "Pagada" ? "default" : "secondary"}
+                              variant={factura.estado === "Emitida" ? "default" : "secondary"}
                               className="text-xs"
                             >
                               {factura.estado}
                             </Badge>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -738,10 +720,10 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-turquoise-600">
-                    ${facturasData.filter(f => f.estado === 'Pagada').reduce((sum, f) => sum + f.monto, 0).toLocaleString()}
+                    ${facturas.filter(f => f.estado === 'Emitida').reduce((sum, f) => sum + f.monto, 0).toLocaleString("es-AR")}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {facturasData.filter(f => f.estado === 'Pagada').length} facturas
+                    {facturas.filter(f => f.estado === 'Emitida').length} facturas
                   </p>
                 </CardContent>
               </Card>
@@ -755,10 +737,10 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600">
-                    ${facturasData.filter(f => f.estado === 'Pendiente').reduce((sum, f) => sum + f.monto, 0).toLocaleString()}
+                    ${facturas.filter(f => f.estado === 'Pendiente').reduce((sum, f) => sum + f.monto, 0).toLocaleString("es-AR")}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {facturasData.filter(f => f.estado === 'Pendiente').length} facturas
+                    {facturas.filter(f => f.estado === 'Pendiente').length} facturas
                   </p>
                 </CardContent>
               </Card>
@@ -772,7 +754,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-turquoise-600">
-                    ${Math.round(totalFacturado / facturasData.length).toLocaleString()}
+                    ${facturas.length > 0 ? Math.round(totalFacturado / facturas.length).toLocaleString("es-AR") : "0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     por factura

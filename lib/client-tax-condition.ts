@@ -18,12 +18,12 @@ export const CLIENT_TAX_CONDITION_OPTIONS: { value: ClientTaxCondition; label: s
   { value: "monotributo", label: "Responsable Monotributo" },
   { value: "exento", label: "IVA Sujeto Exento" },
   { value: "consumidor_final", label: "Consumidor final" },
-  { value: "inscripto", label: "IVA Inscripto (persona física)" },
+  { value: "inscripto", label: "IVA Responsable Inscripto" },
 ]
 
 export const TAX_CONDITION_LABELS: Record<ClientTaxCondition, string> = {
   responsable_inscripto: "Responsable Inscripto",
-  inscripto: "Inscripto",
+  inscripto: "IVA Responsable Inscripto",
   consumidor_final: "Consumidor Final",
   monotributo: "Monotributo",
   exento: "Exento",

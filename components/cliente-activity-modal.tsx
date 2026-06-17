@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -13,12 +13,9 @@ import {
   CreditCard, 
   ShoppingCart, 
   DollarSign, 
-  Calendar, 
   TrendingUp, 
   TrendingDown,
   History,
-  FileText,
-  Package,
   AlertTriangle,
   CheckCircle,
   XCircle,
@@ -26,35 +23,20 @@ import {
   Eye,
   Filter,
   Search,
-  IdCard
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-// Tipos para los datos hardcodeados
-interface CuentaCorriente {
-  id: number
-  client_id: number
-  client_name: string
-  client_code: string
-  balance: number
-  credit_limit: number
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-interface MovimientoCuentaCorriente {
-  id: number
-  account_id: number
-  type: 'debit' | 'credit'
-  amount: number
-  description: string
-  reference_type?: 'sale' | 'payment' | 'adjustment' | 'refund'
-  reference_id?: number
-  created_by: number
-  created_by_name: string
-  created_at: string
-}
+import {
+  getCuentaCorrienteByClient,
+  getMovimientosCuentaCorriente,
+  type CuentaCorriente,
+  type MovimientoCuentaCorriente,
+} from "@/lib/api"
+import {
+  fetchClienteCompras,
+  computeClienteComprasStats,
+  type ClienteCompra,
+} from "@/lib/cliente-compras"
 
 interface ClienteActivityModalProps {
   cliente: {
@@ -96,227 +78,10 @@ const formatTaxCondition = (value?: string, fallback: string = "N/A") => {
   return TAX_CONDITION_LABELS[normalized] ?? value
 }
 
-// Función para obtener datos de cuenta corriente según el cliente
-const getCuentaCorrienteData = (clientId: number): CuentaCorriente | null => {
-  const cuentasData: Record<number, CuentaCorriente> = {
-    1: {
-      id: 1,
-      client_id: 1,
-      client_name: "Cliente Demo",
-      client_code: "CLI001",
-      balance: -15000,
-      credit_limit: 100000,
-      is_active: true,
-      created_at: "2024-01-01T00:00:00Z",
-      updated_at: "2024-01-15T00:00:00Z"
-    },
-    2: {
-      id: 2,
-      client_id: 2,
-      client_name: "Empresa ABC",
-      client_code: "CLI002",
-      balance: 25000,
-      credit_limit: 200000,
-      is_active: true,
-      created_at: "2024-01-05T00:00:00Z",
-      updated_at: "2024-01-20T00:00:00Z"
-    },
-    3: {
-      id: 3,
-      client_id: 3,
-      client_name: "Distribuidora XYZ",
-      client_code: "CLI003",
-      balance: -50000,
-      credit_limit: 500000,
-      is_active: true,
-      created_at: "2024-01-10T00:00:00Z",
-      updated_at: "2024-01-25T00:00:00Z"
-    }
-  }
-  
-  return cuentasData[clientId] || null
-}
-
-// Datos hardcodeados para movimientos de cuenta corriente
-const movimientosData: MovimientoCuentaCorriente[] = [
-  {
-    id: 1,
-    account_id: 1,
-    type: 'debit',
-    amount: 50000,
-    description: 'Compra de equipos de computación industriales',
-    reference_type: 'sale',
-    reference_id: 1,
-    created_by: 1,
-    created_by_name: 'Carlos Mendoza',
-    created_at: '2024-01-15T10:30:00Z'
-  },
-  {
-    id: 2,
-    account_id: 1,
-    type: 'credit',
-    amount: 20000,
-    description: 'Pago parcial de cuenta',
-    reference_type: 'payment',
-    reference_id: 1,
-    created_by: 1,
-    created_by_name: 'Ana García',
-    created_at: '2024-01-12T14:20:00Z'
-  },
-  {
-    id: 3,
-    account_id: 1,
-    type: 'debit',
-    amount: 30000,
-    description: 'Compra de servidores de red',
-    reference_type: 'sale',
-    reference_id: 2,
-    created_by: 1,
-    created_by_name: 'Carlos Mendoza',
-    created_at: '2024-01-10T09:15:00Z'
-  },
-  {
-    id: 4,
-    account_id: 1,
-    type: 'credit',
-    amount: 15000,
-    description: 'Ajuste por descuento especial',
-    reference_type: 'adjustment',
-    reference_id: undefined,
-    created_by: 1,
-    created_by_name: 'Sistema',
-    created_at: '2024-01-08T16:45:00Z'
-  },
-  {
-    id: 5,
-    account_id: 1,
-    type: 'debit',
-    amount: 25000,
-    description: 'Compra de equipos de oficina',
-    reference_type: 'sale',
-    reference_id: 3,
-    created_by: 1,
-    created_by_name: 'Ana García',
-    created_at: '2024-01-05T11:30:00Z'
-  }
-]
-
-// Función para obtener datos de compras según el cliente
-const getComprasData = (clientId: number) => {
-  const comprasPorCliente: Record<number, any[]> = {
-    1: [
-      {
-        id: "COMP001",
-        fecha: "2024-01-15",
-        producto: "Ecofan Pocket Aire Black",
-        cantidad: 2,
-        precioUnitario: 45000,
-        total: 90000,
-        estado: "Entregado",
-        vendedor: "Carlos Mendoza",
-        metodoPago: "Cuenta Corriente"
-      },
-      {
-        id: "COMP002", 
-        fecha: "2024-01-10",
-        producto: "Ecofan Pocket Aire Orange",
-        cantidad: 5,
-        precioUnitario: 25000,
-        total: 125000,
-        estado: "Entregado",
-        vendedor: "Ana García",
-        metodoPago: "Efectivo"
-      },
-      {
-        id: "COMP003",
-        fecha: "2024-01-05",
-        producto: "Ecofan Pocket Aire Orange",
-        cantidad: 3,
-        precioUnitario: 18000,
-        total: 54000,
-        estado: "En Proceso",
-        vendedor: "Carlos Mendoza",
-        metodoPago: "Transferencia"
-      },
-      {
-        id: "COMP004",
-        fecha: "2023-12-20",
-        producto: "Laptop Professional Standard",
-        cantidad: 1,
-        precioUnitario: 35000,
-        total: 35000,
-        estado: "Entregado",
-        vendedor: "Ana García",
-        metodoPago: "Cuenta Corriente"
-      }
-    ],
-    2: [
-      {
-        id: "COMP201",
-        fecha: "2024-01-20",
-        producto: "Laptop Professional Standard",
-        cantidad: 10,
-        precioUnitario: 75000,
-        total: 750000,
-        estado: "Entregado",
-        vendedor: "Ana García",
-        metodoPago: "Cuenta Corriente"
-      },
-      {
-        id: "COMP202",
-        fecha: "2024-01-18",
-        producto: "Ecofan Pocket Aire Orange",
-        cantidad: 8,
-        precioUnitario: 35000,
-        total: 280000,
-        estado: "En Proceso",
-        vendedor: "Carlos Mendoza",
-        metodoPago: "Transferencia"
-      }
-    ],
-    3: [
-      {
-        id: "COMP301",
-        fecha: "2024-01-25",
-        producto: "Ecofan Pocket Aire Black",
-        cantidad: 5,
-        precioUnitario: 120000,
-        total: 600000,
-        estado: "Entregado",
-        vendedor: "Ana García",
-        metodoPago: "Cuenta Corriente"
-      },
-      {
-        id: "COMP302",
-        fecha: "2024-01-22",
-        producto: "Ecofan Pocket Aire Orange",
-        cantidad: 15,
-        precioUnitario: 45000,
-        total: 675000,
-        estado: "Entregado",
-        vendedor: "Carlos Mendoza",
-        metodoPago: "Cuenta Corriente"
-      },
-      {
-        id: "COMP303",
-        fecha: "2024-01-20",
-        producto: "Laptop Professional Standard",
-        cantidad: 20,
-        precioUnitario: 25000,
-        total: 500000,
-        estado: "En Proceso",
-        vendedor: "Ana García",
-        metodoPago: "Cuenta Corriente"
-      }
-    ]
-  }
-  
-  return comprasPorCliente[clientId] || []
-}
-
 export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivityModalProps) {
   const [cuenta, setCuenta] = useState<CuentaCorriente | null>(null)
   const [movimientos, setMovimientos] = useState<MovimientoCuentaCorriente[]>([])
+  const [compras, setCompras] = useState<ClienteCompra[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'resumen' | 'cuenta-corriente' | 'compras'>('resumen')
@@ -326,31 +91,45 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
   const [movimientoFilter, setMovimientoFilter] = useState<'all' | 'debit' | 'credit'>('all')
   const [compraFilter, setCompraFilter] = useState<'all' | 'entregado' | 'en-proceso' | 'cancelado'>('all')
 
-  useEffect(() => {
-    if (isOpen && cliente.dbId) {
-      loadCuentaCorriente()
-    }
-  }, [isOpen, cliente.dbId])
-
-  const loadCuentaCorriente = async () => {
+  const loadActivity = useCallback(async () => {
     setLoading(true)
     setError(null)
     
     try {
-      // Simular delay de API
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Usar datos hardcodeados según el cliente
-      const cuentaData = getCuentaCorrienteData(cliente.dbId)
-      setCuenta(cuentaData)
-      setMovimientos(movimientosData)
+      const [comprasData, ccResult] = await Promise.all([
+        fetchClienteCompras(cliente.dbId),
+        getCuentaCorrienteByClient(cliente.dbId).catch(() => null),
+      ])
+
+      setCompras(comprasData)
+
+      if (ccResult?.success && ccResult.data) {
+        setCuenta(ccResult.data)
+        try {
+          const movResult = await getMovimientosCuentaCorriente(ccResult.data.id, { limit: 100 })
+          if (movResult.success) {
+            setMovimientos(movResult.data.movements)
+          }
+        } catch {
+          setMovimientos([])
+        }
+      } else {
+        setCuenta(null)
+        setMovimientos([])
+      }
     } catch (err) {
-      console.error('Error al cargar cuenta corriente:', err)
-      setError(err instanceof Error ? err.message : 'Error al cargar la cuenta corriente')
+      console.error('Error al cargar actividad del cliente:', err)
+      setError(err instanceof Error ? err.message : 'Error al cargar la actividad del cliente')
     } finally {
       setLoading(false)
     }
-  }
+  }, [cliente.dbId])
+
+  useEffect(() => {
+    if (isOpen && cliente.dbId) {
+      loadActivity()
+    }
+  }, [isOpen, cliente.dbId, loadActivity])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -391,16 +170,17 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
   }
 
   const getMetodoPagoIcon = (metodo: string) => {
-    switch (metodo) {
-      case 'Cuenta Corriente':
-        return <CreditCard className="h-4 w-4 text-blue-500" />
-      case 'Efectivo':
-        return <DollarSign className="h-4 w-4 text-green-500" />
-      case 'Transferencia':
-        return <TrendingUp className="h-4 w-4 text-purple-500" />
-      default:
-        return <DollarSign className="h-4 w-4 text-gray-500" />
+    const lower = metodo.toLowerCase()
+    if (lower.includes('cuenta') || lower.includes('corriente')) {
+      return <CreditCard className="h-4 w-4 text-blue-500" />
     }
+    if (lower.includes('efectivo')) {
+      return <DollarSign className="h-4 w-4 text-green-500" />
+    }
+    if (lower.includes('transfer') || lower.includes('tarjeta')) {
+      return <TrendingUp className="h-4 w-4 text-purple-500" />
+    }
+    return <DollarSign className="h-4 w-4 text-gray-500" />
   }
 
   // Filtrar movimientos
@@ -411,8 +191,7 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
   })
 
   // Filtrar compras
-  const comprasData = getComprasData(cliente.dbId)
-  const filteredCompras = comprasData.filter(compra => {
+  const filteredCompras = compras.filter(compra => {
     const matchesSearch = compra.producto.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          compra.id.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = compraFilter === 'all' || 
@@ -422,11 +201,10 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
     return matchesSearch && matchesStatus
   })
 
-  // Calcular estadísticas
-  const totalCompras = filteredCompras.reduce((sum, compra) => sum + compra.total, 0)
-  const totalMovimientos = movimientos.reduce((sum, mov) => sum + (mov.type === 'credit' ? mov.amount : -mov.amount), 0)
-  const comprasEntregadas = filteredCompras.filter(c => c.estado === 'Entregado').length
-  const comprasEnProceso = filteredCompras.filter(c => c.estado === 'En Proceso').length
+  const comprasStats = computeClienteComprasStats(compras)
+  const totalCompras = comprasStats.totalMonto
+  const comprasEntregadas = comprasStats.entregadas
+  const comprasEnProceso = comprasStats.enProceso
 
   const personType = cliente.personType ?? (cliente.cuit ? "Persona Jurídica" : "Consumidor final")
   const taxCondition = formatTaxCondition(
@@ -568,7 +346,7 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
                           {formatCurrency(totalCompras)}
                         </div>
                         <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                          {filteredCompras.length} transacciones
+                          {comprasStats.totalTransacciones} transacciones
                         </p>
                       </CardContent>
                     </Card>
@@ -647,7 +425,12 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {filteredCompras.slice(0, 3).map((compra) => (
+                        {filteredCompras.length === 0 ? (
+                          <p className="text-center text-muted-foreground py-4">
+                            No hay actividad de compras registrada
+                          </p>
+                        ) : (
+                          filteredCompras.slice(0, 3).map((compra) => (
                           <div key={compra.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                             <div className="flex items-center gap-3">
                               <ShoppingCart className="h-4 w-4 text-blue-500" />
@@ -661,7 +444,8 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
                               {getCompraStatusBadge(compra.estado)}
                             </div>
                           </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -780,7 +564,7 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
                                       <TableCell className={`font-medium ${movimiento.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
                                         {movimiento.type === 'credit' ? '+' : '-'}{formatCurrency(movimiento.amount)}
                                       </TableCell>
-                                      <TableCell className="text-sm">{movimiento.created_by_name}</TableCell>
+                                      <TableCell className="text-sm">{movimiento.created_by_name ?? '—'}</TableCell>
                                     </TableRow>
                                   ))
                                 )}
@@ -891,7 +675,7 @@ export function ClienteActivityModal({ cliente, isOpen, onClose }: ClienteActivi
                                       <span className="text-sm">{compra.metodoPago}</span>
                                     </div>
                                   </TableCell>
-                                  <TableCell className="text-sm">{compra.vendedor}</TableCell>
+                                  <TableCell className="text-sm">{compra.vendedor ?? '—'}</TableCell>
                                 </TableRow>
                               ))
                             )}

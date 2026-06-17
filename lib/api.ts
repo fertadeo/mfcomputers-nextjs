@@ -1021,6 +1021,7 @@ export async function getSales(params?: {
   sync_status?: 'pending' | 'synced' | 'error'
   date_from?: string
   date_to?: string
+  include_items?: boolean
 }): Promise<SalesListResponse> {
   const apiUrl = getApiUrl()
   const queryParams = new URLSearchParams()
@@ -1031,6 +1032,7 @@ export async function getSales(params?: {
   if (params?.sync_status) queryParams.append('sync_status', params.sync_status)
   if (params?.date_from) queryParams.append('date_from', params.date_from)
   if (params?.date_to) queryParams.append('date_to', params.date_to)
+  if (params?.include_items) queryParams.append('include_items', 'true')
 
   const url = `${apiUrl}sales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
   const headers: HeadersInit = { ...getAuthHeaders() }
@@ -3293,11 +3295,14 @@ export interface BarcodeLookupData {
   category_suggestion?: string
   exists_as_product: boolean
   product_id?: number
+  product_code?: string
+  current_stock?: number
   preview_message?: string
   available_actions: {
     accept: boolean
     modify: boolean
     ignore: boolean
+    add_stock?: boolean
   }
   provider_response_time?: number
   cached_at?: string

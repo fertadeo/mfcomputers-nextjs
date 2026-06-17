@@ -100,4 +100,19 @@ describe("labelCondicionIvaReceptorForDisplay", () => {
       )
     ).toBe("Responsable Monotributo")
   })
+
+  it("muestra IVA Responsable Inscripto para persona física inscripta", () => {
+    expect(
+      labelCondicionIvaReceptorForDisplay(
+        1,
+        cliente({
+          id: 10,
+          name: "ALEXIS",
+          code: "A1",
+          tax_condition: "inscripto",
+          personeria: "persona_fisica",
+        })
+      )
+    ).toBe("IVA Responsable Inscripto")
+  })
 })
