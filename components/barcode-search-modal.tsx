@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Search,
   CheckCircle,
@@ -22,11 +23,11 @@ import {
   DollarSign,
   Tag,
   Image as ImageIcon,
-  Info,
   ScanLine,
   Sparkles,
   Upload,
-  Trash2
+  Trash2,
+  Plus
 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -40,7 +41,8 @@ import {
   BarcodeLookupData,
   AcceptBarcodeRequest,
   CreateProductFromBarcodeRequest,
-  Product
+  Product,
+  updateProductStock
 } from "@/lib/api"
 import { uploadImagesToWordPress } from "@/lib/woocommerce-media"
 import { improveBarcodeImages } from "@/lib/barcode-image-utils"
@@ -49,6 +51,8 @@ interface BarcodeSearchModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  /** Si es true, activa modo carga rápida de stock por defecto */
+  stockMode?: boolean
 }
 
 enum BarcodeSearchState {
@@ -56,6 +60,8 @@ enum BarcodeSearchState {
   SEARCHING = 'searching',
   FOUND = 'found',
   EXISTS = 'exists',
+  ADDING_STOCK = 'adding_stock',
+  STOCK_ADDED = 'stock_added',
   NOT_FOUND = 'not_found',
   CREATING = 'creating',
   SUCCESS = 'success',
@@ -109,13 +115,16 @@ function BarcodeRetailLinks({
   )
 }
 
-export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearchModalProps) {
+export function BarcodeSearchModal({ isOpen, onClose, onSuccess, stockMode = false }: BarcodeSearchModalProps) {
   const [barcode, setBarcode] = useState("")
   const [state, setState] = useState<BarcodeSearchState>(BarcodeSearchState.IDLE)
   const [previewData, setPreviewData] = useState<BarcodeLookupData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
+  const [stockQuantity, setStockQuantity] = useState(1)
+  const [rapidStockMode, setRapidStockMode] = useState(stockMode)
+  const [lastStockUpdate, setLastStockUpdate] = useState<{ name: string; added: number; newStock: number } | null>(null)
   
   // Datos para crear producto (modificar)
   const [formData, setFormData] = useState<CreateProductFromBarcodeRequest>({
@@ -148,12 +157,13 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
   useEffect(() => {
     if (isOpen) {
       loadCategories()
+      setRapidStockMode(stockMode)
       // Enfocar el input cuando se abre
       setTimeout(() => {
         inputRef.current?.focus()
       }, 100)
     }
-  }, [isOpen])
+  }, [isOpen, stockMode])
 
   // Resetear estado cuando se cierra el modal
   useEffect(() => {
@@ -181,8 +191,11 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       setImageUrlInput("")
       setUploadingImages(false)
       setSearchingPreferSite(null)
+      setStockQuantity(1)
+      setRapidStockMode(stockMode)
+      setLastStockUpdate(null)
     }
-  }, [isOpen])
+  }, [isOpen, stockMode])
 
   const loadCategories = async () => {
     setLoadingCategories(true)
@@ -194,6 +207,53 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       setCategories([])
     } finally {
       setLoadingCategories(false)
+    }
+  }
+
+  const resetForNextScan = () => {
+    setBarcode("")
+    setPreviewData(null)
+    setError(null)
+    setState(BarcodeSearchState.IDLE)
+    setTimeout(() => {
+      inputRef.current?.focus()
+    }, 100)
+  }
+
+  const handleAddStock = async (productId: number, productData?: BarcodeLookupData) => {
+    if (stockQuantity < 1) {
+      setError("La cantidad debe ser al menos 1")
+      return
+    }
+
+    setState(BarcodeSearchState.ADDING_STOCK)
+    setError(null)
+
+    try {
+      const updated = await updateProductStock(productId, {
+        stock: stockQuantity,
+        operation: 'add'
+      })
+
+      const updateInfo = {
+        name: updated.name,
+        added: stockQuantity,
+        newStock: updated.stock
+      }
+      setLastStockUpdate(updateInfo)
+      onSuccess()
+
+      if (rapidStockMode) {
+        resetForNextScan()
+        setLastStockUpdate(updateInfo)
+      } else {
+        setPreviewData(productData ? { ...productData, current_stock: updated.stock } : previewData)
+        setState(BarcodeSearchState.STOCK_ADDED)
+      }
+    } catch (err) {
+      console.error('Error al agregar stock:', err)
+      setState(productData ? BarcodeSearchState.EXISTS : BarcodeSearchState.ERROR)
+      setError(err instanceof Error ? err.message : 'Error al agregar stock')
     }
   }
 
@@ -217,8 +277,12 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       const data = await searchProductByBarcode(barcode.trim())
       
       if (data.exists_as_product) {
-        setState(BarcodeSearchState.EXISTS)
         setPreviewData(data)
+        if (rapidStockMode && data.product_id && data.available_actions.add_stock) {
+          await handleAddStock(data.product_id, data)
+        } else {
+          setState(BarcodeSearchState.EXISTS)
+        }
       } else {
         // Mejorar imágenes (priorizar calidad, intentar OFF si es EAN)
         const images = await improveBarcodeImages(barcode.trim(), data.images || [])
@@ -267,8 +331,12 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
       const data = await searchProductByBarcode(barcode.trim(), { prefer_site: preferSite })
 
       if (data.exists_as_product) {
-        setState(BarcodeSearchState.EXISTS)
         setPreviewData(data)
+        if (rapidStockMode && data.product_id && data.available_actions.add_stock) {
+          await handleAddStock(data.product_id, data)
+        } else {
+          setState(BarcodeSearchState.EXISTS)
+        }
       } else {
         const images = await improveBarcodeImages(barcode.trim(), data.images ?? [])
         setState(BarcodeSearchState.FOUND)
@@ -445,8 +513,12 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && state === BarcodeSearchState.IDLE) {
-      handleBarcodeSearch()
+    if (e.key === 'Enter') {
+      if (state === BarcodeSearchState.IDLE) {
+        handleBarcodeSearch()
+      } else if (state === BarcodeSearchState.EXISTS && previewData?.product_id) {
+        handleAddStock(previewData.product_id, previewData)
+      }
     }
   }
 
@@ -463,16 +535,52 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ScanLine className="h-5 w-5" />
-            Búsqueda por Código de Barras
+            {stockMode ? "Carga de Stock con Lectora" : "Búsqueda por Código de Barras"}
           </DialogTitle>
           <DialogDescription>
-            Escanea o ingresa un código de barras para buscar información del producto
+            {stockMode
+              ? "Escaneá productos existentes para sumar unidades al stock de forma rápida"
+              : "Escanea o ingresa un código de barras para buscar información del producto"}
           </DialogDescription>
         </DialogHeader>
 
         {/* Estado: IDLE - Buscar código */}
         {state === BarcodeSearchState.IDLE && (
           <div className="space-y-4">
+            {lastStockUpdate && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-sm dark:bg-green-950/40 dark:border-green-800/60">
+                <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+                <span className="text-green-800 dark:text-green-200">
+                  +{lastStockUpdate.added} a <strong>{lastStockUpdate.name}</strong> — stock actual: {lastStockUpdate.newStock}
+                </span>
+              </div>
+            )}
+            {stockMode && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="stock-quantity">Unidades a agregar</Label>
+                  <Input
+                    id="stock-quantity"
+                    type="number"
+                    min={1}
+                    value={stockQuantity}
+                    onChange={(e) => setStockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+                <div className="flex items-end pb-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="rapid-stock"
+                      checked={rapidStockMode}
+                      onCheckedChange={(checked) => setRapidStockMode(checked === true)}
+                    />
+                    <Label htmlFor="rapid-stock" className="text-sm font-normal cursor-pointer">
+                      Carga continua (volver a escanear tras cada suma)
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="barcode">Código de Barras</Label>
               <div className="flex gap-2">
@@ -639,24 +747,113 @@ export function BarcodeSearchModal({ isOpen, onClose, onSuccess }: BarcodeSearch
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Info className="h-5 w-5 text-blue-500 dark:text-blue-400" />
-                  Este producto ya existe
+                  <Package className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+                  Producto encontrado
                 </CardTitle>
+                <CardDescription>
+                  Este producto ya está en el sistema. Podés sumar stock con la lectora.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/40 dark:border-blue-800/60">
                   <h3 className="font-semibold mb-2 text-foreground">{previewData.title}</h3>
-                  {previewData.description && (
-                    <p className="text-sm text-muted-foreground">{previewData.description}</p>
+                  {previewData.product_code && (
+                    <p className="text-sm text-muted-foreground">
+                      Código interno: <strong>{previewData.product_code}</strong>
+                    </p>
                   )}
-                  {previewData.product_id && (
-                    <p className="text-sm mt-2 text-foreground">
-                      <strong className="text-foreground">ID del producto:</strong> {previewData.product_id}
+                  {typeof previewData.current_stock === 'number' && (
+                    <p className="text-sm mt-1 text-foreground">
+                      Stock actual: <strong>{previewData.current_stock}</strong> unidades
                     </p>
                   )}
                 </div>
-                <div className="flex justify-end">
-                  <Button variant="outline" onClick={onClose} className="dark:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-50">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="exists-stock-quantity">Unidades a agregar</Label>
+                    <Input
+                      id="exists-stock-quantity"
+                      type="number"
+                      min={1}
+                      value={stockQuantity}
+                      onChange={(e) => setStockQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && previewData.product_id) {
+                          handleAddStock(previewData.product_id, previewData)
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-end pb-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="exists-rapid-stock"
+                        checked={rapidStockMode}
+                        onCheckedChange={(checked) => setRapidStockMode(checked === true)}
+                      />
+                      <Label htmlFor="exists-rapid-stock" className="text-sm font-normal cursor-pointer">
+                        Carga continua
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-red-700">{error}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between gap-2">
+                  <Button variant="outline" onClick={resetForNextScan}>
+                    Escanear otro
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={onClose}>
+                      Cerrar
+                    </Button>
+                    {previewData.product_id && previewData.available_actions.add_stock !== false && (
+                      <Button onClick={() => handleAddStock(previewData.product_id!, previewData)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Agregar {stockQuantity} unidad{stockQuantity !== 1 ? 'es' : ''}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Estado: ADDING_STOCK - Agregando stock */}
+        {state === BarcodeSearchState.ADDING_STOCK && (
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-medium">Agregando stock...</p>
+          </div>
+        )}
+
+        {/* Estado: STOCK_ADDED - Stock actualizado */}
+        {state === BarcodeSearchState.STOCK_ADDED && lastStockUpdate && (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="py-12 text-center space-y-4">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
+                <h3 className="text-lg font-semibold">Stock actualizado</h3>
+                <p className="text-muted-foreground">
+                  Se agregaron <strong>{lastStockUpdate.added}</strong> unidad{lastStockUpdate.added !== 1 ? 'es' : ''} a{" "}
+                  <strong>{lastStockUpdate.name}</strong>.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Nuevo stock: <strong>{lastStockUpdate.newStock}</strong> unidades
+                </p>
+                <div className="flex justify-center gap-2 pt-4">
+                  <Button variant="outline" onClick={resetForNextScan}>
+                    Escanear otro
+                  </Button>
+                  <Button variant="outline" onClick={onClose}>
                     Cerrar
                   </Button>
                 </div>

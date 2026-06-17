@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Package, Search, Plus, AlertTriangle, TrendingDown, TrendingUp, Filter, Download, Eye, Loader2, X } from "lucide-react"
+import { Package, Search, Plus, AlertTriangle, TrendingDown, TrendingUp, Filter, Download, Eye, Loader2, X, ScanLine } from "lucide-react"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { NewProductModal } from "@/components/new-product-modal"
+import { BarcodeSearchModal } from "@/components/barcode-search-modal"
 import { getProductStats, ProductStats, getProducts, Product } from "@/lib/api"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -22,6 +23,7 @@ export default function StockPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false)
+  const [isBarcodeStockModalOpen, setIsBarcodeStockModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortBy, setSortBy] = useState<string>("none")
   const [filterCategory, setFilterCategory] = useState<string>("all")
@@ -265,6 +267,10 @@ export default function StockPage() {
             <Button variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Exportar
+            </Button>
+            <Button variant="outline" onClick={() => setIsBarcodeStockModalOpen(true)}>
+              <ScanLine className="h-4 w-4 mr-2" />
+              Cargar stock con lectora
             </Button>
             <Button onClick={() => setIsNewProductModalOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -544,6 +550,15 @@ export default function StockPage() {
           isOpen={isNewProductModalOpen} 
           onClose={handleCloseNewProductModal} 
           onSuccess={handleProductCreated}
+        />
+        <BarcodeSearchModal
+          isOpen={isBarcodeStockModalOpen}
+          onClose={() => setIsBarcodeStockModalOpen(false)}
+          onSuccess={() => {
+            fetchProducts()
+            fetchStats()
+          }}
+          stockMode
         />
       </div>
     </ERPLayout>
