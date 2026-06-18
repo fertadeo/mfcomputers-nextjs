@@ -821,7 +821,7 @@ export interface SaleResponseData extends SaleArcaFields {
   payment_details?: CreateSalePaymentDetails
   notes?: string | null
   sale_date: string
-  sale_source?: 'pos' | 'imported'
+  sale_source?: 'pos' | 'imported' | 'pos_external'
   sync_status?: string
   items: SaleItemResponse[]
   created_at: string
@@ -980,7 +980,7 @@ export interface Sale extends SaleArcaFields {
   payment_method: SalePaymentMethod
   sale_date: string
   sync_status?: 'pending' | 'synced' | 'error'
-  sale_source?: 'pos' | 'imported'
+  sale_source?: 'pos' | 'imported' | 'pos_external'
   items?: SaleItemResponse[]
   created_at: string
   updated_at: string
@@ -5290,7 +5290,12 @@ export interface ParsedSalesInvoiceItem {
   quantity: number;
   description: string;
   product_code?: string;
+  unit_price_net?: number;
   unit_price?: number;
+  bonif_percent?: number;
+  bonif_amount?: number;
+  subtotal_net?: number;
+  subtotal_gross?: number;
   subtotal?: number;
   iva_rate?: number;
 }
@@ -5302,6 +5307,14 @@ export interface MatchedSalesInvoiceItem extends ParsedSalesInvoiceItem {
   match_status: 'matched' | 'partial' | 'unmatched';
   match_method?: 'product_code' | 'description';
   warnings: string[];
+}
+
+export interface LinkableSaleSummary {
+  id: number
+  sale_number: string
+  sale_date: string
+  total_amount: number
+  arca_status?: string | null
 }
 
 export interface ParseSalesInvoiceResult {
@@ -5328,6 +5341,8 @@ export interface ParseSalesInvoiceResult {
   items: MatchedSalesInvoiceItem[];
   suggested_client_id?: number;
   suggested_client_name?: string;
+  linkable_sales?: LinkableSaleSummary[];
+  suggested_link_sale_id?: number;
   duplicate_invoice?: boolean;
   existing_sale_id?: number;
   warnings: string[];
@@ -5365,7 +5380,11 @@ export async function rematchSalesInvoiceDocument(
 ): Promise<{
   success: boolean;
   message: string;
-  data: { items: MatchedSalesInvoiceItem[] };
+  data: {
+    items: MatchedSalesInvoiceItem[]
+    linkable_sales: LinkableSaleSummary[]
+    suggested_link_sale_id?: number
+  };
   timestamp: string;
 }> {
   const response = await fetch(`${getApiUrl()}/sales/documents/rematch`, {
@@ -5395,6 +5414,7 @@ export async function confirmSalesInvoiceDocument(data: {
   total_amount: number;
   payment_method?: 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto';
   notes?: string;
+  link_sale_id?: number;
   items: Array<{
     description: string;
     quantity: number;
@@ -5412,6 +5432,7 @@ export async function confirmSalesInvoiceDocument(data: {
     client_id: number;
     client_name: string;
     comprobante_label: string;
+    linked_to_pos_sale?: boolean;
     warnings: string[];
   };
   timestamp: string;

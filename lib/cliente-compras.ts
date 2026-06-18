@@ -242,7 +242,12 @@ export async function fetchClienteFacturas(clientId: number): Promise<ClienteFac
         fecha: formatDateDisplay(s.arca_fecha_emision || s.sale_date || s.created_at),
         monto: Number(s.total_amount) || 0,
         estado: s.arca_cae ? "Emitida" : "Pendiente",
-        origen: s.sale_source === "imported" ? ("importada" as const) : ("sistema" as const),
+        origen:
+          s.sale_source === "imported"
+            ? ("importada" as const)
+            : s.sale_source === "pos_external"
+              ? ("vinculada" as const)
+              : ("sistema" as const),
         vencimiento: s.arca_cae_vto ? formatDateDisplay(s.arca_cae_vto) : undefined,
         tipo: mapArcaTipo(s.arca_tipo),
         saleId: s.id,

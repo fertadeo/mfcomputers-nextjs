@@ -70,7 +70,7 @@ import {
   saveFacturacionFormDefaults,
 } from "@/lib/facturacion-settings"
 import { canEmitNotaCredito, canFacturarSaleViaApi, canReemitirComprobante, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
-import { IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale } from "@/lib/sale-import"
+import { externalInvoiceBadgeLabel, IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
 import {
   CONDICIONES_IVA_RECEPTOR,
   formatComprobanteAfipReferencia,
@@ -878,7 +878,11 @@ export default function FacturacionPage() {
     }
 
     if (!canFacturarSaleViaApi(selectedSale)) {
-      setErrorTitle(isImportedSale(selectedSale) ? IMPORTED_SALE_BADGE : "Comprobante ya emitido")
+      setErrorTitle(
+        isImportedSale(selectedSale)
+          ? externalInvoiceBadgeLabel(selectedSale) || IMPORTED_SALE_BADGE
+          : "Comprobante ya emitido"
+      )
       setErrorMsg(
         isImportedSale(selectedSale)
           ? IMPORTED_SALE_FISCAL_HINT
@@ -1190,7 +1194,7 @@ export default function FacturacionPage() {
                               <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
                               {row.sale && isImportedSale(row.sale) ? (
                                 <Badge variant="secondary" className="text-xs font-normal">
-                                  {IMPORTED_SALE_BADGE}
+                                  {externalInvoiceBadgeLabel(row.sale) || IMPORTED_SALE_BADGE}
                                 </Badge>
                               ) : null}
                               {row.arcaNcStatus === "success" || (row.sale && saleHasNotaCreditoEmitida(row.sale)) ? (
@@ -1321,7 +1325,15 @@ export default function FacturacionPage() {
                 <>
                   {selectedSale && isImportedSale(selectedSale) ? (
                     <div className="border-b px-6 py-3">
-                      <Alert variant="warning" title={IMPORTED_SALE_BADGE} description={IMPORTED_SALE_FISCAL_HINT} />
+                      <Alert
+                        variant="warning"
+                        title={externalInvoiceBadgeLabel(selectedSale) || IMPORTED_SALE_BADGE}
+                        description={
+                          selectedSale.sale_source === "pos_external"
+                            ? LINKED_POS_SALE_HINT
+                            : IMPORTED_SALE_FISCAL_HINT
+                        }
+                      />
                     </div>
                   ) : null}
                   <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">

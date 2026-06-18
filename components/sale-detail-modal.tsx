@@ -31,7 +31,7 @@ import {
   Pencil,
 } from "lucide-react"
 import { saleHasFiscalLock } from "@/lib/sale-edit"
-import { IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale } from "@/lib/sale-import"
+import { externalInvoiceBadgeLabel, IMPORTED_SALE_FISCAL_HINT, isImportedSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
 import type { SaleResponseData, SalePaymentMethod } from "@/lib/api"
 import { getProductById } from "@/lib/api"
 import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
@@ -163,7 +163,11 @@ export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: Sale
 
         <div className="space-y-6 p-6 pr-12 min-w-0">
           {sale && isImportedSale(sale) ? (
-            <Alert variant="warning" title={IMPORTED_SALE_BADGE} description={IMPORTED_SALE_FISCAL_HINT} />
+            <Alert
+              variant="warning"
+              title={externalInvoiceBadgeLabel(sale)}
+              description={sale.sale_source === "pos_external" ? LINKED_POS_SALE_HINT : IMPORTED_SALE_FISCAL_HINT}
+            />
           ) : saleHasFiscalLock(sale) ? (
             <Alert
               variant="error"

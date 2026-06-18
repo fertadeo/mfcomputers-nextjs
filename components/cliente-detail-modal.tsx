@@ -710,15 +710,25 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                           </TableCell>
                           <TableCell>
                             <Badge
-                              variant={factura.origen === "importada" ? "outline" : "secondary"}
+                              variant={
+                                factura.origen === "importada" || factura.origen === "vinculada"
+                                  ? "outline"
+                                  : "secondary"
+                              }
                               className="text-xs"
                               title={
                                 factura.origen === "importada"
                                   ? "Registrada desde PDF externo; sin emisión ni NC por API"
-                                  : "Emitida por el sistema vía ARCA"
+                                  : factura.origen === "vinculada"
+                                    ? "Factura externa vinculada a venta POS; sin emisión ni NC por API"
+                                    : "Emitida por el sistema vía ARCA"
                               }
                             >
-                              {factura.origen === "importada" ? "Importada" : "Sistema"}
+                              {factura.origen === "importada"
+                                ? "Importada"
+                                : factura.origen === "vinculada"
+                                  ? "Vinculada"
+                                  : "Sistema"}
                             </Badge>
                           </TableCell>
                         </TableRow>
