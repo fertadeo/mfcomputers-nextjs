@@ -36,6 +36,7 @@ import { getProductById } from "@/lib/api"
 import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel, normalizeSaleIvaRate } from "@/lib/sale-iva"
+import { SaleClienteSection } from "@/components/sale-cliente-section"
 
 interface SaleDetailModalProps {
   sale: SaleResponseData | null
@@ -175,9 +176,9 @@ export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: Sale
               </Button>
             </div>
           )}
-          <section className="rounded-xl border bg-muted/20 p-4 min-w-0 overflow-hidden">
+          <section className="rounded-xl border bg-muted/20 p-4 min-w-0 overflow-hidden space-y-4">
             <h3 className="sr-only">Detalles de la venta</h3>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 min-w-0">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 min-w-0">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background border text-muted-foreground">
                   <Calendar className="h-4 w-4" />
@@ -187,20 +188,6 @@ export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: Sale
                     Fecha
                   </p>
                   <p className="mt-0.5 text-sm font-medium">{formatDate(sale.sale_date)}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background border text-muted-foreground">
-                  <User className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Cliente
-                  </p>
-                  <p className="mt-0.5 text-sm font-medium">
-                    {sale.client_name ??
-                      (sale.client_id != null ? `Cliente #${sale.client_id}` : "Consumidor final")}
-                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -233,6 +220,20 @@ export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: Sale
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="mb-2 flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Cliente
+                </h4>
+              </div>
+              <SaleClienteSection
+                clientId={sale.client_id}
+                saleSnapshot={sale}
+                fallbackName={sale.client_name}
+              />
             </div>
           </section>
 

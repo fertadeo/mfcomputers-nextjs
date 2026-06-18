@@ -808,6 +808,12 @@ export interface SaleResponseData extends SaleArcaFields {
   sale_number: string
   client_id: number | null
   client_name?: string | null
+  client_code?: string | null
+  client_email?: string | null
+  client_phone?: string | null
+  client_address?: string | null
+  client_city?: string | null
+  client_cuil_cuit?: string | null
   total_amount: number
   payment_method: SalePaymentMethod
   payment_details?: CreateSalePaymentDetails
@@ -961,6 +967,12 @@ export interface Sale extends SaleArcaFields {
   sale_number: string
   client_id: number | null
   client_name?: string | null
+  client_code?: string | null
+  client_email?: string | null
+  client_phone?: string | null
+  client_address?: string | null
+  client_city?: string | null
+  client_cuil_cuit?: string | null
   total_amount: number
   payment_method: SalePaymentMethod
   sale_date: string

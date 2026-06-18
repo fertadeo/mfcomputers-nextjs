@@ -22,6 +22,8 @@ import {
   type SaleEditConfirmSummary,
   formatSaleEditMoney,
 } from "@/lib/sale-edit-summary"
+import type { Cliente } from "@/lib/api"
+import { ClienteInfoCard } from "@/components/cliente-picker"
 import { formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import { Loader2, Minus, Plus } from "lucide-react"
 
@@ -39,6 +41,7 @@ interface SaleEditConfirmDialogProps {
   onOpenChange: (open: boolean) => void
   summary: SaleEditConfirmSummary | null
   saleNumber: string
+  selectedCliente?: Cliente | null
   saving: boolean
   onConfirm: () => void
 }
@@ -48,6 +51,7 @@ export function SaleEditConfirmDialog({
   onOpenChange,
   summary,
   saleNumber,
+  selectedCliente,
   saving,
   onConfirm,
 }: SaleEditConfirmDialogProps) {
@@ -76,6 +80,15 @@ export function SaleEditConfirmDialog({
             <p className="text-sm text-muted-foreground rounded-lg border p-3 bg-muted/30">
               No detectamos cambios respecto a la venta original. Podés cancelar o guardar igualmente.
             </p>
+          )}
+
+          {selectedCliente ? (
+            <ClienteInfoCard cliente={selectedCliente} />
+          ) : (
+            <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-5 text-center">
+              <p className="text-sm font-medium">Consumidor final</p>
+              <p className="text-xs text-muted-foreground mt-1">La venta quedará sin cliente asociado.</p>
+            </div>
           )}
 
           <section className="space-y-2">

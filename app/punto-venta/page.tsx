@@ -54,6 +54,7 @@ import { posCartLinesToCreateSaleItems, posCartLinesToReceiptItems } from "@/lib
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { PosCartItemRow } from "@/components/pos-cart-item-row"
 import { ClientePicker } from "@/components/cliente-picker"
+import { SaleConfirmDialog } from "@/components/sale-confirm-dialog"
 import { getClienteDisplayName } from "@/lib/cliente-display"
 import {
   clienteRequiresZeroItemIva,
@@ -88,6 +89,7 @@ export default function PuntoVentaPage() {
   const [paymentDetails, setPaymentDetails] = useState({ efectivo: 0, tarjeta: 0, transferencia: 0 })
   const [notes, setNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [confirmSaleOpen, setConfirmSaleOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSale, setLastSale] = useState<SaleResponseData | null>(null)
   const [lastSalePdfData, setLastSalePdfData] = useState<{
@@ -335,7 +337,6 @@ export default function PuntoVentaPage() {
   const mixtoValid = paymentMethod !== "mixto" || Math.abs(mixtoSum - total) < 0.02
 
   async function handleCobrar() {
-    const cartSnapshot = [...cart]
     if (cart.length === 0) {
       setError("Agregá al menos un ítem al carrito")
       return
@@ -352,6 +353,11 @@ export default function PuntoVentaPage() {
       return
     }
     setError(null)
+    setConfirmSaleOpen(true)
+  }
+
+  async function performCobrar() {
+    const cartSnapshot = [...cart]
     setSubmitting(true)
     try {
       const body: CreateSaleRequest = {
@@ -369,6 +375,7 @@ export default function PuntoVentaPage() {
         }
       }
       const sale = await createSale(body)
+      setConfirmSaleOpen(false)
       setLastSale(sale)
       setLastSalePdfData({
         sale,
@@ -378,6 +385,9 @@ export default function PuntoVentaPage() {
         clientAddress: selectedCliente?.address ?? undefined,
       })
       setCart([])
+      setClientSearch("")
+      setSelectedClientId(null)
+      setSelectedCliente(null)
       setNotes("")
       setPaymentDetails({ efectivo: 0, tarjeta: 0, transferencia: 0 })
     } catch (e) {
@@ -1147,9 +1157,32 @@ export default function PuntoVentaPage() {
                 </p>
                 <p>Total: ${lastSale.total_amount.toLocaleString("es-AR", FORMAT_NUM)}</p>
                 <p>Método: {PAYMENT_LABELS[lastSale.payment_method]}</p>
+                {lastSalePdfData?.clientName ? (
+                  <p className="text-sm">
+                    Cliente: <span className="font-medium">{lastSalePdfData.clientName}</span>
+                  </p>
+                ) : null}
+                {lastSalePdfData?.clientAddress || lastSale.client_address ? (
+                  <p className="text-xs text-muted-foreground">
+                    {lastSalePdfData?.clientAddress || lastSale.client_address}
+                    {lastSale.client_city ? ` · ${lastSale.client_city}` : ""}
+                  </p>
+                ) : null}
               </div>
             </Alert>
           )}
+
+          <SaleConfirmDialog
+            open={confirmSaleOpen}
+            onOpenChange={setConfirmSaleOpen}
+            cart={cart}
+            total={total}
+            paymentMethod={paymentMethod}
+            paymentLabel={PAYMENT_LABELS[paymentMethod]}
+            selectedCliente={selectedCliente}
+            submitting={submitting}
+            onConfirm={() => void performCobrar()}
+          />
         </div>
       </ERPLayout>
     </Protected>

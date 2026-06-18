@@ -54,6 +54,8 @@ import {
 } from "@/lib/facturacion-cliente-fiscal"
 import { computeSaleIvaBreakdown, productIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
 import { SaleEditConfirmDialog } from "@/components/sale-edit-confirm-dialog"
+import { ClientePicker } from "@/components/cliente-picker"
+import { getClienteDisplayName } from "@/lib/cliente-display"
 import {
   buildSaleEditConfirmSummary,
   cartToLineSnapshots,
@@ -62,8 +64,7 @@ import {
   type SaleEditOriginalSnapshot,
 } from "@/lib/sale-edit-summary"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Save, Search } from "lucide-react"
+import { Loader2, Plus, Save } from "lucide-react"
 import { toast } from "sonner"
 
 const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
@@ -133,7 +134,10 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       setClientDisplayName(clientLabel)
       if (s.client_id) {
         void getClienteById(s.client_id)
-          .then((cliente) => setSelectedCliente(cliente))
+          .then((cliente) => {
+            setSelectedCliente(cliente)
+            setClientSearch(getClienteDisplayName(cliente))
+          })
           .catch(() => setSelectedCliente(null))
       }
       setOriginalSnapshot({
@@ -466,54 +470,48 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
 
               <div className="space-y-2">
                 <Label>Cliente</Label>
-                <div className="relative max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-9"
-                    placeholder="Buscar cliente activo…"
-                    value={clientSearch}
-                    onChange={(e) => {
-                      setClientSearch(e.target.value)
-                      markDirty()
-                    }}
-                  />
-                </div>
-                {clients.length > 0 && (
-                  <ul className="border rounded-md max-h-36 overflow-y-auto divide-y max-w-md">
-                    {clients.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                          onClick={() => {
-                            setClientId(c.id)
-                            setSelectedCliente(c)
-                            setClientDisplayName(c.name)
-                            setClientSearch("")
-                            setClients([])
-                            markDirty()
-                          }}
-                        >
-                          {c.name} <span className="text-muted-foreground">({c.code})</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Cliente seleccionado:</span>
-                  <span className="font-medium">{clientDisplayName}</span>
-                  {clientChanged && originalSnapshot && (
-                    <>
-                      <Badge variant="secondary" className="text-[10px]">
-                        Cambiado
-                      </Badge>
-                      <span className="text-xs text-muted-foreground w-full sm:w-auto">
-                        Antes: {originalSnapshot.clientLabel}
-                      </span>
-                    </>
-                  )}
-                </div>
+                <ClientePicker
+                  searchValue={clientSearch}
+                  onSearchChange={(value) => {
+                    setClientSearch(value)
+                    if (selectedCliente && value.trim() !== getClienteDisplayName(selectedCliente)) {
+                      setClientId(null)
+                      setSelectedCliente(null)
+                      setClientDisplayName("Consumidor final")
+                    }
+                    if (!value.trim() && clientId != null) {
+                      setClientId(null)
+                      setSelectedCliente(null)
+                      setClientDisplayName("Consumidor final")
+                    }
+                    markDirty()
+                  }}
+                  results={clients}
+                  selectedCliente={selectedCliente}
+                  onSelect={(cliente) => {
+                    setClientId(cliente.id)
+                    setSelectedCliente(cliente)
+                    setClientDisplayName(getClienteDisplayName(cliente))
+                    setClientSearch(getClienteDisplayName(cliente))
+                    setClients([])
+                    markDirty()
+                  }}
+                  onClear={() => {
+                    setClientId(null)
+                    setSelectedCliente(null)
+                    setClientDisplayName("Consumidor final")
+                    setClientSearch("")
+                    setClients([])
+                    markDirty()
+                  }}
+                  placeholder="Buscar cliente por nombre, CUIT, código o dirección…"
+                  clearLabel="Consumidor final"
+                />
+                {clientChanged && originalSnapshot ? (
+                  <p className="text-xs text-muted-foreground">
+                    Cliente anterior: <span className="font-medium">{originalSnapshot.clientLabel}</span>
+                  </p>
+                ) : null}
                 {requiresZeroItemIva ? (
                   <Alert
                     variant="warning"
@@ -753,6 +751,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
         }}
         summary={confirmSummary}
         saleNumber={sale.sale_number}
+        selectedCliente={selectedCliente}
         saving={saving}
         onConfirm={() => void performSave()}
       />
