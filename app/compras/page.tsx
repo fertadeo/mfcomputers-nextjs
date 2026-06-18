@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ShoppingCart, Search, Plus, Clock, CheckCircle, AlertTriangle, Filter, Download, Eye, RefreshCw, DollarSign, FileText } from "lucide-react"
+import { ShoppingCart, Search, Plus, Clock, CheckCircle, AlertTriangle, Filter, Download, Eye, RefreshCw, DollarSign, FileText, Upload } from "lucide-react"
 import { NewPurchaseModal } from "@/components/new-purchase-modal"
+import { ImportSupplierDocumentModal } from "@/components/import-supplier-document-modal"
 import { 
   getPurchases, 
   getPurchaseStats, 
@@ -27,6 +28,7 @@ export default function ComprasPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
@@ -160,6 +162,10 @@ export default function ComprasPage() {
             <Button variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Exportar
+            </Button>
+            <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Importar PDF
             </Button>
             <Button onClick={() => setIsModalOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -386,6 +392,11 @@ export default function ComprasPage() {
         <NewPurchaseModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
+          onSuccess={handleModalSuccess}
+        />
+        <ImportSupplierDocumentModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
           onSuccess={handleModalSuccess}
         />
       </ERPLayout>

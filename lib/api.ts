@@ -5106,6 +5106,167 @@ export async function deleteSupplier(id: number): Promise<{
   }
 }
 
+// ==================== DOCUMENTOS DE PROVEEDOR (PDF) ====================
+
+export interface ParsedPurchaseDocumentItem {
+  line_number: number;
+  quantity: number;
+  description: string;
+  supplier_product_code?: string;
+  material_code: string;
+  barcode?: string;
+  serial_numbers?: string[];
+}
+
+export interface MatchedPurchaseDocumentItem extends ParsedPurchaseDocumentItem {
+  product_id?: number;
+  product_name?: string;
+  product_code?: string;
+  current_stock?: number;
+  purchase_item_id?: number;
+  expected_quantity?: number;
+  pending_quantity?: number;
+  expected_unit_cost?: number;
+  cost_variance?: number;
+  match_status: 'matched' | 'partial' | 'unmatched';
+  match_method?: 'barcode' | 'material_code' | 'product_code' | 'description';
+  warnings: string[];
+}
+
+export interface ParsePurchaseDocumentResult {
+  file_token: string;
+  original_filename: string;
+  parsed: {
+    provider: string;
+    document_type: string;
+    delivery_note_number?: string;
+    delivery_date?: string;
+    supplier_name?: string;
+    supplier_tax_id?: string;
+    source_invoice_number?: string;
+    insured_value?: number;
+    customer_order_reference?: string;
+    transport_company?: string;
+    items: ParsedPurchaseDocumentItem[];
+  };
+  items: MatchedPurchaseDocumentItem[];
+  suggested_supplier_id?: number;
+  suggested_supplier_name?: string;
+  suggested_purchase_id?: number;
+  suggested_purchase_number?: string;
+  duplicate_delivery_note?: boolean;
+  warnings: string[];
+}
+
+function getAuthHeadersForUpload(): HeadersInit {
+  const token = getAuthToken();
+  const headers: HeadersInit = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+export async function parsePurchaseSupplierDocument(file: File): Promise<{
+  success: boolean;
+  message: string;
+  data: ParsePurchaseDocumentResult;
+  timestamp: string;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${getApiUrl()}/purchases/documents/parse`, {
+    method: 'POST',
+    headers: getAuthHeadersForUpload(),
+    body: formData,
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+export async function rematchPurchaseSupplierDocument(
+  fileToken: string,
+  supplierId: number
+): Promise<{
+  success: boolean;
+  message: string;
+  data: { items: MatchedPurchaseDocumentItem[] };
+  timestamp: string;
+}> {
+  const response = await fetch(`${getApiUrl()}/purchases/documents/rematch`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ file_token: fileToken, supplier_id: supplierId }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+export async function confirmPurchaseSupplierDocument(data: {
+  file_token: string;
+  supplier_id: number;
+  purchase_id?: number;
+  create_purchase_if_missing?: boolean;
+  delivery_note_number: string;
+  delivery_date: string;
+  source_invoice_number?: string;
+  insured_value?: number;
+  notes?: string;
+  apply_stock: boolean;
+  items: Array<{
+    material_code: string;
+    barcode?: string;
+    description: string;
+    quantity: number;
+    product_id?: number;
+    purchase_item_id?: number;
+    unit_cost?: number;
+    update_stock?: boolean;
+    update_cost?: boolean;
+  }>;
+}): Promise<{
+  success: boolean;
+  message: string;
+  data: {
+    delivery_note_id: number;
+    delivery_note_number: string;
+    purchase_id: number;
+    purchase_number: string;
+    stock_updates: Array<{
+      product_id: number;
+      product_name: string;
+      quantity_added: number;
+      new_stock: number;
+    }>;
+    cost_updates: Array<{
+      product_id: number;
+      purchase_item_id?: number;
+      unit_cost: number;
+    }>;
+    warnings: string[];
+  };
+  timestamp: string;
+}> {
+  const response = await fetch(`${getApiUrl()}/purchases/documents/confirm`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
 // Función para obtener estadísticas de compras
 export async function getPurchaseStats(): Promise<{
   success: boolean;
