@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClienteDetailModal } from "@/components/cliente-detail-modal"
-import { Users, Search, Plus, Mail, Phone, MapPin, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar, Edit, User, Activity, Trash2 } from "lucide-react"
+import { Users, Search, Plus, Mail, Phone, Filter, Download, UserPlus, AlertCircle, CreditCard, Calendar, Edit, User, Activity, Trash2 } from "lucide-react"
+import { ClienteUbicacion } from "@/components/cliente-ubicacion"
 import { useState, useEffect } from "react"
 import { getClientes, getClienteStats, deleteCliente, type Cliente } from "@/lib/api"
 import { mapClienteApiToUi, type ClienteUI } from "@/lib/cliente-ui-map"
@@ -403,10 +404,12 @@ export default function ClientesPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {cliente.ciudad}
-                      </div>
+                      <ClienteUbicacion
+                        address={cliente.direccion}
+                        city={cliente.ciudad}
+                        variant="table"
+                        emptyLabel="Sin ubicación"
+                      />
                     </TableCell>
                     <TableCell>
                       <Badge 

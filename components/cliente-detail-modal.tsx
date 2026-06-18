@@ -8,11 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
+import { ClienteUbicacion } from "@/components/cliente-ubicacion"
 import { 
   User, 
   Mail, 
   Phone, 
-  MapPin, 
   Calendar, 
   DollarSign, 
   ShoppingCart, 
@@ -285,12 +285,13 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                       </div>
                     </div>
                     
-                    <div className="flex items-start gap-3 p-3 bg-soft dark:bg-soft-card rounded-lg">
-                      <MapPin className="h-5 w-5 text-gray-600 dark:text-gray-400 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Ciudad</p>
-                        <p className="text-base text-gray-900 dark:text-white">{cliente.ciudad}</p>
-                      </div>
+                    <div className="p-3 bg-soft dark:bg-soft-card rounded-lg">
+                      <ClienteUbicacion
+                        address={cliente.direccion}
+                        city={cliente.ciudad}
+                        variant="detail"
+                        emptyLabel="Sin ubicación registrada"
+                      />
                     </div>
                   </div>
                   
@@ -405,14 +406,7 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                         </p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-start gap-3 p-3 bg-soft dark:bg-soft-card rounded-lg">
-                      <MapPin className="h-5 w-5 text-gray-600 dark:text-gray-400 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Dirección</p>
-                        <p className="text-base text-gray-900 dark:text-white break-words">{cliente.direccion || "Av. Corrientes 1234, CABA"}</p>
-                      </div>
-                    </div>
+
                     
                     <div className="flex items-start gap-3 p-3 bg-soft dark:bg-soft-card rounded-lg">
                       <Calendar className="h-5 w-5 text-gray-600 dark:text-gray-400 mt-0.5 flex-shrink-0" />

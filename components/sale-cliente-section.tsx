@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { getClienteById, type Cliente } from "@/lib/api"
 import { ClienteInfoCard } from "@/components/cliente-picker"
+import { ClienteUbicacion } from "@/components/cliente-ubicacion"
 import { getClienteDisplayName } from "@/lib/cliente-display"
-import { saleClientUbicacion, saleToClienteSnapshot, type SaleClientFields } from "@/lib/sale-cliente"
+import { saleToClienteSnapshot, type SaleClientFields } from "@/lib/sale-cliente"
 
 export interface SaleClienteSectionProps {
   clientId?: number | null
@@ -102,7 +103,14 @@ export function SaleClienteSection({
     return <ClienteInfoCard cliente={cliente} compact={compact} className={className} />
   }
 
-  const ubicacion = saleSnapshot ? saleClientUbicacion(saleSnapshot) : null
+  const ubicacionParts = saleSnapshot
+    ? {
+        address: saleSnapshot.client_address?.trim() || null,
+        city: saleSnapshot.client_city?.trim() || null,
+        country: null,
+      }
+    : null
+  const hasUbicacion = Boolean(ubicacionParts?.address || ubicacionParts?.city)
   const displayName =
     fallbackName?.trim() ||
     saleSnapshot?.client_name?.trim() ||
@@ -113,8 +121,14 @@ export function SaleClienteSection({
       className={`rounded-lg border border-dashed bg-muted/30 px-4 py-5 text-center space-y-1 ${className ?? ""}`}
     >
       <p className="text-sm font-medium">{getClienteDisplayName({ name: displayName } as Cliente)}</p>
-      {ubicacion ? (
-        <p className="text-xs text-muted-foreground">{ubicacion}</p>
+      {hasUbicacion && ubicacionParts ? (
+        <ClienteUbicacion
+          address={ubicacionParts.address}
+          city={ubicacionParts.city}
+          variant="compact"
+          className="justify-center"
+          showIcon={false}
+        />
       ) : (
         <p className="text-xs text-muted-foreground">
           {resolvedId != null

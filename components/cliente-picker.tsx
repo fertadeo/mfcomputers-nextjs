@@ -1,15 +1,16 @@
 "use client"
 
-import { Building2, Hash, Mail, MapPin, Phone, Search, User, X } from "lucide-react"
+import { Building2, Hash, Mail, Phone, Search, User, X } from "lucide-react"
 import type { Cliente } from "@/lib/api"
 import {
   formatClienteCuitDisplay,
-  formatClienteUbicacion,
   getClienteDisplayDetails,
   getClienteDisplayName,
   getClienteDistinguishingSubtitle,
   getClienteInitials,
+  getClienteUbicacionParts,
 } from "@/lib/cliente-display"
+import { ClienteUbicacion } from "@/components/cliente-ubicacion"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,7 +27,8 @@ function ClienteOptionRow({
   highlighted?: boolean
 }) {
   const cuit = formatClienteCuitDisplay(cliente)
-  const ubicacion = formatClienteUbicacion(cliente)
+  const ubicacionParts = getClienteUbicacionParts(cliente)
+  const hasUbicacion = Boolean(ubicacionParts.address || ubicacionParts.city)
 
   return (
     <button
@@ -55,11 +57,8 @@ function ClienteOptionRow({
               </Badge>
             ) : null}
           </div>
-          {ubicacion ? (
-            <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-              <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span className="line-clamp-2">{ubicacion}</span>
-            </p>
+          {hasUbicacion ? (
+            <ClienteUbicacion cliente={cliente} variant="compact" className="mt-0.5" />
           ) : null}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
             {cuit ? (
@@ -81,7 +80,7 @@ function ClienteOptionRow({
               </span>
             ) : null}
           </div>
-          {!ubicacion ? (
+          {!hasUbicacion ? (
             <p className="text-[11px] text-muted-foreground/80">{getClienteDistinguishingSubtitle(cliente)}</p>
           ) : null}
         </div>
@@ -207,8 +206,9 @@ export function ClienteInfoCard({
   className,
 }: ClienteInfoCardProps) {
   const details = getClienteDisplayDetails(cliente)
-  const ubicacion = formatClienteUbicacion(cliente)
   const cuit = formatClienteCuitDisplay(cliente)
+  const ubicacionParts = getClienteUbicacionParts(cliente)
+  const hasUbicacion = Boolean(ubicacionParts.address || ubicacionParts.city)
 
   return (
     <div
@@ -250,11 +250,8 @@ export function ClienteInfoCard({
             ) : null}
           </div>
 
-          {ubicacion ? (
-            <p className="mt-2 text-xs text-muted-foreground flex items-start gap-1.5">
-              <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
-              <span>{ubicacion}</span>
-            </p>
+          {hasUbicacion ? (
+            <ClienteUbicacion cliente={cliente} variant="default" className="mt-2.5" />
           ) : null}
 
           {!compact && details.length > 0 ? (

@@ -33,11 +33,29 @@ export function formatClienteTipo(cliente?: Cliente | null): string | null {
   return CLIENT_TYPE_LABELS[cliente.client_type] ?? cliente.client_type
 }
 
+export interface ClienteUbicacionParts {
+  address: string | null
+  city: string | null
+  country: string | null
+}
+
+export function getClienteUbicacionParts(cliente?: Cliente | null): ClienteUbicacionParts {
+  return {
+    address: cliente?.address?.trim() || null,
+    city: cliente?.city?.trim() || null,
+    country: cliente?.country?.trim() || null,
+  }
+}
+
 export function formatClienteUbicacion(cliente?: Cliente | null): string | null {
-  const address = cliente?.address?.trim()
-  const city = cliente?.city?.trim()
+  const { address, city } = getClienteUbicacionParts(cliente)
   if (address && city) return `${address} · ${city}`
   return address || city || null
+}
+
+export function formatClienteUbicacionFromParts(parts: ClienteUbicacionParts): string | null {
+  if (parts.address && parts.city) return `${parts.address} · ${parts.city}`
+  return parts.address || parts.city || null
 }
 
 export function formatClientePersoneria(cliente?: Cliente | null): string | null {
@@ -77,7 +95,7 @@ export function getClienteDisplayDetails(cliente: Cliente): ClienteDisplayDetail
     details.push({ label: "CUIT/CUIL", value: cuit, mono: true })
   }
 
-  const ubicacion = formatClienteUbicacion(cliente)
+  const ubicacion = formatClienteUbicacionFromParts(getClienteUbicacionParts(cliente))
   if (ubicacion) {
     details.push({ label: "Ubicación", value: ubicacion })
   }
