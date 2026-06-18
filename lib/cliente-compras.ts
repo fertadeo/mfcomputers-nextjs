@@ -28,8 +28,10 @@ export interface ClienteFactura {
   fecha: string
   monto: number
   estado: string
+  origen: "sistema" | "importada"
   vencimiento?: string
   tipo: string
+  saleId?: number
 }
 
 export interface ClienteComprasStats {
@@ -237,11 +239,13 @@ export async function fetchClienteFacturas(clientId: number): Promise<ClienteFac
           s.arca_punto_venta != null && s.arca_numero != null
             ? `${String(s.arca_punto_venta).padStart(4, "0")}-${String(s.arca_numero).padStart(8, "0")}`
             : s.sale_number || `#${s.id}`,
-        fecha: formatDateDisplay(s.sale_date || s.created_at),
+        fecha: formatDateDisplay(s.arca_fecha_emision || s.sale_date || s.created_at),
         monto: Number(s.total_amount) || 0,
         estado: s.arca_cae ? "Emitida" : "Pendiente",
+        origen: s.sale_source === "imported" ? ("importada" as const) : ("sistema" as const),
         vencimiento: s.arca_cae_vto ? formatDateDisplay(s.arca_cae_vto) : undefined,
         tipo: mapArcaTipo(s.arca_tipo),
+        saleId: s.id,
       }))
       .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
   } catch (err) {

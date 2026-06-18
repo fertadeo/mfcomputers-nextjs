@@ -31,6 +31,7 @@ import {
   Pencil,
 } from "lucide-react"
 import { saleHasFiscalLock } from "@/lib/sale-edit"
+import { IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale } from "@/lib/sale-import"
 import type { SaleResponseData, SalePaymentMethod } from "@/lib/api"
 import { getProductById } from "@/lib/api"
 import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
@@ -161,13 +162,15 @@ export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: Sale
         </DialogHeader>
 
         <div className="space-y-6 p-6 pr-12 min-w-0">
-          {saleHasFiscalLock(sale) && (
+          {sale && isImportedSale(sale) ? (
+            <Alert variant="warning" title={IMPORTED_SALE_BADGE} description={IMPORTED_SALE_FISCAL_HINT} />
+          ) : saleHasFiscalLock(sale) ? (
             <Alert
               variant="error"
               title="Venta facturada (ARCA)"
               description="Solo lectura. Para corregir el comprobante fiscal hace falta emitir una nota de crédito."
             />
-          )}
+          ) : null}
           {canEdit && onEdit && (
             <div className="flex justify-end">
               <Button type="button" size="sm" variant="outline" className="gap-2" onClick={onEdit}>

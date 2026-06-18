@@ -33,6 +33,7 @@ import {
 import { EditClientModal } from "./edit-client-modal"
 import { deleteCliente, type Cliente as ClienteApi } from "@/lib/api"
 import { CuentaCorrienteModal } from "./cuenta-corriente-modal"
+import { ImportClientInvoiceModal } from "@/components/import-client-invoice-modal"
 import {
   fetchClienteCompras,
   fetchClienteFacturas,
@@ -98,6 +99,12 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
   const [compras, setCompras] = useState<ClienteCompra[]>([])
   const [facturas, setFacturas] = useState<ClienteFactura[]>([])
   const [loadingCompras, setLoadingCompras] = useState(false)
+  const [isImportInvoiceOpen, setIsImportInvoiceOpen] = useState(false)
+
+  const reloadFacturas = () => {
+    if (!cliente?.dbId) return
+    fetchClienteFacturas(cliente.dbId).then(setFacturas).catch(() => setFacturas([]))
+  }
 
   const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
     if (!open) onClose()
@@ -645,14 +652,20 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
           {activeTab === 'facturacion' && (
             <div className="space-y-4 sm:space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Historial de Facturación
-                </CardTitle>
-                <CardDescription>
-                  Registro de todas las facturas emitidas al cliente
-                </CardDescription>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Historial de Facturación
+                  </CardTitle>
+                  <CardDescription>
+                    Facturas emitidas por el sistema e importadas desde ARCA externo
+                  </CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setIsImportInvoiceOpen(true)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Importar PDF
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -665,12 +678,13 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                         <TableHead className="min-w-[100px]">Monto</TableHead>
                         <TableHead className="min-w-[100px]">Vencimiento</TableHead>
                         <TableHead className="min-w-[100px]">Estado</TableHead>
+                        <TableHead className="min-w-[90px]">Origen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {facturas.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                             No hay facturas emitidas para este cliente
                           </TableCell>
                         </TableRow>
@@ -692,6 +706,19 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
                               className="text-xs"
                             >
                               {factura.estado}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={factura.origen === "importada" ? "outline" : "secondary"}
+                              className="text-xs"
+                              title={
+                                factura.origen === "importada"
+                                  ? "Registrada desde PDF externo; sin emisión ni NC por API"
+                                  : "Emitida por el sistema vía ARCA"
+                              }
+                            >
+                              {factura.origen === "importada" ? "Importada" : "Sistema"}
                             </Badge>
                           </TableCell>
                         </TableRow>
@@ -919,6 +946,16 @@ export function ClienteDetailModal({ cliente, isOpen, onClose, onClientUpdated }
       onClose={() => setIsCuentaCorrienteModalOpen(false)}
       onSuccess={() => {
         setIsCuentaCorrienteModalOpen(false)
+        onClientUpdated?.()
+      }}
+    />
+
+    <ImportClientInvoiceModal
+      isOpen={isImportInvoiceOpen}
+      onClose={() => setIsImportInvoiceOpen(false)}
+      defaultClientId={cliente.dbId}
+      onSuccess={() => {
+        reloadFacturas()
         onClientUpdated?.()
       }}
     />

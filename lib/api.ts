@@ -786,6 +786,8 @@ export interface SaleArcaFields {
   arca_tipo?: number | null
   arca_punto_venta?: number | null
   arca_numero?: number | null
+  arca_fecha_emision?: string | null
+  arca_cuit_emisor?: string | null
   arca_last_attempt_at?: string | null
   arca_error_code?: string | null
   arca_error_message?: string | null
@@ -819,6 +821,7 @@ export interface SaleResponseData extends SaleArcaFields {
   payment_details?: CreateSalePaymentDetails
   notes?: string | null
   sale_date: string
+  sale_source?: 'pos' | 'imported'
   sync_status?: string
   items: SaleItemResponse[]
   created_at: string
@@ -977,6 +980,7 @@ export interface Sale extends SaleArcaFields {
   payment_method: SalePaymentMethod
   sale_date: string
   sync_status?: 'pending' | 'synced' | 'error'
+  sale_source?: 'pos' | 'imported'
   items?: SaleItemResponse[]
   created_at: string
   updated_at: string
@@ -5267,6 +5271,152 @@ export async function confirmPurchaseSupplierDocument(data: {
   timestamp: string;
 }> {
   const response = await fetch(`${getApiUrl()}/purchases/documents/confirm`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+// ==================== IMPORTACIÓN FACTURAS ARCA (PDF) ====================
+
+export interface ParsedSalesInvoiceItem {
+  line_number: number;
+  quantity: number;
+  description: string;
+  product_code?: string;
+  unit_price?: number;
+  subtotal?: number;
+  iva_rate?: number;
+}
+
+export interface MatchedSalesInvoiceItem extends ParsedSalesInvoiceItem {
+  product_id?: number;
+  product_name?: string;
+  product_code?: string;
+  match_status: 'matched' | 'partial' | 'unmatched';
+  match_method?: 'product_code' | 'description';
+  warnings: string[];
+}
+
+export interface ParseSalesInvoiceResult {
+  file_token: string;
+  original_filename: string;
+  parsed: {
+    provider: string;
+    document_type: string;
+    comprobante_tipo?: number;
+    comprobante_letra?: string;
+    punto_venta?: number;
+    numero?: number;
+    fecha_emision?: string;
+    cae?: string;
+    cae_vto?: string;
+    cuit_emisor?: string;
+    cuit_receptor?: string;
+    receptor_razon_social?: string;
+    receptor_condicion_iva?: string;
+    total_amount?: number;
+    qr_url?: string;
+    items: ParsedSalesInvoiceItem[];
+  };
+  items: MatchedSalesInvoiceItem[];
+  suggested_client_id?: number;
+  suggested_client_name?: string;
+  duplicate_invoice?: boolean;
+  existing_sale_id?: number;
+  warnings: string[];
+}
+
+export async function parseSalesInvoiceDocument(
+  file: File,
+  clientId?: number
+): Promise<{
+  success: boolean;
+  message: string;
+  data: ParseSalesInvoiceResult;
+  timestamp: string;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (clientId) formData.append('client_id', String(clientId));
+
+  const response = await fetch(`${getApiUrl()}/sales/documents/parse`, {
+    method: 'POST',
+    headers: getAuthHeadersForUpload(),
+    body: formData,
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+export async function rematchSalesInvoiceDocument(
+  fileToken: string,
+  clientId: number
+): Promise<{
+  success: boolean;
+  message: string;
+  data: { items: MatchedSalesInvoiceItem[] };
+  timestamp: string;
+}> {
+  const response = await fetch(`${getApiUrl()}/sales/documents/rematch`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ file_token: fileToken, client_id: clientId }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+export async function confirmSalesInvoiceDocument(data: {
+  file_token: string;
+  client_id: number;
+  punto_venta: number;
+  numero: number;
+  comprobante_tipo: number;
+  fecha_emision: string;
+  cae: string;
+  cae_vto?: string;
+  cuit_emisor?: string;
+  qr_url?: string;
+  total_amount: number;
+  payment_method?: 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto';
+  notes?: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    product_id?: number;
+    product_code?: string;
+    iva_rate?: number;
+  }>;
+}): Promise<{
+  success: boolean;
+  message: string;
+  data: {
+    sale_id: number;
+    sale_number: string;
+    client_id: number;
+    client_name: string;
+    comprobante_label: string;
+    warnings: string[];
+  };
+  timestamp: string;
+}> {
+  const response = await fetch(`${getApiUrl()}/sales/documents/confirm`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),

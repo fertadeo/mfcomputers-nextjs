@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  FileUp,
   LayoutTemplate,
   RefreshCcw,
   Search,
@@ -68,7 +69,8 @@ import {
   getStoredFacturacionPuntoVenta,
   saveFacturacionFormDefaults,
 } from "@/lib/facturacion-settings"
-import { canEmitNotaCredito, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
+import { canEmitNotaCredito, canFacturarSaleViaApi, canReemitirComprobante, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
+import { IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale } from "@/lib/sale-import"
 import {
   CONDICIONES_IVA_RECEPTOR,
   formatComprobanteAfipReferencia,
@@ -85,6 +87,7 @@ import {
 } from "@/lib/facturacion-errors"
 import { resolveFacturacionApiError } from "@/lib/resolve-facturacion-api-error"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
+import { ImportClientInvoiceModal } from "@/components/import-client-invoice-modal"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
@@ -216,6 +219,7 @@ export default function FacturacionPage() {
   const [creditNoteErrorDetail, setCreditNoteErrorDetail] = useState<FacturacionErrorInfo | null>(null)
   const [creditNoteEmitSuccess, setCreditNoteEmitSuccess] = useState<string | null>(null)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
+  const [isImportInvoiceOpen, setIsImportInvoiceOpen] = useState(false)
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
   const [viewInvoiceError, setViewInvoiceError] = useState<string | null>(null)
@@ -610,6 +614,14 @@ export default function FacturacionPage() {
     return validateFacturarReceptorFiscal(selectedSale, modalCliente, facturarPayloadForEmit)
   }, [isConfirmEmitOpen, modalClienteLoading, selectedSale, facturarPayloadForEmit, modalCliente])
 
+  useEffect(() => {
+    if (creditNoteSale && isImportedSale(creditNoteSale)) {
+      setErrorTitle(IMPORTED_SALE_BADGE)
+      setErrorMsg(IMPORTED_SALE_FISCAL_HINT)
+      setCreditNoteSale(null)
+    }
+  }, [creditNoteSale])
+
   const startEmitFromTable = (rowKey: string) => {
     setSelectedBillableKey(rowKey)
     setInvoiceModalMode("emit")
@@ -865,6 +877,16 @@ export default function FacturacionPage() {
       return
     }
 
+    if (!canFacturarSaleViaApi(selectedSale)) {
+      setErrorTitle(isImportedSale(selectedSale) ? IMPORTED_SALE_BADGE : "Comprobante ya emitido")
+      setErrorMsg(
+        isImportedSale(selectedSale)
+          ? IMPORTED_SALE_FISCAL_HINT
+          : "Esta venta ya tiene comprobante fiscal registrado."
+      )
+      return
+    }
+
     if ((form.concepto === 2 || form.concepto === 3) && (!form.fechaServicioDesde || !form.fechaServicioHasta)) {
       setErrorMsg("Para concepto 2 o 3 tenés que indicar fecha de servicio desde y hasta (YYYY-MM-DD).")
       return
@@ -1014,6 +1036,10 @@ export default function FacturacionPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setIsImportInvoiceOpen(true)}>
+                <FileUp className="mr-2 h-4 w-4" />
+                Importar factura PDF
+              </Button>
               <Button variant="outline" onClick={() => setIsTemplateDialogOpen(true)}>
                 <LayoutTemplate className="mr-2 h-4 w-4" />
                 Ver plantilla factura
@@ -1026,6 +1052,11 @@ export default function FacturacionPage() {
           </div>
 
           <ArcaInvoiceTemplateDialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen} />
+          <ImportClientInvoiceModal
+            isOpen={isImportInvoiceOpen}
+            onClose={() => setIsImportInvoiceOpen(false)}
+            onSuccess={() => void loadBillables()}
+          />
 
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
@@ -1157,6 +1188,11 @@ export default function FacturacionPage() {
                           <TableCell className="whitespace-normal">
                             <div className="space-y-1">
                               <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
+                              {row.sale && isImportedSale(row.sale) ? (
+                                <Badge variant="secondary" className="text-xs font-normal">
+                                  {IMPORTED_SALE_BADGE}
+                                </Badge>
+                              ) : null}
                               {row.arcaNcStatus === "success" || (row.sale && saleHasNotaCreditoEmitida(row.sale)) ? (
                                 <Badge variant="outline" className="text-xs font-normal text-amber-800 dark:text-amber-300">
                                   Anulada por NC
@@ -1208,6 +1244,7 @@ export default function FacturacionPage() {
                                   <Eye className="mr-1 h-3.5 w-3.5 shrink-0" />
                                   Ver comprobante
                                 </Button>
+                                {row.sale && canReemitirComprobante(row.sale) ? (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1216,6 +1253,7 @@ export default function FacturacionPage() {
                                 >
                                   Reemitir
                                 </Button>
+                                ) : null}
                                 {row.sale && canEmitNotaCredito(row.sale) ? (
                                   <Button
                                     variant="ghost"
@@ -1281,6 +1319,11 @@ export default function FacturacionPage() {
                 />
               ) : invoiceModalMode === "view" ? (
                 <>
+                  {selectedSale && isImportedSale(selectedSale) ? (
+                    <div className="border-b px-6 py-3">
+                      <Alert variant="warning" title={IMPORTED_SALE_BADGE} description={IMPORTED_SALE_FISCAL_HINT} />
+                    </div>
+                  ) : null}
                   <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
                     {viewInvoiceLoading ? (
                       <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
@@ -1389,6 +1432,12 @@ export default function FacturacionPage() {
                       variant="ghost"
                       size="sm"
                       className="text-muted-foreground"
+                      disabled={selectedSale ? isImportedSale(selectedSale) : false}
+                      title={
+                        selectedSale && isImportedSale(selectedSale)
+                          ? IMPORTED_SALE_FISCAL_HINT
+                          : undefined
+                      }
                       onClick={() => setInvoiceModalMode("emit")}
                     >
                       Reemitir…
