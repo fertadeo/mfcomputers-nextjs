@@ -53,6 +53,8 @@ import {
 import { posCartLinesToCreateSaleItems, posCartLinesToReceiptItems } from "@/lib/sale-items"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { PosCartItemRow } from "@/components/pos-cart-item-row"
+import { ClientePicker } from "@/components/cliente-picker"
+import { getClienteDisplayName } from "@/lib/cliente-display"
 import {
   clienteRequiresZeroItemIva,
   effectiveSaleItemIvaRate,
@@ -385,8 +387,11 @@ export default function PuntoVentaPage() {
     }
   }
 
-  const clientDisplay =
-    selectedCliente?.name ?? (selectedClientId ? `Cliente #${selectedClientId}` : "Consumidor final")
+  const clientDisplay = selectedCliente
+    ? getClienteDisplayName(selectedCliente)
+    : selectedClientId
+      ? `Cliente #${selectedClientId}`
+      : "Consumidor final"
 
   return (
     <Protected requiredRoles={["gerencia", "ventas", "admin"]}>
@@ -709,59 +714,45 @@ export default function PuntoVentaPage() {
                     Cliente
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <Input
-                    placeholder="Buscar cliente (opcional)"
-                    value={clientSearch}
-                    onChange={(e) => {
-                      setClientSearch(e.target.value)
-                      if (!e.target.value) {
+                <CardContent className="space-y-3">
+                  <ClientePicker
+                    searchValue={clientSearch}
+                    onSearchChange={(value) => {
+                      setClientSearch(value)
+                      if (
+                        selectedCliente &&
+                        value.trim() !== getClienteDisplayName(selectedCliente)
+                      ) {
+                        setSelectedClientId(null)
+                        setSelectedCliente(null)
+                      }
+                      if (!value.trim()) {
                         setSelectedClientId(null)
                         setSelectedCliente(null)
                       }
                     }}
+                    results={clients}
+                    selectedCliente={selectedCliente}
+                    onSelect={(cliente) => {
+                      setSelectedClientId(cliente.id)
+                      setSelectedCliente(cliente)
+                      setClientSearch(getClienteDisplayName(cliente))
+                      setClients([])
+                    }}
+                    onClear={() => {
+                      setSelectedClientId(null)
+                      setSelectedCliente(null)
+                      setClientSearch("")
+                      setClients([])
+                    }}
+                    placeholder="Buscar cliente por nombre, CUIT, código o dirección…"
+                    clearLabel="Consumidor final"
                   />
-                  {clients.length > 0 && (
-                    <ul className="border rounded-md divide-y max-h-32 overflow-y-auto">
-                      {clients.map((c) => (
-                        <li key={c.id}>
-                          <button
-                            type="button"
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                            onClick={() => {
-                              setSelectedClientId(c.id)
-                              setSelectedCliente(c)
-                              setClientSearch(c.name)
-                              setClients([])
-                            }}
-                          >
-                            {c.name}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Actual: <strong>{clientDisplay}</strong>
-                  </p>
                   {requiresZeroItemIva ? (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       Factura C: los ítems deben ir al 0% (exento); ARCA no admite IVA discriminado en este comprobante.
                     </p>
                   ) : null}
-                  {selectedClientId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedClientId(null)
-                        setSelectedCliente(null)
-                        setClientSearch("")
-                      }}
-                    >
-                      Usar Consumidor final
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
 

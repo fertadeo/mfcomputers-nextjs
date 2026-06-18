@@ -24,6 +24,7 @@ import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padr
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
+import { ClienteInfoCard } from "@/components/cliente-picker"
 import { buildArcaInvoicePdfInputFromPreviewLines } from "@/lib/build-arca-invoice-pdf-input"
 import { buildFacturarFullPayloadPreview } from "@/lib/facturacion-request-preview"
 import {
@@ -266,6 +267,15 @@ export function FacturacionEmitConfirmDialog({
             <Alert variant="warning" title="Sin comprobante" description="Seleccioná una venta u orden de reparación." />
           ) : (
             <>
+              {clienteLoading ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  Cargando datos del cliente…
+                </div>
+              ) : cliente ? (
+                <ClienteInfoCard cliente={cliente} compact />
+              ) : null}
+
               <div className="rounded-lg border p-4 text-sm space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-base">{billable.reference}</span>

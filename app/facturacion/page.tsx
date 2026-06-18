@@ -88,6 +88,8 @@ import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-di
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
+import { ClienteInfoCard } from "@/components/cliente-picker"
+import { getClienteDisplayName } from "@/lib/cliente-display"
 import { FacturacionErrorAlert } from "@/components/facturacion-error-alert"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
@@ -1406,7 +1408,6 @@ export default function FacturacionPage() {
                           : " · Se generará la venta POS al emitir"}
                       </div>
                     ) : null}
-                    <div className="text-muted-foreground">Cliente: {selectedSale.client_name || "Consumidor final"}</div>
                     <div className="text-muted-foreground">
                       Fecha de venta: {formatFacturacionFecha(selectedSale.sale_date)}
                     </div>
@@ -1414,16 +1415,6 @@ export default function FacturacionPage() {
                       Al facturar, el backend asigna la fecha del comprobante según la venta (ver confirmación).
                     </div>
                     <div className="text-muted-foreground">CUIT emisor: {emisorCuitMostrar}</div>
-                    <div className="text-muted-foreground">
-                      CUIT/CUIL receptor (ERP):{" "}
-                      {modalClienteLoading
-                        ? "Cargando…"
-                        : clienteCuitDigitos(modalCliente).length === 11
-                          ? formatCuitMostrar(clienteCuitDigitos(modalCliente))
-                          : !selectedSale.client_id
-                            ? "Sin cliente en la venta — consumidor final (docTipo 99 / docNro 0)."
-                            : "Sin CUIT/CUIL válido en cliente — consumidor final (docTipo 99 / docNro 0)."}
-                    </div>
                     <div className="text-muted-foreground">Monto: {formatCurrency(selectedSale.total_amount)}</div>
                     <div className="text-muted-foreground">Último intento: {formatDateTime(selectedSale.arca_last_attempt_at)}</div>
                     <div className="text-muted-foreground">CAE actual: {selectedSale.arca_cae || "-"}</div>
@@ -1431,6 +1422,29 @@ export default function FacturacionPage() {
                       <div className="text-muted-foreground">Vencimiento CAE: {selectedSale.arca_cae_vto}</div>
                     ) : null}
                   </div>
+
+                  {modalClienteLoading ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      Cargando datos del cliente…
+                    </div>
+                  ) : modalCliente ? (
+                    <ClienteInfoCard cliente={modalCliente} />
+                  ) : (
+                    <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-5 text-center space-y-1">
+                      <p className="text-sm font-medium">
+                        {getClienteDisplayName(null)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedSale.client_name
+                          ? `Nombre en venta: ${selectedSale.client_name} — sin ficha completa en el ERP.`
+                          : "La venta no tiene cliente asociado; se facturará como consumidor final."}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono pt-1">
+                        CUIT/CUIL receptor: docTipo 99 / docNro 0
+                      </p>
+                    </div>
+                  )}
 
                   {selectedBillable?.arcaStatus === "error" &&
                   (selectedSale.arca_error_code || selectedSale.arca_error_message) ? (
@@ -1455,10 +1469,6 @@ export default function FacturacionPage() {
                     <FacturacionErrorAlert info={errorDetail} title={errorTitle ?? "Error al facturar"} />
                   ) : errorMsg && isEmitModalOpen ? (
                     <Alert variant="error" title={errorTitle ?? "Error al facturar"} description={errorMsg} />
-                  ) : null}
-
-                  {modalClienteLoading ? (
-                    <p className="text-muted-foreground text-sm">Cargando datos fiscales del cliente…</p>
                   ) : null}
 
                   {!modalClienteLoading && invoiceModalMode === "emit" ? (
