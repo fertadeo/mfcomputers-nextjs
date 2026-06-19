@@ -38,6 +38,8 @@ import {
   getSale,
   getSales,
   openSaleSourcePdf,
+  downloadSaleSourcePdf,
+  fetchSaleSourcePdfBlob,
   resolveSaleIdForRepairOrderFacturacion,
   type Cliente,
   type EmitirNotaCreditoError,
@@ -71,7 +73,7 @@ import {
   saveFacturacionFormDefaults,
 } from "@/lib/facturacion-settings"
 import { canEmitNotaCredito, canFacturarSaleViaApi, canReemitirComprobante, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
-import { externalInvoiceBadgeLabel, IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
+import { externalInvoiceBadgeLabel, IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale, isLinkedPosExternalSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
 import {
   CONDICIONES_IVA_RECEPTOR,
   formatComprobanteAfipReferencia,
@@ -224,7 +226,9 @@ export default function FacturacionPage() {
   const [importLinkSaleId, setImportLinkSaleId] = useState<number | undefined>()
   const [importLinkClientId, setImportLinkClientId] = useState<number | undefined>()
   const [importLinkHint, setImportLinkHint] = useState<string | undefined>()
+  const [editLinkSaleId, setEditLinkSaleId] = useState<number | undefined>()
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
+  const [viewSourcePdfUrl, setViewSourcePdfUrl] = useState<string | null>(null)
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
   const [viewInvoiceError, setViewInvoiceError] = useState<string | null>(null)
   const [viewInvoiceIncomplete, setViewInvoiceIncomplete] = useState(false)
@@ -451,9 +455,19 @@ export default function FacturacionPage() {
     clientId?: number
     hint?: string
   }) {
+    setEditLinkSaleId(undefined)
     setImportLinkSaleId(options?.saleId)
     setImportLinkClientId(options?.clientId)
     setImportLinkHint(options?.hint)
+    setIsImportInvoiceOpen(true)
+  }
+
+  function openEditLinkModal(row: BillableRow) {
+    if (row.kind !== "sale" || !row.sale || !isLinkedPosExternalSale(row.sale)) return
+    setImportLinkSaleId(undefined)
+    setImportLinkClientId(undefined)
+    setImportLinkHint(undefined)
+    setEditLinkSaleId(row.sale.id)
     setIsImportInvoiceOpen(true)
   }
 
@@ -462,6 +476,7 @@ export default function FacturacionPage() {
     setImportLinkSaleId(undefined)
     setImportLinkClientId(undefined)
     setImportLinkHint(undefined)
+    setEditLinkSaleId(undefined)
   }
 
   const handleEmitCreditNote = async () => {
@@ -698,6 +713,10 @@ export default function FacturacionPage() {
   useEffect(() => {
     if (!isEmitModalOpen || invoiceModalMode !== "view" || !selectedSale) {
       setViewInvoiceData(null)
+      setViewSourcePdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
       setViewInvoiceError(null)
       setViewInvoiceIncomplete(false)
       setViewInvoiceLoading(false)
@@ -705,12 +724,17 @@ export default function FacturacionPage() {
     }
 
     let cancelled = false
+    let objectUrl: string | null = null
     const billable = selectedBillable
 
     async function loadComprobantePreview() {
       setViewInvoiceLoading(true)
       setViewInvoiceError(null)
       setViewInvoiceData(null)
+      setViewSourcePdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
 
       if (!selectedSale) {
         if (!cancelled) setViewInvoiceLoading(false)
@@ -733,6 +757,28 @@ export default function FacturacionPage() {
         if (!cancelled) {
           setViewInvoiceError("Esta reparación no tiene venta vinculada para mostrar el comprobante.")
           setViewInvoiceLoading(false)
+        }
+        return
+      }
+
+      if (isImportedSale(saleForArca)) {
+        try {
+          const blob = await fetchSaleSourcePdfBlob(saleForArca.id)
+          const url = URL.createObjectURL(blob)
+          if (cancelled) {
+            URL.revokeObjectURL(url)
+            return
+          }
+          objectUrl = url
+          setViewSourcePdfUrl(url)
+        } catch (e) {
+          if (!cancelled) {
+            setViewInvoiceError(
+              e instanceof Error ? e.message : "No se pudo cargar el PDF original vinculado."
+            )
+          }
+        } finally {
+          if (!cancelled) setViewInvoiceLoading(false)
         }
         return
       }
@@ -783,6 +829,7 @@ export default function FacturacionPage() {
     void loadComprobantePreview()
     return () => {
       cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [isEmitModalOpen, invoiceModalMode, selectedSale, selectedBillable, modalCliente])
 
@@ -1085,6 +1132,7 @@ export default function FacturacionPage() {
             defaultClientId={importLinkClientId}
             defaultLinkSaleId={importLinkSaleId}
             linkSaleHint={importLinkHint}
+            editLinkSaleId={editLinkSaleId}
           />
 
           <div className="grid gap-4 md:grid-cols-4">
@@ -1273,6 +1321,16 @@ export default function FacturacionPage() {
                                   <Eye className="mr-1 h-3.5 w-3.5 shrink-0" />
                                   Ver comprobante
                                 </Button>
+                                {row.sale && isLinkedPosExternalSale(row.sale) ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 shrink-0"
+                                    onClick={() => openEditLinkModal(row)}
+                                  >
+                                    Modificar vinculación
+                                  </Button>
+                                ) : null}
                                 {row.sale && canReemitirComprobante(row.sale) ? (
                                 <Button
                                   variant="outline"
@@ -1388,6 +1446,12 @@ export default function FacturacionPage() {
                       </div>
                     ) : viewInvoiceError ? (
                       <Alert variant="warning" title="No se puede mostrar el comprobante" description={viewInvoiceError} />
+                    ) : viewSourcePdfUrl ? (
+                      <iframe
+                        src={viewSourcePdfUrl}
+                        title="Factura PDF original"
+                        className="h-[min(72vh,820px)] w-full rounded-lg border bg-white shadow-sm"
+                      />
                     ) : viewInvoiceData ? (
                       <>
                         {viewInvoiceIncomplete ? (
@@ -1404,6 +1468,44 @@ export default function FacturacionPage() {
                   </div>
                   <DialogFooter className="shrink-0 flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap gap-2">
+                      {selectedSale && isImportedSale(selectedSale) ? (
+                        <>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            disabled={!viewSourcePdfUrl}
+                            onClick={() =>
+                              void downloadSaleSourcePdf(
+                                selectedSale.id,
+                                `${selectedSale.sale_number}-externa.pdf`
+                              ).catch((err) =>
+                                setErrorMsg(
+                                  err instanceof Error ? err.message : "No se pudo descargar el PDF"
+                                )
+                              )
+                            }
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Descargar PDF original
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!viewSourcePdfUrl}
+                            onClick={() =>
+                              void openSaleSourcePdf(selectedSale.id).catch((err) =>
+                                setErrorMsg(
+                                  err instanceof Error ? err.message : "No se pudo abrir el PDF"
+                                )
+                              )
+                            }
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            Abrir en pestaña nueva
+                          </Button>
+                        </>
+                      ) : (
                       <Button
                         variant="default"
                         size="sm"
@@ -1421,19 +1523,18 @@ export default function FacturacionPage() {
                         )}
                         {isGeneratingArcaPdf ? "Generando…" : "Descargar PDF"}
                       </Button>
-                      {selectedSale && isImportedSale(selectedSale) ? (
+                      )}
+                      {selectedSale && isLinkedPosExternalSale(selectedSale) ? (
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() =>
-                            void openSaleSourcePdf(selectedSale.id).catch((err) =>
-                              setErrorMsg(err instanceof Error ? err.message : "No se pudo abrir el PDF original")
-                            )
-                          }
+                          onClick={() => {
+                            setIsEmitModalOpen(false)
+                            if (selectedBillable) openEditLinkModal(selectedBillable)
+                          }}
                         >
-                          <FileUp className="mr-2 h-4 w-4" />
-                          Ver PDF original
+                          Modificar vinculación
                         </Button>
                       ) : null}
                       {selectedSale && saleHasNotaCreditoEmitida(selectedSale) ? (

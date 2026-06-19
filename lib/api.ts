@@ -5413,7 +5413,7 @@ export function getSaleSourcePdfUrl(saleId: number): string {
   return `${getApiUrl()}/sales/${saleId}/source-pdf`;
 }
 
-export async function openSaleSourcePdf(saleId: number): Promise<void> {
+export async function fetchSaleSourcePdfBlob(saleId: number): Promise<Blob> {
   const response = await fetch(getSaleSourcePdfUrl(saleId), {
     headers: getAuthHeaders(),
   });
@@ -5421,10 +5421,24 @@ export async function openSaleSourcePdf(saleId: number): Promise<void> {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || payload.message || `Error ${response.status}`);
   }
-  const blob = await response.blob();
+  return response.blob();
+}
+
+export async function openSaleSourcePdf(saleId: number): Promise<void> {
+  const blob = await fetchSaleSourcePdfBlob(saleId);
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank', 'noopener,noreferrer');
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function downloadSaleSourcePdf(saleId: number, filename?: string): Promise<void> {
+  const blob = await fetchSaleSourcePdfBlob(saleId);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename ?? `factura-venta-${saleId}.pdf`;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 export async function confirmSalesInvoiceDocument(data: {
@@ -5468,6 +5482,64 @@ export async function confirmSalesInvoiceDocument(data: {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+export async function updateLinkedSalesInvoiceDocument(data: {
+  sale_id: number;
+  file_token?: string;
+  punto_venta: number;
+  numero: number;
+  comprobante_tipo: number;
+  fecha_emision: string;
+  cae: string;
+  cae_vto?: string;
+  cuit_emisor?: string;
+  qr_url?: string;
+  total_amount: number;
+  notes?: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  data: {
+    sale_id: number;
+    sale_number: string;
+    client_id: number;
+    client_name: string;
+    comprobante_label: string;
+    linked_to_pos_sale?: boolean;
+    warnings: string[];
+  };
+  timestamp: string;
+}> {
+  const response = await fetch(`${getApiUrl()}/sales/documents/update-link`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return payload;
+}
+
+export async function unlinkSaleExternalInvoice(saleId: number): Promise<{
+  success: boolean;
+  message: string;
+  data: { sale_id: number; sale_number: string };
+  timestamp: string;
+}> {
+  const response = await fetch(`${getApiUrl()}/sales/${saleId}/external-invoice-link`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
   });
 
   const payload = await response.json();

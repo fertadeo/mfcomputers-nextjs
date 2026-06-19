@@ -35,8 +35,11 @@ import { toast } from "sonner"
 import {
   confirmSalesInvoiceDocument,
   getClientes,
+  getSale,
   parseSalesInvoiceDocument,
   rematchSalesInvoiceDocument,
+  unlinkSaleExternalInvoice,
+  updateLinkedSalesInvoiceDocument,
   type Cliente,
   type LinkableSaleSummary,
   type MatchedSalesInvoiceItem,
@@ -55,7 +58,8 @@ interface ImportClientInvoiceModalProps {
   /** Venta POS a vincular (p. ej. desde facturación «Sin emitir»). */
   defaultLinkSaleId?: number
   /** Texto breve para el encabezado cuando se abre desde una venta concreta. */
-  linkSaleHint?: string
+  /** Venta POS con vinculación existente a editar o quitar. */
+  editLinkSaleId?: number
 }
 
 interface EditableItem extends MatchedSalesInvoiceItem {
@@ -127,10 +131,14 @@ export function ImportClientInvoiceModal({
   defaultClientId,
   defaultLinkSaleId,
   linkSaleHint,
+  editLinkSaleId,
 }: ImportClientInvoiceModalProps) {
+  const isEditLink = Boolean(editLinkSaleId)
   const [step, setStep] = useState<Step>("upload")
   const [isParsing, setIsParsing] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [isUnlinking, setIsUnlinking] = useState(false)
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false)
   const [parseResult, setParseResult] = useState<ParseSalesInvoiceResult | null>(null)
   const [items, setItems] = useState<EditableItem[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -170,13 +178,45 @@ export function ImportClientInvoiceModal({
 
   useEffect(() => {
     if (!isOpen) return
-    reset()
+
     getClientes(1, 200, undefined, "active")
       .then((res) => {
         setClientes(res.clients ?? [])
       })
       .catch(() => toast.error("No se pudieron cargar los clientes"))
-  }, [isOpen, reset])
+
+    if (editLinkSaleId) {
+      setIsLoadingEdit(true)
+      setParseResult(null)
+      setItems([])
+      getSale(editLinkSaleId)
+        .then((res) => {
+          const sale = res.data
+          if (sale.sale_source !== "pos_external") {
+            toast.error("Esta venta no tiene una vinculación externa activa")
+            onClose()
+            return
+          }
+          setClientId(sale.client_id ? String(sale.client_id) : "")
+          setPuntoVenta(sale.arca_punto_venta != null ? String(sale.arca_punto_venta) : "")
+          setNumero(sale.arca_numero != null ? String(sale.arca_numero) : "")
+          setComprobanteTipo(String(sale.arca_tipo ?? 6))
+          setFechaEmision(sale.arca_fecha_emision?.slice(0, 10) ?? "")
+          setCae(sale.arca_cae ?? "")
+          setCaeVto(sale.arca_cae_vto?.slice(0, 10) ?? "")
+          setCuitEmisor(sale.arca_cuit_emisor ?? "")
+          setTotalAmount(String(sale.total_amount ?? ""))
+          setRegistrationMode("link")
+          setLinkSaleId(String(editLinkSaleId))
+          setStep("review")
+        })
+        .catch(() => toast.error("No se pudo cargar la vinculación"))
+        .finally(() => setIsLoadingEdit(false))
+      return
+    }
+
+    reset()
+  }, [isOpen, editLinkSaleId, reset, onClose])
 
   const applyLinkSelection = (
     linkSales: LinkableSaleSummary[],
@@ -205,7 +245,7 @@ export function ImportClientInvoiceModal({
     }
   }
 
-  const applyParseResult = (result: ParseSalesInvoiceResult) => {
+  const applyParseResult = (result: ParseSalesInvoiceResult, preserveLink = false) => {
     setParseResult(result)
     setPuntoVenta(result.parsed.punto_venta != null ? String(result.parsed.punto_venta) : "")
     setNumero(result.parsed.numero != null ? String(result.parsed.numero) : "")
@@ -217,12 +257,17 @@ export function ImportClientInvoiceModal({
     setTotalAmount(
       result.parsed.total_amount != null ? String(result.parsed.total_amount) : ""
     )
-    if (result.suggested_client_id) {
+    if (result.suggested_client_id && !preserveLink) {
       setClientId(String(result.suggested_client_id))
     }
     setItems(result.items.map((item) => toEditableItem(item)))
     setLinkableSales(result.linkable_sales ?? [])
-    applyLinkSelection(result.linkable_sales ?? [], result.suggested_link_sale_id)
+    if (preserveLink && editLinkSaleId) {
+      setRegistrationMode("link")
+      setLinkSaleId(String(editLinkSaleId))
+    } else {
+      applyLinkSelection(result.linkable_sales ?? [], result.suggested_link_sale_id)
+    }
     setStep("review")
   }
 
@@ -234,13 +279,16 @@ export function ImportClientInvoiceModal({
     setIsParsing(true)
     try {
       const res = await parseSalesInvoiceDocument(file, {
-        clientId: defaultClientId ?? (clientId ? parseInt(clientId, 10) : undefined),
-        linkSaleId: defaultLinkSaleId,
+        clientId:
+          (isEditLink && clientId ? parseInt(clientId, 10) : undefined) ??
+          defaultClientId ??
+          (clientId ? parseInt(clientId, 10) : undefined),
+        linkSaleId: isEditLink ? editLinkSaleId : defaultLinkSaleId,
       })
       if (res.data.warnings?.length) {
         res.data.warnings.forEach((w) => toast.warning(w))
       }
-      applyParseResult(res.data)
+      applyParseResult(res.data, isEditLink)
       toast.success("Factura analizada")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al analizar el PDF")
@@ -278,8 +326,8 @@ export function ImportClientInvoiceModal({
   }
 
   const handleConfirm = async () => {
-    if (!parseResult?.file_token) return
-    if (!clientId && registrationMode !== "link") {
+    if (!isEditLink && !parseResult?.file_token) return
+    if (!clientId && registrationMode !== "link" && !isEditLink) {
       toast.error("Seleccione un cliente")
       return
     }
@@ -291,11 +339,11 @@ export function ImportClientInvoiceModal({
       toast.error("Complete punto de venta, número y fecha de emisión")
       return
     }
-    if (registrationMode === "link" && !linkSaleId) {
+    if (!isEditLink && registrationMode === "link" && !linkSaleId) {
       toast.error("Seleccione la venta POS a vincular")
       return
     }
-    if (registrationMode === "standalone" && items.length === 0) {
+    if (!isEditLink && registrationMode === "standalone" && items.length === 0) {
       toast.error("Agregue al menos un ítem o vincule una venta POS existente")
       return
     }
@@ -303,6 +351,27 @@ export function ImportClientInvoiceModal({
     setIsConfirming(true)
     setStep("confirming")
     try {
+      if (isEditLink && editLinkSaleId) {
+        const res = await updateLinkedSalesInvoiceDocument({
+          sale_id: editLinkSaleId,
+          file_token: parseResult?.file_token,
+          punto_venta: parseInt(puntoVenta, 10),
+          numero: parseInt(numero, 10),
+          comprobante_tipo: parseInt(comprobanteTipo, 10),
+          fecha_emision: fechaEmision,
+          cae: cae.trim(),
+          cae_vto: caeVto || undefined,
+          cuit_emisor: cuitEmisor || undefined,
+          total_amount: parseFloat(totalAmount) || 0,
+          notes: notes || undefined,
+        })
+        toast.success(`Vinculación actualizada (${res.data.sale_number})`)
+        onSuccess()
+        onClose()
+        reset()
+        return
+      }
+
       const linkedSale = linkSaleId
         ? linkableSales.find((s) => s.id === parseInt(linkSaleId, 10))
         : undefined
@@ -312,7 +381,7 @@ export function ImportClientInvoiceModal({
           : parseInt(clientId, 10)
 
       const res = await confirmSalesInvoiceDocument({
-        file_token: parseResult.file_token,
+        file_token: parseResult!.file_token,
         client_id: confirmClientId,
         link_sale_id: registrationMode === "link" ? parseInt(linkSaleId, 10) : undefined,
         punto_venta: parseInt(puntoVenta, 10),
@@ -355,21 +424,53 @@ export function ImportClientInvoiceModal({
     }
   }
 
+  const handleUnlink = async () => {
+    if (!editLinkSaleId) return
+    if (
+      !window.confirm(
+        "¿Quitar la vinculación del PDF? La venta volverá a «Sin emitir» y podrás emitir o vincular de nuevo."
+      )
+    ) {
+      return
+    }
+    setIsUnlinking(true)
+    try {
+      const res = await unlinkSaleExternalInvoice(editLinkSaleId)
+      toast.success(`Vinculación removida (${res.data.sale_number})`)
+      onSuccess()
+      onClose()
+      reset()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al quitar la vinculación")
+    } finally {
+      setIsUnlinking(false)
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileUp className="h-5 w-5" />
-            Importar factura ARCA (PDF)
+            {isEditLink ? "Modificar vinculación PDF" : "Importar factura ARCA (PDF)"}
           </DialogTitle>
           <DialogDescription>
-            {linkSaleHint ??
-              "Suba el PDF de una factura emitida fuera del sistema. Podés registrarla como venta importada o vincularla a una venta POS sin comprobante ARCA."}
+            {isEditLink
+              ? "Corregí los datos fiscales, reemplazá el PDF o quitá la vinculación si hubo un error."
+              : linkSaleHint ??
+                "Suba el PDF de una factura emitida fuera del sistema. Podés registrarla como venta importada o vincularla a una venta POS sin comprobante ARCA."}
           </DialogDescription>
         </DialogHeader>
 
-        {step === "upload" && (
+        {isLoadingEdit ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Cargando vinculación…</p>
+          </div>
+        ) : null}
+
+        {!isEditLink && step === "upload" && (
           <div
             className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors ${
               dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/30"
@@ -419,9 +520,33 @@ export function ImportClientInvoiceModal({
           </div>
         )}
 
-        {step === "review" && parseResult && (
+        {step === "review" && (parseResult || isEditLink) && (
           <div className="space-y-4">
-            {parseResult.duplicate_invoice && (
+            {isEditLink ? (
+              <div className="rounded-lg border border-dashed p-4 space-y-3">
+                <p className="text-sm font-medium">Reemplazar PDF (opcional)</p>
+                <p className="text-xs text-muted-foreground">
+                  Si subís un nuevo PDF se actualizarán los datos detectados. Si no, solo se guardan los cambios manuales.
+                </p>
+                <Label htmlFor="sales-invoice-pdf-replace" className="cursor-pointer inline-block">
+                  <Button asChild variant="secondary" size="sm" disabled={isParsing}>
+                    <span>{isParsing ? "Analizando…" : "Seleccionar nuevo PDF"}</span>
+                  </Button>
+                  <input
+                    id="sales-invoice-pdf-replace"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void handleFile(file)
+                    }}
+                  />
+                </Label>
+              </div>
+            ) : null}
+
+            {parseResult?.duplicate_invoice && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
                 <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                 <span>
@@ -431,7 +556,7 @@ export function ImportClientInvoiceModal({
               </div>
             )}
 
-            {parseResult.warnings.map((w) => (
+            {parseResult?.warnings.map((w) => (
               <div
                 key={w}
                 className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 dark:bg-amber-950/20 p-2 text-xs text-amber-900 dark:text-amber-100"
@@ -463,6 +588,11 @@ export function ImportClientInvoiceModal({
                 </div>
                 <div className="sm:col-span-2">
                   <Label>Modo de registro</Label>
+                  {isEditLink ? (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Venta POS con factura externa vinculada (solo edición de datos fiscales).
+                    </p>
+                  ) : (
                   <Select
                     value={registrationMode}
                     onValueChange={(v) => {
@@ -482,8 +612,9 @@ export function ImportClientInvoiceModal({
                       </SelectItem>
                     </SelectContent>
                   </Select>
+                  )}
                 </div>
-                {registrationMode === "link" ? (
+                {!isEditLink && registrationMode === "link" ? (
                   <div className="sm:col-span-2 space-y-2">
                     <Label>Venta POS a vincular</Label>
                     <Select value={linkSaleId} onValueChange={handleLinkSaleChange}>
@@ -566,6 +697,7 @@ export function ImportClientInvoiceModal({
               </CardContent>
             </Card>
 
+            {!isEditLink ? (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">
@@ -687,33 +819,50 @@ export function ImportClientInvoiceModal({
                 ) : null}
               </CardContent>
             </Card>
+            ) : null}
           </div>
         )}
 
         {step === "confirming" && (
           <div className="flex flex-col items-center gap-3 py-8">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Registrando factura…</p>
+            <p className="text-sm text-muted-foreground">
+              {isEditLink ? "Guardando cambios…" : "Registrando factura…"}
+            </p>
           </div>
         )}
 
         <DialogFooter>
-          {step === "review" && (
+          {step === "review" && !isLoadingEdit && (
             <>
-              <Button variant="outline" onClick={() => setStep("upload")} disabled={isConfirming}>
-                Volver
-              </Button>
-              <Button onClick={() => void handleConfirm()} disabled={isConfirming}>
+              {isEditLink ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => void handleUnlink()}
+                  disabled={isConfirming || isUnlinking}
+                  className="mr-auto"
+                >
+                  {isUnlinking ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Quitar vinculación
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setStep("upload")} disabled={isConfirming}>
+                  Volver
+                </Button>
+              )}
+              <Button onClick={() => void handleConfirm()} disabled={isConfirming || isUnlinking}>
                 {isConfirming ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <CheckCircle2 className="h-4 w-4 mr-2" />
                 )}
-                Confirmar importación
+                {isEditLink ? "Guardar cambios" : "Confirmar importación"}
               </Button>
             </>
           )}
-          {step === "upload" && (
+          {step === "upload" && !isEditLink && (
             <Button variant="outline" onClick={onClose}>
               Cancelar
             </Button>

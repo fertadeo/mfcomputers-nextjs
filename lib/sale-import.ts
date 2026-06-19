@@ -9,6 +9,10 @@ export function isExternallyInvoicedSale(sale?: SaleSourceCarrier | null): boole
   return sale?.sale_source === "imported" || sale?.sale_source === "pos_external"
 }
 
+export function isLinkedPosExternalSale(sale?: SaleSourceCarrier | null): boolean {
+  return sale?.sale_source === "pos_external"
+}
+
 /** Alias usado por facturación para bloquear emisión/NC por API. */
 export function isImportedSale(sale?: SaleSourceCarrier | null): boolean {
   return isExternallyInvoicedSale(sale)
