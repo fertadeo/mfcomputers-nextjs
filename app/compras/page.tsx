@@ -9,13 +9,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ShoppingCart, Search, Plus, Clock, CheckCircle, AlertTriangle, Filter, Download, Eye, RefreshCw, DollarSign, FileText, Upload } from "lucide-react"
+import { ShoppingCart, Search, Plus, Clock, CheckCircle, AlertTriangle, Filter, Download, Eye, RefreshCw, DollarSign, FileText, Upload, Pencil, Trash2 } from "lucide-react"
 import { NewPurchaseModal } from "@/components/new-purchase-modal"
 import { ImportSupplierDocumentModal } from "@/components/import-supplier-document-modal"
+import { EditPurchaseModal } from "@/components/edit-purchase-modal"
 import { 
   getPurchases, 
   getPurchaseStats, 
   getSuppliers,
+  deletePurchase,
   type Purchase, 
   type PurchaseStats,
   type Supplier 
@@ -29,6 +31,8 @@ export default function ComprasPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(null)
+  const [deletingPurchaseId, setDeletingPurchaseId] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
@@ -116,6 +120,25 @@ export default function ComprasPage() {
 
   const handleModalSuccess = () => {
     loadData()
+  }
+
+  const handleDeletePurchase = async (purchase: Purchase) => {
+    const confirmed = window.confirm(
+      `¿Eliminar la orden ${purchase.purchase_number}? Esta acción no se puede deshacer.`
+    )
+    if (!confirmed) return
+
+    setDeletingPurchaseId(purchase.id)
+    try {
+      await deletePurchase(purchase.id)
+      toast.success("Orden eliminada")
+      loadData()
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar la orden")
+    } finally {
+      setDeletingPurchaseId(null)
+    }
   }
 
   const getStatusBadge = (status: string) => {
@@ -372,10 +395,26 @@ export default function ComprasPage() {
                             {purchase.notes || '-'}
                           </TableCell>
                           <TableCell>
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4 mr-1" />
-                              Ver
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingPurchaseId(purchase.id)}
+                              >
+                                <Pencil className="h-4 w-4 mr-1" />
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                disabled={deletingPurchaseId === purchase.id}
+                                onClick={() => void handleDeletePurchase(purchase)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Eliminar
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -398,6 +437,13 @@ export default function ComprasPage() {
           isOpen={isImportModalOpen}
           onClose={() => setIsImportModalOpen(false)}
           onSuccess={handleModalSuccess}
+        />
+        <EditPurchaseModal
+          isOpen={editingPurchaseId != null}
+          purchaseId={editingPurchaseId}
+          onClose={() => setEditingPurchaseId(null)}
+          onSuccess={handleModalSuccess}
+          onDeleted={handleModalSuccess}
         />
       </ERPLayout>
     </Protected>

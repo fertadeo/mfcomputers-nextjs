@@ -34,6 +34,8 @@ interface SupplierModalProps {
   onSuccess: () => void
   supplierId?: number | null
   mode: 'create' | 'edit' | 'view'
+  initialData?: Partial<CreateSupplierRequest>
+  onCreated?: (supplier: Supplier) => void
 }
 
 export function SupplierModal({ 
@@ -41,7 +43,9 @@ export function SupplierModal({
   onClose, 
   onSuccess, 
   supplierId, 
-  mode 
+  mode,
+  initialData,
+  onCreated,
 }: SupplierModalProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [padronLocked, setPadronLocked] = useState(false)
@@ -102,7 +106,7 @@ export function SupplierModal({
     if (isOpen && supplierId && (mode === 'edit' || mode === 'view')) {
       loadSupplier()
     } else if (isOpen && mode === 'create') {
-      resetForm()
+      resetForm(initialData)
     }
   }, [isOpen, supplierId, mode])
 
@@ -182,30 +186,30 @@ export function SupplierModal({
     }
   }
 
-  const resetForm = () => {
+  const resetForm = (seed?: Partial<CreateSupplierRequest>) => {
     const empty = {
-      code: "",
-      name: "",
-      supplier_type: undefined,
-      legal_name: "",
-      trade_name: "",
-      purchase_frequency: undefined,
-      id_type: undefined,
-      tax_id: "",
-      gross_income: "",
-      vat_condition: "",
-      account_description: "",
-      product_service: "",
-      integral_summary_account: "",
-      cost: undefined,
-      contact_name: "",
-      email: "",
-      phone: "",
-      address: "",
-      city: "",
-      country: "",
-      has_account: true,
-      payment_terms: 30
+      code: seed?.code ?? "",
+      name: seed?.name ?? "",
+      supplier_type: seed?.supplier_type,
+      legal_name: seed?.legal_name ?? "",
+      trade_name: seed?.trade_name ?? "",
+      purchase_frequency: seed?.purchase_frequency,
+      id_type: seed?.id_type,
+      tax_id: seed?.tax_id ?? "",
+      gross_income: seed?.gross_income ?? "",
+      vat_condition: seed?.vat_condition ?? "",
+      account_description: seed?.account_description ?? "",
+      product_service: seed?.product_service ?? "",
+      integral_summary_account: seed?.integral_summary_account ?? "",
+      cost: seed?.cost,
+      contact_name: seed?.contact_name ?? "",
+      email: seed?.email ?? "",
+      phone: seed?.phone ?? "",
+      address: seed?.address ?? "",
+      city: seed?.city ?? "",
+      country: seed?.country ?? "",
+      has_account: seed?.has_account ?? true,
+      payment_terms: seed?.payment_terms ?? 30
     }
     setFormData(empty)
     capturePadronSnapshot(empty)
@@ -287,6 +291,7 @@ export function SupplierModal({
         const response = await createSupplier(cleanedData)
         if (response.success) {
           toast.success("Proveedor creado exitosamente")
+          onCreated?.(response.data)
           onSuccess()
           handleClose()
         } else {

@@ -4030,6 +4030,7 @@ export interface CreatePurchaseRequest {
   status: 'pending' | 'received' | 'cancelled';
   total_amount: number;
   purchase_date?: string;
+  received_date?: string;
   notes?: string;
 }
 
@@ -5169,6 +5170,7 @@ export interface ParsePurchaseDocumentResult {
   items: MatchedPurchaseDocumentItem[];
   suggested_supplier_id?: number;
   suggested_supplier_name?: string;
+  supplier_candidates?: Array<{ id: number; name: string }>;
   suggested_purchase_id?: number;
   suggested_purchase_number?: string;
   duplicate_delivery_note?: boolean;
