@@ -393,18 +393,16 @@ function renderCommercialBudgetPdf(
     doc.line(mx, y, pageW - mx, y)
     y += 18
 
-    const summaryW = 92
-    const summaryLeft = pageW - mx - summaryW
-    const summaryRight = pageW - mx
-    const summaryPad = 8
+    const summaryValueX = pageW - mx - 8
+    const summaryLabelX = pageW - mx - 108
     const summaryLineH = 13
 
     function drawSummaryRow(label: string, value: string, bold = false) {
       doc.setFont("helvetica", bold ? "bold" : "normal")
       doc.setFontSize(10)
       doc.setTextColor(...TEXT_BODY)
-      doc.text(label, summaryLeft + summaryPad, y)
-      doc.text(value, summaryRight - summaryPad, y, { align: "right" })
+      doc.text(label, summaryLabelX, y, { align: "right" })
+      doc.text(value, summaryValueX, y, { align: "right" })
       y += summaryLineH
     }
 
@@ -418,14 +416,16 @@ function renderCommercialBudgetPdf(
     }
 
     const totalBoxH = 24
+    const totalBoxLeft = summaryLabelX - 14
+    const totalBoxW = pageW - mx - totalBoxLeft
     doc.setFillColor(...BRAND_BLUE)
-    doc.rect(summaryLeft, y, summaryW, totalBoxH, "F")
+    doc.rect(totalBoxLeft, y, totalBoxW, totalBoxH, "F")
     const totalTextY = y + totalBoxH / 2 + 3.5
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
     doc.setTextColor(255, 255, 255)
-    doc.text("Total", summaryLeft + summaryPad, totalTextY)
-    doc.text(formatMoneyAr(params.total), summaryRight - summaryPad, totalTextY, { align: "right" })
+    doc.text("Total", summaryLabelX, totalTextY, { align: "right" })
+    doc.text(formatMoneyAr(params.total), summaryValueX, totalTextY, { align: "right" })
 
     y += totalBoxH + 22
 

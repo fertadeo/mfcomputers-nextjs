@@ -8,6 +8,7 @@ import { Protected } from "@/components/protected"
 import { useRole } from "@/app/hooks/useRole"
 import type { Role } from "@/app/config/menu"
 import { getCommercialBudgets, getCommercialBudgetStats, type CommercialBudgetSummary } from "@/lib/api"
+import { saleClientUbicacion } from "@/lib/sale-cliente"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -275,13 +276,17 @@ export default function PresupuestosPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredRows.map((b) => (
+                      filteredRows.map((b) => {
+                        const clientUbicacion = saleClientUbicacion(b)
+                        return (
                         <TableRow key={b.id} className="hover:bg-muted/40">
                           <TableCell className="font-mono font-medium">{b.budget_number}</TableCell>
                           <TableCell>
                             <div className="font-medium leading-tight">{b.client_name || `Cliente #${b.client_id}`}</div>
-                            {b.client_email && (
-                              <div className="text-xs text-muted-foreground truncate max-w-[220px]">{b.client_email}</div>
+                            {clientUbicacion && (
+                              <div className="text-xs text-muted-foreground truncate max-w-[220px]">
+                                {clientUbicacion}
+                              </div>
                             )}
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
@@ -299,7 +304,8 @@ export default function PresupuestosPage() {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      ))
+                        )
+                      })
                     )}
                   </TableBody>
                 </Table>
