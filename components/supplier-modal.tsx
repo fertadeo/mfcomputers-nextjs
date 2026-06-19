@@ -117,14 +117,17 @@ export function SupplierModal({
   const applyPadron = useCallback((data: ArcaPadronResult) => {
     const name = getArcaPadronDisplayName(data)
     const summary = buildArcaPadronBusinessSummary(data)
-    const ivaLabel = summary.condicionFiscal?.label
     setFormData((prev) => ({
       ...prev,
       name: name || prev.name,
       legal_name: data.razonSocial || data.name || prev.legal_name,
       trade_name: name || prev.trade_name,
       id_type: "CUIT",
-      vat_condition: ivaLabel || prev.vat_condition,
+      tax_id: data.cuit ? formatCuitDisplay(data.cuit) : prev.tax_id,
+      vat_condition:
+        summary.condicionFiscal?.label ||
+        data.condicionIvaSugeridaLabel ||
+        prev.vat_condition,
     }))
   }, [])
 

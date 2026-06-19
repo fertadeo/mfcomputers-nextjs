@@ -385,7 +385,7 @@ export async function getClientArcaPadron(cuit: string): Promise<ArcaPadronResul
 
 /** Consulta padrón ARCA (MultiCUIT) para autocompletar alta de proveedor. */
 export async function getSupplierArcaPadron(cuit: string): Promise<ArcaPadronResult> {
-  return fetchArcaPadron('suppliers/padron', cuit);
+  return fetchArcaPadron('purchases/suppliers/padron', cuit);
 }
 
 async function fetchArcaPadron(pathPrefix: string, cuit: string): Promise<ArcaPadronResult> {
