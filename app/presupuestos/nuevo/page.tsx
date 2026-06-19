@@ -6,14 +6,10 @@ import { useRouter } from "next/navigation"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import type { Role } from "@/app/config/menu"
-import {
-  createCommercialBudget,
-  getClientes,
-  getProducts,
-  type Cliente,
-  type Product,
-  type ApiBudgetError,
-} from "@/lib/api"
+import type { Cliente, Product, ApiBudgetError } from "@/lib/api"
+import { createCommercialBudget, getClientes, getProducts } from "@/lib/api"
+import { ClientePicker } from "@/components/cliente-picker"
+import { getClienteDisplayName } from "@/lib/cliente-display"
 import {
   budgetDraftLineItems,
   budgetDraftLinesToApiItems,
@@ -30,7 +26,7 @@ import { Separator } from "@/components/ui/separator"
 import { BudgetProductCatalog } from "@/components/budget-product-catalog"
 import { BudgetLinesPanel } from "@/components/budget-lines-panel"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
-import { ArrowLeft, Loader2, Search } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_EDITAR: Role[] = ["admin", "gerencia", "ventas"]
@@ -49,7 +45,7 @@ export default function NuevoPresupuestoPage() {
   const [clientSearch, setClientSearch] = useState("")
   const [clients, setClients] = useState<Cliente[]>([])
   const [clientId, setClientId] = useState<number | null>(null)
-  const [clientLabel, setClientLabel] = useState("")
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
 
   const [products, setProducts] = useState<Product[]>([])
   const [lines, setLines] = useState<BudgetDraftLine[]>([])
@@ -208,55 +204,36 @@ export default function NuevoPresupuestoPage() {
               <CardDescription>Solo clientes activos (misma regla que ventas).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Buscar cliente</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-9"
-                    placeholder="Nombre, email o código…"
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                  />
-                </div>
-                {clients.length > 0 && (
-                  <ul className="border rounded-md divide-y max-h-48 overflow-y-auto bg-popover text-popover-foreground shadow-sm">
-                    {clients.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                          onClick={() => {
-                            setClientId(c.id)
-                            setClientLabel(`${c.name} (${c.code})`)
-                            setClientSearch("")
-                            setClients([])
-                          }}
-                        >
-                          <span className="font-medium">{c.name}</span>
-                          <span className="text-muted-foreground text-xs block">{c.email}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {clientId && (
-                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                  Seleccionado: <strong>{clientLabel}</strong>
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="text-destructive h-auto p-0 ml-2"
-                    onClick={() => {
-                      setClientId(null)
-                      setClientLabel("")
-                    }}
-                  >
-                    Quitar
-                  </Button>
-                </div>
-              )}
+              <ClientePicker
+                searchValue={clientSearch}
+                onSearchChange={(value) => {
+                  setClientSearch(value)
+                  if (selectedCliente && value.trim() !== getClienteDisplayName(selectedCliente)) {
+                    setClientId(null)
+                    setSelectedCliente(null)
+                  }
+                  if (!value.trim()) {
+                    setClientId(null)
+                    setSelectedCliente(null)
+                  }
+                }}
+                results={clients}
+                selectedCliente={selectedCliente}
+                onSelect={(cliente) => {
+                  setClientId(cliente.id)
+                  setSelectedCliente(cliente)
+                  setClientSearch(getClienteDisplayName(cliente))
+                  setClients([])
+                }}
+                onClear={() => {
+                  setClientId(null)
+                  setSelectedCliente(null)
+                  setClientSearch("")
+                  setClients([])
+                }}
+                placeholder="Buscar por nombre, CUIT, código o dirección…"
+                clearLabel="Quitar cliente"
+              />
             </CardContent>
           </Card>
 

@@ -6913,6 +6913,10 @@ export interface CommercialBudgetSummary {
   client_name?: string | null
   client_code?: string | null
   client_email?: string | null
+  client_phone?: string | null
+  client_address?: string | null
+  client_city?: string | null
+  client_cuil_cuit?: string | null
   item_count?: number
 }
 
@@ -7301,7 +7305,14 @@ export interface RepairOrder {
   created_by: number | null
   created_at: string
   updated_at: string
-  client?: { id: number; name: string; email?: string; phone?: string }
+  client?: { id: number; name: string; email?: string; phone?: string; address?: string; city?: string; code?: string }
+  client_name?: string | null
+  client_code?: string | null
+  client_email?: string | null
+  client_phone?: string | null
+  client_address?: string | null
+  client_city?: string | null
+  client_cuil_cuit?: string | null
   items?: RepairOrderItem[]
   balance?: string
   /** Venta POS vinculada para facturación ARCA (si el backend la creó al aceptar/entregar). */
@@ -7635,6 +7646,12 @@ export async function updateRepairOrderStatus(
 export interface RepairOrderAcceptanceDocument {
   repair_number: string
   client_name: string
+  client_code?: string | null
+  client_email?: string | null
+  client_phone?: string | null
+  client_address?: string | null
+  client_city?: string | null
+  client_cuil_cuit?: string | null
   equipment_description: string
   customer_declared_fault?: string | null
   work_description: string | null

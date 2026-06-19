@@ -7,6 +7,10 @@ import {
   parseEquipmentDescriptionString,
   formatEquipmentTypeDisplay,
 } from "@/lib/repair-order-equipment"
+import {
+  documentClientePdfFromSnapshot,
+  drawDocumentClientePdfDetails,
+} from "@/lib/document-cliente-pdf"
 
 const LOGO_PATH = "/images/Recurso-8@3x.png"
 
@@ -43,6 +47,9 @@ export interface GenerateRepairOrderReceptionPdfParams {
   clientEmail?: string
   /** Líneas de domicilio del cliente (dirección, ciudad, etc.) */
   clientAddressLines?: string[]
+  clientCode?: string
+  clientCuit?: string
+  clientTaxCondition?: string
   equipment_description: string
   customer_declared_fault: string
   diagnosis?: string
@@ -153,22 +160,14 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     doc.text(COMPANY.city, mx, y)
 
     let yRight = y - 22
-    if (params.clientPhone?.trim()) {
-      doc.text(`Tel: ${params.clientPhone.trim()}`, mx + colW + colGap, yRight)
-      yRight += 11
-    }
-    if (params.clientEmail?.trim()) {
-      doc.text(params.clientEmail.trim(), mx + colW + colGap, yRight)
-      yRight += 11
-    }
-    if (params.clientAddressLines?.length) {
-      params.clientAddressLines.forEach((line) => {
-        if (line.trim()) {
-          doc.text(line.trim(), mx + colW + colGap, yRight)
-          yRight += 11
-        }
-      })
-    }
+    yRight = drawDocumentClientePdfDetails(doc, mx + colW + colGap, yRight, {
+      clientCode: params.clientCode,
+      clientCuit: params.clientCuit,
+      clientPhone: params.clientPhone,
+      clientEmail: params.clientEmail,
+      clientAddressLines: params.clientAddressLines,
+      clientTaxCondition: params.clientTaxCondition,
+    })
 
     y = Math.max(y, yRight) + 8
 

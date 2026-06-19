@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,11 @@ import {
   addRepairOrderItem,
   type CreateRepairOrderBody,
   type Product,
+  type Cliente,
 } from "@/lib/api"
+import { ClientePicker } from "@/components/cliente-picker"
+import { getClienteDisplayName } from "@/lib/cliente-display"
+import { pdfClientContactFields } from "@/lib/document-cliente-pdf"
 import { generateRepairOrderReceptionPdf } from "@/lib/generate-repair-order-reception-pdf"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Wrench, Loader2, Search, UserPlus, Package, Plus, Trash2, ArrowLeft } from "lucide-react"
@@ -51,18 +55,10 @@ interface NewRepairOrderModalProps {
   onSuccess: (createdId?: number) => void
 }
 
-interface ClientOption {
-  id: number
-  name: string
-}
-
 export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrderModalProps) {
-  const [clientSearchQuery, setClientSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<ClientOption[]>([])
-  const [loadingSearch, setLoadingSearch] = useState(false)
-  /** Cliente elegido de la lista: evita que el debounce vuelva a abrir el dropdown con el mismo texto. */
-  const [selectedClientPreview, setSelectedClientPreview] = useState<ClientOption | null>(null)
-  const clientSearchSeq = useRef(0)
+  const [clientSearch, setClientSearch] = useState("")
+  const [clients, setClients] = useState<Cliente[]>([])
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [newClientModalOpen, setNewClientModalOpen] = useState(false)
   const today = () => new Date().toISOString().slice(0, 10)
   const [equipment, setEquipment] = useState<RepairEquipmentFormValues>(() => emptyRepairEquipmentForm())
@@ -94,42 +90,20 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     [pendingItems]
   )
 
-  // Búsqueda de clientes con debounce (no corre si ya hay cliente confirmado)
+  // Búsqueda de clientes
   useEffect(() => {
     if (!isOpen) return
-    if (selectedClientPreview) {
-      setSearchResults([])
-      setLoadingSearch(false)
-      return
-    }
-    const query = clientSearchQuery.trim()
-    if (query.length < 1) {
-      setSearchResults([])
+    if (clientSearch.trim().length < 2) {
+      setClients([])
       return
     }
     const t = setTimeout(() => {
-      const seq = ++clientSearchSeq.current
-      setLoadingSearch(true)
-      getClientes(1, 50, query, "active")
-        .then((res) => {
-          if (seq !== clientSearchSeq.current) return
-          const list = (res.clients || []).map((c: { id: number; name: string }) => ({
-            id: c.id,
-            name: c.name,
-          }))
-          setSearchResults(list)
-        })
-        .catch(() => {
-          if (seq !== clientSearchSeq.current) return
-          setSearchResults([])
-        })
-        .finally(() => {
-          if (seq !== clientSearchSeq.current) return
-          setLoadingSearch(false)
-        })
+      getClientes(1, 20, clientSearch.trim(), "active")
+        .then((r) => setClients(r.clients || []))
+        .catch(() => setClients([]))
     }, 300)
     return () => clearTimeout(t)
-  }, [isOpen, clientSearchQuery, selectedClientPreview])
+  }, [isOpen, clientSearch])
 
   // Cargar todos los productos al abrir (paginando la API hasta completar)
   useEffect(() => {
@@ -195,10 +169,9 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       labor_amount: 0,
       notes: "",
     }))
-    setClientSearchQuery("")
-    setSearchResults([])
-    setSelectedClientPreview(null)
-    clientSearchSeq.current += 1
+    setClientSearch("")
+    setClients([])
+    setSelectedCliente(null)
     setPendingItems([])
     setProductSearchQuery("")
     setNewItemProductId("")
@@ -207,22 +180,34 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     setStep(1)
   }, [isOpen])
 
-  const selectClient = (c: ClientOption) => {
-    clientSearchSeq.current += 1
-    setLoadingSearch(false)
-    setFormData((prev) => ({ ...prev, client_id: c.id }))
-    setClientSearchQuery(c.name)
-    setSearchResults([])
-    setSelectedClientPreview(c)
-  }
-
-  const clearClient = () => {
-    clientSearchSeq.current += 1
-    setFormData((prev) => ({ ...prev, client_id: 0 }))
-    setClientSearchQuery("")
-    setSearchResults([])
-    setSelectedClientPreview(null)
-    setLoadingSearch(false)
+  const handleNewClientSuccess = (created?: { id: number; name: string }) => {
+    setNewClientModalOpen(false)
+    if (!created?.id) return
+    void getClienteById(created.id)
+      .then((cliente) => {
+        setFormData((prev) => ({ ...prev, client_id: cliente.id }))
+        setSelectedCliente(cliente)
+        setClientSearch(getClienteDisplayName(cliente))
+        setClients([])
+      })
+      .catch(() => {
+        setFormData((prev) => ({ ...prev, client_id: created.id }))
+        setSelectedCliente({
+          id: created.id,
+          code: "",
+          client_type: "minorista",
+          sales_channel: "sistema_mf",
+          name: created.name,
+          email: "",
+          phone: "",
+          city: "",
+          country: "AR",
+          is_active: 1,
+          created_at: "",
+          updated_at: "",
+        })
+        setClientSearch(created.name)
+      })
   }
 
   const addPendingItem = () => {
@@ -279,18 +264,6 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
     setPendingItems((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleNewClientSuccess = (created?: { id: number; name: string }) => {
-    setNewClientModalOpen(false)
-    if (created) {
-      clientSearchSeq.current += 1
-      setLoadingSearch(false)
-      setFormData((prev) => ({ ...prev, client_id: created.id }))
-      setClientSearchQuery(created.name)
-      setSearchResults([])
-      setSelectedClientPreview({ id: created.id, name: created.name })
-    }
-  }
-
   const validate = (): boolean => {
     const err: Record<string, string> = {}
     if (!formData.client_id) err.client_id = "Seleccioná o buscá un cliente. Si no existe, crealo."
@@ -337,27 +310,29 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
       }
 
       if (order?.repair_number) {
-        let clientPhone = ""
-        let clientEmail = ""
-        const clientAddressLines: string[] = []
-        try {
-          const c = await getClienteById(formData.client_id)
-          if (c.phone?.trim()) clientPhone = c.phone.trim()
-          if (c.email?.trim()) clientEmail = c.email.trim()
-          if (c.address?.trim()) clientAddressLines.push(c.address.trim())
-          if (c.city?.trim()) clientAddressLines.push(c.city.trim())
-        } catch {
-          /* PDF sin datos extra del cliente */
+        let clientFields = selectedCliente ? pdfClientContactFields(selectedCliente) : null
+        if (!clientFields && formData.client_id) {
+          try {
+            clientFields = pdfClientContactFields(await getClienteById(formData.client_id))
+          } catch {
+            clientFields = null
+          }
         }
         const clientName =
-          order.client?.name ?? selectedClientPreview?.name ?? "Cliente"
+          clientFields?.clientName ??
+          order.client?.name ??
+          selectedCliente?.name ??
+          "Cliente"
         generateRepairOrderReceptionPdf({
           repair_number: order.repair_number,
           reception_date: String(order.reception_date || formData.reception_date),
           clientName,
-          clientPhone: clientPhone || undefined,
-          clientEmail: clientEmail || undefined,
-          clientAddressLines: clientAddressLines.length ? clientAddressLines : undefined,
+          clientPhone: clientFields?.clientPhone,
+          clientEmail: clientFields?.clientEmail,
+          clientAddressLines: clientFields?.clientAddressLines,
+          clientCode: clientFields?.clientCode,
+          clientCuit: clientFields?.clientCuit,
+          clientTaxCondition: clientFields?.clientTaxCondition,
           equipment_description:
             order.equipment_description || buildEquipmentDescriptionString(equipment),
           customer_declared_fault: formData.customer_declared_fault.trim(),
@@ -387,10 +362,9 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
         labor_amount: 0,
         notes: "",
       }))
-      setClientSearchQuery("")
-      setSearchResults([])
-      setSelectedClientPreview(null)
-      clientSearchSeq.current += 1
+      setClientSearch("")
+      setClients([])
+      setSelectedCliente(null)
       setPendingItems([])
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error al crear la orden"
@@ -435,120 +409,48 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
           {step === 1 ? (
             <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="client_search">Cliente *</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="client_search"
-                  type="text"
-                  placeholder="Buscar por nombre..."
-                  value={clientSearchQuery}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setClientSearchQuery(v)
-                    if (!v.trim()) {
-                      clearClient()
-                      return
-                    }
-                    if (selectedClientPreview && v !== selectedClientPreview.name) {
-                      clientSearchSeq.current += 1
-                      setSelectedClientPreview(null)
-                      setFormData((prev) => ({ ...prev, client_id: 0 }))
-                    }
-                  }}
-                  onFocus={() => {
-                    if (selectedClientPreview) return
-                    if (clientSearchQuery.trim().length >= 1 && searchResults.length === 0 && !loadingSearch) {
-                      const seq = ++clientSearchSeq.current
-                      getClientes(1, 50, clientSearchQuery.trim(), "active")
-                        .then((res) => {
-                          if (seq !== clientSearchSeq.current) return
-                          const list = (res.clients || []).map((c: { id: number; name: string }) => ({
-                            id: c.id,
-                            name: c.name,
-                          }))
-                          setSearchResults(list)
-                        })
-                        .catch(() => {
-                          if (seq !== clientSearchSeq.current) return
-                          setSearchResults([])
-                        })
-                    }
-                  }}
-                  className={`pl-9 ${selectedClientPreview ? "pr-16" : ""}`}
-                />
-                {selectedClientPreview && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 text-xs"
-                    onClick={clearClient}
-                  >
-                    Limpiar
-                  </Button>
-                )}
-              </div>
-              {!selectedClientPreview && (searchResults.length > 0 || loadingSearch) && (
-                <ul className="border rounded-md divide-y max-h-40 overflow-y-auto bg-background z-10 shadow-md">
-                  {loadingSearch && (
-                    <li className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Buscando...
-                    </li>
-                  )}
-                  {!loadingSearch && searchResults.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                        onClick={() => selectClient(c)}
-                      >
-                        {c.name}
-                      </button>
-                    </li>
-                  ))}
-                  {!loadingSearch && searchResults.length > 0 && (
-                    <li className="border-t">
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-muted flex items-center gap-2"
-                        onClick={() => setNewClientModalOpen(true)}
-                      >
-                        <UserPlus className="h-4 w-4" /> Crear nuevo cliente
-                      </button>
-                    </li>
-                  )}
-                </ul>
-              )}
-              {selectedClientPreview && (
-                <div className="border rounded-md p-3 bg-muted/50">
-                  <p className="text-sm font-medium text-primary">
-                    Cliente seleccionado: {selectedClientPreview.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Tocá «Limpiar» o editá el nombre para buscar otro cliente.
-                  </p>
-                </div>
-              )}
-              {!loadingSearch &&
-                !selectedClientPreview &&
-                formData.client_id === 0 &&
-                clientSearchQuery.trim().length >= 1 &&
-                searchResults.length === 0 && (
-                <div className="border rounded-md p-3 flex flex-col gap-2">
-                  <p className="text-sm text-muted-foreground">No se encontraron clientes.</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-fit"
-                    onClick={() => setNewClientModalOpen(true)}
-                  >
-                    <UserPlus className="h-4 w-4 mr-1" /> Crear nuevo cliente
-                  </Button>
-                </div>
-              )}
+            <div className="space-y-2 md:col-span-2">
+              <Label>Cliente *</Label>
+              <ClientePicker
+                searchValue={clientSearch}
+                onSearchChange={(value) => {
+                  setClientSearch(value)
+                  if (selectedCliente && value.trim() !== getClienteDisplayName(selectedCliente)) {
+                    setFormData((prev) => ({ ...prev, client_id: 0 }))
+                    setSelectedCliente(null)
+                  }
+                  if (!value.trim()) {
+                    setFormData((prev) => ({ ...prev, client_id: 0 }))
+                    setSelectedCliente(null)
+                  }
+                }}
+                results={clients}
+                selectedCliente={selectedCliente}
+                onSelect={(cliente) => {
+                  setFormData((prev) => ({ ...prev, client_id: cliente.id }))
+                  setSelectedCliente(cliente)
+                  setClientSearch(getClienteDisplayName(cliente))
+                  setClients([])
+                }}
+                onClear={() => {
+                  setFormData((prev) => ({ ...prev, client_id: 0 }))
+                  setSelectedCliente(null)
+                  setClientSearch("")
+                  setClients([])
+                }}
+                placeholder="Buscar por nombre, CUIT, código o dirección…"
+                clearLabel="Limpiar"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setNewClientModalOpen(true)}
+              >
+                <UserPlus className="h-4 w-4" />
+                Crear nuevo cliente
+              </Button>
               {fieldErrors.client_id && (
                 <p className="text-sm text-destructive">{fieldErrors.client_id}</p>
               )}

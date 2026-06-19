@@ -23,10 +23,13 @@ import {
 } from "@/components/ui/select"
 import {
   postCommercialBudgetConvertToSale,
+  getClienteById,
   type CommercialBudgetDetail,
+  type Cliente,
   type SalePaymentMethod,
   type ApiBudgetError,
 } from "@/lib/api"
+import { SaleClienteSection } from "@/components/sale-cliente-section"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -68,6 +71,7 @@ export function BudgetConvertSaleDialog({
   const [syncWoo, setSyncWoo] = useState(true)
   const [allowInactive, setAllowInactive] = useState(false)
   const [overrideClientId, setOverrideClientId] = useState("")
+  const [overrideCliente, setOverrideCliente] = useState<Cliente | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -80,6 +84,12 @@ export function BudgetConvertSaleDialog({
     setSyncWoo(true)
     setAllowInactive(false)
     setOverrideClientId("")
+    setOverrideCliente(null)
+    if (budget.client_id) {
+      void getClienteById(budget.client_id)
+        .then(setOverrideCliente)
+        .catch(() => setOverrideCliente(null))
+    }
   }, [open, budget, total])
 
   const mixtoSum = useMemo(() => efectivo + tarjeta + transferencia, [efectivo, tarjeta, transferencia])
@@ -133,6 +143,14 @@ export function BudgetConvertSaleDialog({
 
         {budget && (
           <div className="space-y-4 py-2">
+            <SaleClienteSection
+              clientId={budget.client_id}
+              cliente={overrideCliente}
+              saleSnapshot={budget}
+              fallbackName={budget.client_name}
+              compact
+            />
+
             <div className="space-y-2">
               <Label>Medio de pago</Label>
               <Select

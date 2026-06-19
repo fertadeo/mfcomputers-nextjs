@@ -11,6 +11,7 @@ import {
   deleteCommercialBudget,
   ensureCommercialBudgetApproved,
   getCommercialBudgetById,
+  getClienteById,
   getClientes,
   getProducts,
   updateCommercialBudget,
@@ -29,6 +30,9 @@ import { BudgetProductCatalog } from "@/components/budget-product-catalog"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
 import { BudgetConvertSaleDialog } from "@/components/budget-convert-sale-dialog"
+import { ClientePicker } from "@/components/cliente-picker"
+import { SaleClienteSection } from "@/components/sale-cliente-section"
+import { getClienteDisplayName } from "@/lib/cliente-display"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,7 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ArrowLeft, CheckCircle2, FileText, Loader2, Plus, Save, Search, Trash2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, FileText, Loader2, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_VER: Role[] = [
@@ -109,6 +113,7 @@ export default function PresupuestoDetallePage() {
   const [notes, setNotes] = useState("")
   const [validUntil, setValidUntil] = useState("")
   const [clientId, setClientId] = useState<number | null>(null)
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [clientSearch, setClientSearch] = useState("")
   const [clients, setClients] = useState<Cliente[]>([])
   const [draftLines, setDraftLines] = useState<BudgetDetailDraftLine[]>([])
@@ -137,7 +142,17 @@ export default function PresupuestoDetallePage() {
       setNotes(d.notes ?? "")
       setValidUntil(d.valid_until ? d.valid_until.split("T")[0] : "")
       setClientId(d.client_id)
+      setSelectedCliente(null)
+      setClientSearch("")
       setDraftLines(linesFromBudgetDetail(d.items || []))
+      if (d.client_id) {
+        void getClienteById(d.client_id)
+          .then((cliente) => {
+            setSelectedCliente(cliente)
+            setClientSearch(getClienteDisplayName(cliente))
+          })
+          .catch(() => setSelectedCliente(null))
+      }
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string }
       if (err?.status === 401) router.replace("/login")
@@ -354,20 +369,19 @@ export default function PresupuestoDetallePage() {
           </div>
 
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold font-mono tracking-tight mb-1">{detail.budget_number}</h1>
-              <p className="text-muted-foreground text-sm">
-                Cliente:{" "}
-                <span className="text-foreground font-medium">
-                  {detail.client_name || `#${detail.client_id}`}
-                </span>
-                {detail.client_email && (
-                  <span className="block text-xs mt-0.5">{detail.client_email}</span>
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Creado {formatDate(detail.created_at)} · Actualizado {formatDate(detail.updated_at)}
-              </p>
+            <div className="space-y-3 min-w-0 flex-1">
+              <div>
+                <h1 className="text-2xl font-bold font-mono tracking-tight mb-1">{detail.budget_number}</h1>
+                <p className="text-xs text-muted-foreground">
+                  Creado {formatDate(detail.created_at)} · Actualizado {formatDate(detail.updated_at)}
+                </p>
+              </div>
+              <SaleClienteSection
+                clientId={clientId ?? detail.client_id}
+                cliente={selectedCliente}
+                saleSnapshot={detail}
+                fallbackName={detail.client_name}
+              />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="default" size="sm" className="gap-1 shadow-sm" onClick={() => setPdfOpen(true)}>
@@ -450,35 +464,32 @@ export default function PresupuestoDetallePage() {
               <CardContent className="space-y-6">
                 <div className="space-y-2">
                   <Label>Cambiar cliente</Label>
-                  <div className="relative max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      className="pl-9"
-                      placeholder="Buscar cliente activo…"
-                      value={clientSearch}
-                      onChange={(e) => setClientSearch(e.target.value)}
-                    />
-                  </div>
-                  {clients.length > 0 && (
-                    <ul className="border rounded-md max-h-40 overflow-y-auto divide-y max-w-md">
-                      {clients.map((c) => (
-                        <li key={c.id}>
-                          <button
-                            type="button"
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                            onClick={() => {
-                              setClientId(c.id)
-                              setClientSearch("")
-                              setClients([])
-                            }}
-                          >
-                            {c.name} <span className="text-muted-foreground">({c.code})</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-xs text-muted-foreground">Cliente actual en el presupuesto: ID {clientId}</p>
+                  <ClientePicker
+                    searchValue={clientSearch}
+                    onSearchChange={(value) => {
+                      setClientSearch(value)
+                      if (selectedCliente && value.trim() !== getClienteDisplayName(selectedCliente)) {
+                        setClientId(null)
+                        setSelectedCliente(null)
+                      }
+                    }}
+                    results={clients}
+                    selectedCliente={selectedCliente}
+                    onSelect={(cliente) => {
+                      setClientId(cliente.id)
+                      setSelectedCliente(cliente)
+                      setClientSearch(getClienteDisplayName(cliente))
+                      setClients([])
+                    }}
+                    onClear={() => {
+                      setClientId(null)
+                      setSelectedCliente(null)
+                      setClientSearch("")
+                      setClients([])
+                    }}
+                    placeholder="Buscar por nombre, CUIT, código o dirección…"
+                    clearLabel="Quitar cliente"
+                  />
                 </div>
                 {editableDraft && (
                   <div className="flex items-center gap-2">

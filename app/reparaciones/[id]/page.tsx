@@ -38,7 +38,12 @@ import {
   type RepairOrderItem,
   type RepairOrderStatus,
   type RepairOrderPayment,
+  type Cliente,
 } from "@/lib/api"
+import { ClientePicker } from "@/components/cliente-picker"
+import { SaleClienteSection } from "@/components/sale-cliente-section"
+import { getClienteDisplayName } from "@/lib/cliente-display"
+import { pdfClientContactFields } from "@/lib/document-cliente-pdf"
 import { RepairOrderAddItemModal } from "@/components/repair-order-add-item-modal"
 import { RepairOrderEditItemModal } from "@/components/repair-order-edit-item-modal"
 import {
@@ -157,6 +162,9 @@ async function enrichRepairOrderForDisplay(data: RepairOrder): Promise<RepairOrd
           name: c.name,
           phone: c.phone,
           email: c.email,
+          address: c.address,
+          city: c.city,
+          code: c.code,
         },
       }
     }
@@ -242,8 +250,9 @@ export default function RepairOrderDetailPage() {
   })
   const [saving, setSaving] = useState(false)
   const [editClientId, setEditClientId] = useState<number | null>(null)
+  const [editSelectedCliente, setEditSelectedCliente] = useState<Cliente | null>(null)
   const [editClientSearch, setEditClientSearch] = useState("")
-  const [editClients, setEditClients] = useState<{ id: number; name: string }[]>([])
+  const [editClients, setEditClients] = useState<Cliente[]>([])
   const [editingItem, setEditingItem] = useState<RepairOrderItem | null>(null)
 
   const loadOrder = async () => {
@@ -271,8 +280,17 @@ export default function RepairOrderDetailPage() {
         notes: enriched.notes || "",
       })
       setEditClientId(enriched.client_id)
+      setEditSelectedCliente(null)
       setEditClientSearch(enriched.client?.name ?? "")
       setEditClients([])
+      if (enriched.client_id) {
+        void getClienteById(enriched.client_id)
+          .then((cliente) => {
+            setEditSelectedCliente(cliente)
+            setEditClientSearch(getClienteDisplayName(cliente))
+          })
+          .catch(() => setEditSelectedCliente(null))
+      }
     } catch (e: unknown) {
       const err = e as { status?: number }
       if (err?.status === 404) {
@@ -311,14 +329,7 @@ export default function RepairOrderDetailPage() {
     }
     const t = setTimeout(() => {
       getClientes(1, 20, editClientSearch.trim(), "active")
-        .then((r) =>
-          setEditClients(
-            (r.clients || []).map((c: { id: number; name: string }) => ({
-              id: c.id,
-              name: c.name,
-            }))
-          )
-        )
+        .then((r) => setEditClients(r.clients || []))
         .catch(() => setEditClients([]))
     }, 300)
     return () => clearTimeout(t)
@@ -438,25 +449,24 @@ export default function RepairOrderDetailPage() {
 
   const handleDownloadReceptionPdf = async () => {
     if (!order) return
-    let clientPhone = ""
-    let clientEmail = ""
-    const clientAddressLines: string[] = []
-    try {
-      const c = await getClienteById(order.client_id)
-      if (c.phone?.trim()) clientPhone = c.phone.trim()
-      if (c.email?.trim()) clientEmail = c.email.trim()
-      if (c.address?.trim()) clientAddressLines.push(c.address.trim())
-      if (c.city?.trim()) clientAddressLines.push(c.city.trim())
-    } catch {
-      /* PDF sin domicilio/teléfono del cliente */
+    let clientFields = pdfClientContactFields(order)
+    if (!clientFields.clientAddressLines?.length && order.client_id) {
+      try {
+        clientFields = pdfClientContactFields(await getClienteById(order.client_id))
+      } catch {
+        /* usar snapshot de la orden */
+      }
     }
     generateRepairOrderReceptionPdf({
       repair_number: order.repair_number,
       reception_date: order.reception_date,
-      clientName: order.client?.name ?? `Cliente #${order.client_id}`,
-      clientPhone: clientPhone || undefined,
-      clientEmail: clientEmail || undefined,
-      clientAddressLines: clientAddressLines.length ? clientAddressLines : undefined,
+      clientName: clientFields.clientName,
+      clientPhone: clientFields.clientPhone,
+      clientEmail: clientFields.clientEmail,
+      clientAddressLines: clientFields.clientAddressLines,
+      clientCode: clientFields.clientCode,
+      clientCuit: clientFields.clientCuit,
+      clientTaxCondition: clientFields.clientTaxCondition,
       equipment_description: order.equipment_description || "",
       customer_declared_fault: order.customer_declared_fault?.trim() || "—",
       diagnosis: order.diagnosis?.trim() || undefined,
@@ -601,6 +611,11 @@ export default function RepairOrderDetailPage() {
               <CardContent className="space-y-4">
                 {!editMode ? (
                   <>
+                    <SaleClienteSection
+                      clientId={order.client_id}
+                      saleSnapshot={order}
+                      fallbackName={order.client?.name}
+                    />
                     <RepairOrderEquipmentReadOnly equipmentDescription={order.equipment_description} />
                     {(order.customer_declared_fault?.trim() || order.diagnosis) && (
                       <div className="space-y-2 border-t pt-3">
@@ -632,40 +647,35 @@ export default function RepairOrderDetailPage() {
                   <form onSubmit={handleSaveEdit} className="space-y-4">
                     <div className="space-y-2">
                       <Label>Cliente *</Label>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                        <Input
-                          className="pl-9"
-                          placeholder="Buscar cliente activo…"
-                          value={editClientSearch}
-                          onChange={(e) => {
-                            setEditClientSearch(e.target.value)
-                            if (!e.target.value.trim()) setEditClientId(null)
-                          }}
-                        />
-                      </div>
-                      {editClients.length > 0 && (
-                        <ul className="border rounded-md max-h-36 overflow-y-auto divide-y">
-                          {editClients.map((c) => (
-                            <li key={c.id}>
-                              <button
-                                type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                                onClick={() => {
-                                  setEditClientId(c.id)
-                                  setEditClientSearch(c.name)
-                                  setEditClients([])
-                                }}
-                              >
-                                {c.name}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {editClientId ? (
-                        <p className="text-xs text-muted-foreground">Cliente ID: {editClientId}</p>
-                      ) : null}
+                      <ClientePicker
+                        searchValue={editClientSearch}
+                        onSearchChange={(value) => {
+                          setEditClientSearch(value)
+                          if (
+                            editSelectedCliente &&
+                            value.trim() !== getClienteDisplayName(editSelectedCliente)
+                          ) {
+                            setEditClientId(null)
+                            setEditSelectedCliente(null)
+                          }
+                        }}
+                        results={editClients}
+                        selectedCliente={editSelectedCliente}
+                        onSelect={(cliente) => {
+                          setEditClientId(cliente.id)
+                          setEditSelectedCliente(cliente)
+                          setEditClientSearch(getClienteDisplayName(cliente))
+                          setEditClients([])
+                        }}
+                        onClear={() => {
+                          setEditClientId(null)
+                          setEditSelectedCliente(null)
+                          setEditClientSearch("")
+                          setEditClients([])
+                        }}
+                        placeholder="Buscar por nombre, CUIT, código o dirección…"
+                        clearLabel="Quitar cliente"
+                      />
                     </div>
                     <div className="rounded-lg border p-3 space-y-2">
                       <Label>Equipo</Label>

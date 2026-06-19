@@ -40,6 +40,9 @@ export interface BudgetPdfModalData {
   email?: string
   telefono?: string
   direccion?: string
+  codigo?: string
+  cuit?: string
+  condicionFiscal?: string
   fecha: string
   fechaVencimiento: string
   estado: string

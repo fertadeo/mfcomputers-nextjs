@@ -3,6 +3,10 @@
  */
 import jsPDF from "jspdf"
 import type { CommercialBudgetDetail } from "@/lib/api"
+import {
+  documentClientePdfFromSnapshot,
+  drawDocumentClientePdfDetails,
+} from "@/lib/document-cliente-pdf"
 
 const LOGO_PATH = "/images/Recurso-8@3x.png"
 
@@ -39,6 +43,9 @@ export interface GenerateCommercialBudgetPdfParams {
   clientPhone?: string
   clientEmail?: string
   clientAddressLines?: string[]
+  clientCode?: string
+  clientCuit?: string
+  clientTaxCondition?: string
   lineItems: CommercialBudgetPdfLineItem[]
   subtotal: number
   vat21: number
@@ -57,6 +64,9 @@ export interface CommercialPdfFromModalInput {
   telefono?: string
   email?: string
   direccion?: string
+  codigo?: string
+  cuit?: string
+  condicionFiscal?: string
   items: Array<{
     service: string
     description: string
@@ -94,7 +104,10 @@ export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalIn
     clientName: data.cliente,
     clientPhone: data.telefono,
     clientEmail: data.email,
-    clientAddressLines: data.direccion ? [data.direccion] : undefined,
+    clientAddressLines: data.direccion ? data.direccion.split(" · ") : undefined,
+    clientCode: data.codigo,
+    clientCuit: data.cuit,
+    clientTaxCondition: data.condicionFiscal,
     lineItems,
     subtotal: data.subtotal,
     vat21: data.vat21,
@@ -105,19 +118,7 @@ export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalIn
 }
 
 export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail): GenerateCommercialBudgetPdfParams {
-  const detailWithClient = detail as CommercialBudgetDetail & {
-    client_phone?: string | null
-    client_address?: string | null
-    client_city?: string | null
-    client?: {
-      phone?: string | null
-      address?: string | null
-      city?: string | null
-    } | null
-  }
-  const clientAddress = detailWithClient.client_address ?? detailWithClient.client?.address ?? undefined
-  const clientCity = detailWithClient.client_city ?? detailWithClient.client?.city ?? undefined
-  const addressLines = [clientAddress, clientCity].filter(Boolean) as string[]
+  const clientFields = documentClientePdfFromSnapshot(detail)
   const lineItems: CommercialBudgetPdfLineItem[] = (detail.items || []).map((i) => {
     const isCustom = i.product_id == null
     const name = (i.description ?? i.product_name ?? "").trim() || i.product_name
@@ -133,10 +134,13 @@ export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail)
     budget_number: detail.budget_number,
     emission_date: detail.created_at.split("T")[0],
     valid_until: detail.valid_until ? detail.valid_until.split("T")[0] : null,
-    clientName: detail.client_name?.trim() || `Cliente #${detail.client_id}`,
-    clientPhone: detailWithClient.client_phone ?? detailWithClient.client?.phone ?? undefined,
-    clientEmail: detail.client_email ?? undefined,
-    clientAddressLines: addressLines.length ? addressLines : undefined,
+    clientName: clientFields.clientName,
+    clientPhone: clientFields.clientPhone,
+    clientEmail: clientFields.clientEmail,
+    clientAddressLines: clientFields.clientAddressLines,
+    clientCode: clientFields.clientCode,
+    clientCuit: clientFields.clientCuit,
+    clientTaxCondition: clientFields.clientTaxCondition,
     lineItems,
     subtotal: detail.total_amount,
     vat21: 0,
@@ -305,22 +309,14 @@ function renderCommercialBudgetPdf(
     doc.text(COMPANY.city, mx, y)
 
     let yRight = y - 22
-    if (params.clientPhone?.trim()) {
-      doc.text(`Tel: ${params.clientPhone.trim()}`, mx + colW + colGap, yRight)
-      yRight += 11
-    }
-    if (params.clientEmail?.trim()) {
-      doc.text(params.clientEmail.trim(), mx + colW + colGap, yRight)
-      yRight += 11
-    }
-    if (params.clientAddressLines?.length) {
-      params.clientAddressLines.forEach((line) => {
-        if (line.trim()) {
-          doc.text(line.trim(), mx + colW + colGap, yRight)
-          yRight += 11
-        }
-      })
-    }
+    yRight = drawDocumentClientePdfDetails(doc, mx + colW + colGap, yRight, {
+      clientCode: params.clientCode,
+      clientCuit: params.clientCuit,
+      clientPhone: params.clientPhone,
+      clientEmail: params.clientEmail,
+      clientAddressLines: params.clientAddressLines,
+      clientTaxCondition: params.clientTaxCondition,
+    })
 
     y = Math.max(y, yRight) + 8
     doc.line(mx, y, pageW - mx, y)
