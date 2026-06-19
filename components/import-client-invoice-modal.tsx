@@ -52,6 +52,10 @@ interface ImportClientInvoiceModalProps {
   onSuccess: () => void
   /** Cliente preseleccionado (p. ej. desde ficha de cliente). */
   defaultClientId?: number
+  /** Venta POS a vincular (p. ej. desde facturación «Sin emitir»). */
+  defaultLinkSaleId?: number
+  /** Texto breve para el encabezado cuando se abre desde una venta concreta. */
+  linkSaleHint?: string
 }
 
 interface EditableItem extends MatchedSalesInvoiceItem {
@@ -121,6 +125,8 @@ export function ImportClientInvoiceModal({
   onClose,
   onSuccess,
   defaultClientId,
+  defaultLinkSaleId,
+  linkSaleHint,
 }: ImportClientInvoiceModalProps) {
   const [step, setStep] = useState<Step>("upload")
   const [isParsing, setIsParsing] = useState(false)
@@ -172,6 +178,33 @@ export function ImportClientInvoiceModal({
       .catch(() => toast.error("No se pudieron cargar los clientes"))
   }, [isOpen, reset])
 
+  const applyLinkSelection = (
+    linkSales: LinkableSaleSummary[],
+    suggestedId?: number
+  ) => {
+    const preferredId =
+      defaultLinkSaleId && linkSales.some((s) => s.id === defaultLinkSaleId)
+        ? defaultLinkSaleId
+        : suggestedId
+    if (preferredId && linkSales.some((s) => s.id === preferredId)) {
+      setRegistrationMode("link")
+      setLinkSaleId(String(preferredId))
+      const linked = linkSales.find((s) => s.id === preferredId)
+      if (linked?.client_id) {
+        setClientId(String(linked.client_id))
+      }
+    } else if (linkSales.length > 0) {
+      setRegistrationMode("link")
+      setLinkSaleId(String(linkSales[0].id))
+      if (linkSales[0].client_id) {
+        setClientId(String(linkSales[0].client_id))
+      }
+    } else {
+      setRegistrationMode("standalone")
+      setLinkSaleId("")
+    }
+  }
+
   const applyParseResult = (result: ParseSalesInvoiceResult) => {
     setParseResult(result)
     setPuntoVenta(result.parsed.punto_venta != null ? String(result.parsed.punto_venta) : "")
@@ -189,13 +222,7 @@ export function ImportClientInvoiceModal({
     }
     setItems(result.items.map((item) => toEditableItem(item)))
     setLinkableSales(result.linkable_sales ?? [])
-    if (result.suggested_link_sale_id && (result.linkable_sales?.length ?? 0) > 0) {
-      setRegistrationMode("link")
-      setLinkSaleId(String(result.suggested_link_sale_id))
-    } else {
-      setRegistrationMode("standalone")
-      setLinkSaleId("")
-    }
+    applyLinkSelection(result.linkable_sales ?? [], result.suggested_link_sale_id)
     setStep("review")
   }
 
@@ -206,10 +233,10 @@ export function ImportClientInvoiceModal({
     }
     setIsParsing(true)
     try {
-      const res = await parseSalesInvoiceDocument(
-        file,
-        defaultClientId ?? (clientId ? parseInt(clientId, 10) : undefined)
-      )
+      const res = await parseSalesInvoiceDocument(file, {
+        clientId: defaultClientId ?? (clientId ? parseInt(clientId, 10) : undefined),
+        linkSaleId: defaultLinkSaleId,
+      })
       if (res.data.warnings?.length) {
         res.data.warnings.forEach((w) => toast.warning(w))
       }
@@ -224,24 +251,35 @@ export function ImportClientInvoiceModal({
 
   const handleClientChange = async (value: string) => {
     setClientId(value)
-    if (!parseResult?.file_token || !value) return
+    if (!parseResult?.file_token) return
     try {
-      const res = await rematchSalesInvoiceDocument(parseResult.file_token, parseInt(value, 10))
+      const res = await rematchSalesInvoiceDocument(parseResult.file_token, {
+        clientId: value ? parseInt(value, 10) : undefined,
+        linkSaleId: linkSaleId ? parseInt(linkSaleId, 10) : defaultLinkSaleId,
+      })
       setItems(res.data.items.map((item) => toEditableItem(item)))
       setLinkableSales(res.data.linkable_sales ?? [])
-      if (res.data.suggested_link_sale_id) {
-        setLinkSaleId(String(res.data.suggested_link_sale_id))
+      if (linkSaleId && res.data.linkable_sales?.some((s) => s.id === parseInt(linkSaleId, 10))) {
+        /* conservar selección */
       } else {
-        setLinkSaleId("")
+        applyLinkSelection(res.data.linkable_sales ?? [], res.data.suggested_link_sale_id)
       }
     } catch {
       /* opcional */
     }
   }
 
+  const handleLinkSaleChange = (value: string) => {
+    setLinkSaleId(value)
+    const linked = linkableSales.find((s) => s.id === parseInt(value, 10))
+    if (linked?.client_id) {
+      setClientId(String(linked.client_id))
+    }
+  }
+
   const handleConfirm = async () => {
     if (!parseResult?.file_token) return
-    if (!clientId) {
+    if (!clientId && registrationMode !== "link") {
       toast.error("Seleccione un cliente")
       return
     }
@@ -265,9 +303,17 @@ export function ImportClientInvoiceModal({
     setIsConfirming(true)
     setStep("confirming")
     try {
+      const linkedSale = linkSaleId
+        ? linkableSales.find((s) => s.id === parseInt(linkSaleId, 10))
+        : undefined
+      const confirmClientId =
+        registrationMode === "link" && linkedSale?.client_id
+          ? linkedSale.client_id
+          : parseInt(clientId, 10)
+
       const res = await confirmSalesInvoiceDocument({
         file_token: parseResult.file_token,
-        client_id: parseInt(clientId, 10),
+        client_id: confirmClientId,
         link_sale_id: registrationMode === "link" ? parseInt(linkSaleId, 10) : undefined,
         punto_venta: parseInt(puntoVenta, 10),
         numero: parseInt(numero, 10),
@@ -318,8 +364,8 @@ export function ImportClientInvoiceModal({
             Importar factura ARCA (PDF)
           </DialogTitle>
           <DialogDescription>
-            Suba el PDF de una factura emitida fuera del sistema. Podés registrarla como venta importada
-            o <strong>vincularla a una venta POS</strong> existente del cliente.
+            {linkSaleHint ??
+              "Suba el PDF de una factura emitida fuera del sistema. Podés registrarla como venta importada o vincularla a una venta POS sin comprobante ARCA."}
           </DialogDescription>
         </DialogHeader>
 
@@ -349,7 +395,9 @@ export function ImportClientInvoiceModal({
               <>
                 <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
                 <p className="text-sm text-muted-foreground mb-4">
-                  Arrastre el PDF de la factura o selecciónelo
+                  {defaultLinkSaleId
+                    ? "Arrastre el PDF para vincularlo a la venta seleccionada. El archivo quedará guardado en el sistema."
+                    : "Arrastre el PDF de la factura o selecciónelo"}
                 </p>
                 <Label htmlFor="sales-invoice-pdf" className="cursor-pointer">
                   <Button asChild variant="secondary">
@@ -429,8 +477,8 @@ export function ImportClientInvoiceModal({
                     <SelectContent>
                       <SelectItem value="standalone">Nueva venta importada (solo registro fiscal)</SelectItem>
                       <SelectItem value="link" disabled={linkableSales.length === 0}>
-                        Vincular a venta POS existente
-                        {linkableSales.length === 0 ? " (sin ventas pendientes)" : ""}
+                        Vincular a venta POS sin facturar
+                        {linkableSales.length === 0 ? " (ninguna disponible)" : ` (${linkableSales.length})`}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -438,20 +486,22 @@ export function ImportClientInvoiceModal({
                 {registrationMode === "link" ? (
                   <div className="sm:col-span-2 space-y-2">
                     <Label>Venta POS a vincular</Label>
-                    <Select value={linkSaleId} onValueChange={setLinkSaleId}>
+                    <Select value={linkSaleId} onValueChange={handleLinkSaleChange}>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar venta" />
                       </SelectTrigger>
                       <SelectContent>
                         {linkableSales.map((sale) => (
                           <SelectItem key={sale.id} value={String(sale.id)}>
-                            {sale.sale_number} · {formatSaleDate(sale.sale_date)} · $
-                            {formatMoney(sale.total_amount)}
+                            {sale.sale_number} · {sale.client_name ?? "Sin cliente"} ·{" "}
+                            {formatSaleDate(sale.sale_date)} · ${formatMoney(sale.total_amount)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">{LINKED_POS_SALE_HINT}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {LINKED_POS_SALE_HINT} El PDF original se guarda y podés consultarlo desde la venta.
+                    </p>
                   </div>
                 ) : null}
                 <div>

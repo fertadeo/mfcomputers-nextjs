@@ -981,6 +981,7 @@ export interface Sale extends SaleArcaFields {
   sale_date: string
   sync_status?: 'pending' | 'synced' | 'error'
   sale_source?: 'pos' | 'imported' | 'pos_external'
+  source_file_path?: string | null
   items?: SaleItemResponse[]
   created_at: string
   updated_at: string
@@ -5314,6 +5315,8 @@ export interface LinkableSaleSummary {
   sale_number: string
   sale_date: string
   total_amount: number
+  client_id?: number | null
+  client_name?: string | null
   arca_status?: string | null
 }
 
@@ -5350,7 +5353,7 @@ export interface ParseSalesInvoiceResult {
 
 export async function parseSalesInvoiceDocument(
   file: File,
-  clientId?: number
+  options?: { clientId?: number; linkSaleId?: number }
 ): Promise<{
   success: boolean;
   message: string;
@@ -5359,7 +5362,8 @@ export async function parseSalesInvoiceDocument(
 }> {
   const formData = new FormData();
   formData.append('file', file);
-  if (clientId) formData.append('client_id', String(clientId));
+  if (options?.clientId) formData.append('client_id', String(options.clientId));
+  if (options?.linkSaleId) formData.append('link_sale_id', String(options.linkSaleId));
 
   const response = await fetch(`${getApiUrl()}/sales/documents/parse`, {
     method: 'POST',
@@ -5376,7 +5380,7 @@ export async function parseSalesInvoiceDocument(
 
 export async function rematchSalesInvoiceDocument(
   fileToken: string,
-  clientId: number
+  options?: { clientId?: number; linkSaleId?: number }
 ): Promise<{
   success: boolean;
   message: string;
@@ -5390,7 +5394,11 @@ export async function rematchSalesInvoiceDocument(
   const response = await fetch(`${getApiUrl()}/sales/documents/rematch`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ file_token: fileToken, client_id: clientId }),
+    body: JSON.stringify({
+      file_token: fileToken,
+      ...(options?.clientId ? { client_id: options.clientId } : {}),
+      ...(options?.linkSaleId ? { link_sale_id: options.linkSaleId } : {}),
+    }),
   });
 
   const payload = await response.json();
@@ -5398,6 +5406,25 @@ export async function rematchSalesInvoiceDocument(
     throw new Error(payload.error || payload.message || `Error ${response.status}`);
   }
   return payload;
+}
+
+/** Descarga el PDF externo vinculado a una venta (factura importada o pos_external). */
+export function getSaleSourcePdfUrl(saleId: number): string {
+  return `${getApiUrl()}/sales/${saleId}/source-pdf`;
+}
+
+export async function openSaleSourcePdf(saleId: number): Promise<void> {
+  const response = await fetch(getSaleSourcePdfUrl(saleId), {
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function confirmSalesInvoiceDocument(data: {

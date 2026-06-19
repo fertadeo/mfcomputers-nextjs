@@ -37,6 +37,7 @@ import {
   getRepairOrders,
   getSale,
   getSales,
+  openSaleSourcePdf,
   resolveSaleIdForRepairOrderFacturacion,
   type Cliente,
   type EmitirNotaCreditoError,
@@ -220,6 +221,9 @@ export default function FacturacionPage() {
   const [creditNoteEmitSuccess, setCreditNoteEmitSuccess] = useState<string | null>(null)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [isImportInvoiceOpen, setIsImportInvoiceOpen] = useState(false)
+  const [importLinkSaleId, setImportLinkSaleId] = useState<number | undefined>()
+  const [importLinkClientId, setImportLinkClientId] = useState<number | undefined>()
+  const [importLinkHint, setImportLinkHint] = useState<string | undefined>()
   const [viewInvoiceData, setViewInvoiceData] = useState<GenerateArcaInvoicePdfParams | null>(null)
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
   const [viewInvoiceError, setViewInvoiceError] = useState<string | null>(null)
@@ -441,6 +445,24 @@ export default function FacturacionPage() {
   useEffect(() => {
     void loadBillables()
   }, [])
+
+  function openImportInvoiceModal(options?: {
+    saleId?: number
+    clientId?: number
+    hint?: string
+  }) {
+    setImportLinkSaleId(options?.saleId)
+    setImportLinkClientId(options?.clientId)
+    setImportLinkHint(options?.hint)
+    setIsImportInvoiceOpen(true)
+  }
+
+  function closeImportInvoiceModal() {
+    setIsImportInvoiceOpen(false)
+    setImportLinkSaleId(undefined)
+    setImportLinkClientId(undefined)
+    setImportLinkHint(undefined)
+  }
 
   const handleEmitCreditNote = async () => {
     if (!creditNoteSale) return
@@ -1040,7 +1062,7 @@ export default function FacturacionPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setIsImportInvoiceOpen(true)}>
+              <Button variant="outline" onClick={() => openImportInvoiceModal()}>
                 <FileUp className="mr-2 h-4 w-4" />
                 Importar factura PDF
               </Button>
@@ -1058,8 +1080,11 @@ export default function FacturacionPage() {
           <ArcaInvoiceTemplateDialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen} />
           <ImportClientInvoiceModal
             isOpen={isImportInvoiceOpen}
-            onClose={() => setIsImportInvoiceOpen(false)}
+            onClose={closeImportInvoiceModal}
             onSuccess={() => void loadBillables()}
+            defaultClientId={importLinkClientId}
+            defaultLinkSaleId={importLinkSaleId}
+            linkSaleHint={importLinkHint}
           />
 
           <div className="grid gap-4 md:grid-cols-4">
@@ -1270,14 +1295,33 @@ export default function FacturacionPage() {
                                 ) : null}
                               </div>
                             ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 shrink-0"
-                                onClick={() => startEmitFromTable(row.key)}
-                              >
-                                Emitir comprobante
-                              </Button>
+                              <div className="flex flex-col items-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 shrink-0"
+                                  onClick={() => startEmitFromTable(row.key)}
+                                >
+                                  Emitir comprobante
+                                </Button>
+                                {row.kind === "sale" && row.sale ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 shrink-0 text-xs"
+                                    onClick={() =>
+                                      openImportInvoiceModal({
+                                        saleId: row.sale!.id,
+                                        clientId: row.clientId ?? undefined,
+                                        hint: `Vincular PDF externo a ${row.reference} · ${row.clientName}`,
+                                      })
+                                    }
+                                  >
+                                    <FileUp className="mr-1 h-3 w-3" />
+                                    Vincular PDF externo
+                                  </Button>
+                                ) : null}
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>
@@ -1377,6 +1421,21 @@ export default function FacturacionPage() {
                         )}
                         {isGeneratingArcaPdf ? "Generando…" : "Descargar PDF"}
                       </Button>
+                      {selectedSale && isImportedSale(selectedSale) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            void openSaleSourcePdf(selectedSale.id).catch((err) =>
+                              setErrorMsg(err instanceof Error ? err.message : "No se pudo abrir el PDF original")
+                            )
+                          }
+                        >
+                          <FileUp className="mr-2 h-4 w-4" />
+                          Ver PDF original
+                        </Button>
+                      ) : null}
                       {selectedSale && saleHasNotaCreditoEmitida(selectedSale) ? (
                         <Button
                           type="button"
