@@ -13,6 +13,7 @@ import { ShoppingCart, Search, Plus, Clock, CheckCircle, AlertTriangle, Filter, 
 import { NewPurchaseModal } from "@/components/new-purchase-modal"
 import { ImportSupplierDocumentModal } from "@/components/import-supplier-document-modal"
 import { EditPurchaseModal } from "@/components/edit-purchase-modal"
+import { PurchaseSourcePdfModal } from "@/components/purchase-source-pdf-modal"
 import { 
   getPurchases, 
   getPurchaseStats, 
@@ -33,6 +34,7 @@ export default function ComprasPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(null)
   const [deletingPurchaseId, setDeletingPurchaseId] = useState<number | null>(null)
+  const [pdfPreviewPurchase, setPdfPreviewPurchase] = useState<Purchase | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [supplierFilter, setSupplierFilter] = useState<string>("all")
@@ -395,7 +397,17 @@ export default function ComprasPage() {
                             {purchase.notes || '-'}
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-1">
+                            <div className="flex flex-wrap gap-1">
+                              {purchase.has_source_pdf ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setPdfPreviewPurchase(purchase)}
+                                >
+                                  <FileText className="h-4 w-4 mr-1" />
+                                  Ver PDF
+                                </Button>
+                              ) : null}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -444,6 +456,11 @@ export default function ComprasPage() {
           onClose={() => setEditingPurchaseId(null)}
           onSuccess={handleModalSuccess}
           onDeleted={handleModalSuccess}
+        />
+        <PurchaseSourcePdfModal
+          isOpen={pdfPreviewPurchase != null}
+          purchase={pdfPreviewPurchase}
+          onClose={() => setPdfPreviewPurchase(null)}
         />
       </ERPLayout>
     </Protected>

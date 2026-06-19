@@ -3981,6 +3981,8 @@ export interface Purchase {
   debt_amount?: number;
   allows_partial_delivery?: boolean;
   confirmed_at?: string;
+  has_source_pdf?: boolean;
+  source_delivery_note_number?: string | null;
 }
 
 export interface PurchaseItem {
@@ -5284,6 +5286,39 @@ export async function confirmPurchaseSupplierDocument(data: {
     throw new Error(payload.error || payload.message || `Error ${response.status}`);
   }
   return payload;
+}
+
+/** URL del PDF del proveedor vinculado a una orden de compra. */
+export function getPurchaseSourcePdfUrl(purchaseId: number): string {
+  return `${getApiUrl()}/purchases/${purchaseId}/source-pdf`;
+}
+
+export async function fetchPurchaseSourcePdfBlob(purchaseId: number): Promise<Blob> {
+  const response = await fetch(getPurchaseSourcePdfUrl(purchaseId), {
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || payload.message || `Error ${response.status}`);
+  }
+  return response.blob();
+}
+
+export async function openPurchaseSourcePdf(purchaseId: number): Promise<void> {
+  const blob = await fetchPurchaseSourcePdfBlob(purchaseId);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function downloadPurchaseSourcePdf(purchaseId: number, filename?: string): Promise<void> {
+  const blob = await fetchPurchaseSourcePdfBlob(purchaseId);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename ?? `documento-compra-${purchaseId}.pdf`;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // ==================== IMPORTACIÓN FACTURAS ARCA (PDF) ====================
