@@ -285,16 +285,29 @@ function renderCommercialBudgetPdf(
     doc.text("CLIENTE", mx + colW + colGap, y)
     y += 12
 
+    const clientColX = mx + colW + colGap
+
     doc.setFont("helvetica", "bold")
     doc.setFontSize(10)
     doc.setTextColor(...TEXT_BODY)
     doc.text(COMPANY.name, mx, y)
-    doc.text(params.clientName || "—", mx + colW + colGap, y)
+    doc.text(params.clientName || "—", clientColX, y)
     y += 12
 
+    let yClient = y
     doc.setFont("helvetica", "normal")
     doc.setFontSize(9)
     doc.setTextColor(...TEXT_BODY)
+    if (params.clientAddressLines?.length) {
+      for (const line of params.clientAddressLines) {
+        const trimmed = line.trim()
+        if (trimmed) {
+          doc.text(trimmed, clientColX, yClient)
+          yClient += 11
+        }
+      }
+    }
+
     doc.text(COMPANY.legalName, mx, y)
     y += 11
     doc.setFontSize(8)
@@ -302,23 +315,21 @@ function renderCommercialBudgetPdf(
     doc.text(`CUIT: ${COMPANY.cuit}`, mx, y)
     y += 11
     doc.setFontSize(9)
+    doc.setTextColor(...TEXT_BODY)
     doc.text(COMPANY.tagline, mx, y)
     y += 11
     doc.text(COMPANY.address, mx, y)
     y += 11
     doc.text(COMPANY.city, mx, y)
 
-    let yRight = y - 22
-    yRight = drawDocumentClientePdfDetails(doc, mx + colW + colGap, yRight, {
-      clientCode: params.clientCode,
+    yClient = drawDocumentClientePdfDetails(doc, clientColX, yClient, {
       clientCuit: params.clientCuit,
       clientPhone: params.clientPhone,
       clientEmail: params.clientEmail,
-      clientAddressLines: params.clientAddressLines,
       clientTaxCondition: params.clientTaxCondition,
     })
 
-    y = Math.max(y, yRight) + 8
+    y = Math.max(y, yClient) + 8
     doc.line(mx, y, pageW - mx, y)
     y += 16
 
