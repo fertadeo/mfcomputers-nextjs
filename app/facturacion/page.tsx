@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertTriangle,
   CheckCircle2,
@@ -100,6 +100,7 @@ import {
 import { resolveFacturacionApiError } from "@/lib/resolve-facturacion-api-error"
 import { ArcaInvoiceTemplateDialog } from "@/components/arca-invoice-template-dialog"
 import { ImportClientInvoiceModal } from "@/components/import-client-invoice-modal"
+import { ResizableTableHead } from "@/components/resizable-table-head"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
@@ -134,8 +135,41 @@ import {
   clienteCuitDigitos,
   validateFacturarReceptorFiscal,
 } from "@/lib/facturacion-form-from-cliente"
+import { useResizableTableColumns } from "@/lib/use-resizable-table-columns"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
+
+const FACTURACION_TABLE_COL_IDS = [
+  "comprobante",
+  "cliente",
+  "fecha",
+  "estadoArca",
+  "tipoFactura",
+  "total",
+  "acciones",
+] as const
+
+const FACTURACION_TABLE_COL_DEFAULTS: Record<(typeof FACTURACION_TABLE_COL_IDS)[number], number> = {
+  comprobante: 176,
+  cliente: 200,
+  fecha: 152,
+  estadoArca: 160,
+  tipoFactura: 100,
+  total: 112,
+  acciones: 104,
+}
+
+const FACTURACION_TABLE_COL_MINS: Record<(typeof FACTURACION_TABLE_COL_IDS)[number], number> = {
+  comprobante: 100,
+  cliente: 88,
+  fecha: 120,
+  estadoArca: 110,
+  tipoFactura: 72,
+  total: 88,
+  acciones: 88,
+}
+
+const FACTURACION_TABLE_COLS_STORAGE_KEY = "mf_facturacion_table_col_widths"
 
 const estadoBadge: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "Procesando", variant: "secondary" },
@@ -203,6 +237,16 @@ function getBillableEmittedTipo(row: BillableRow): number | null {
 }
 
 export default function FacturacionPage() {
+  const {
+    widths: tableColWidths,
+    beginResize: beginTableColResize,
+    resetWidths: resetTableColumns,
+    totalWidth: tableTotalWidth,
+  } = useResizableTableColumns(
+    FACTURACION_TABLE_COLS_STORAGE_KEY,
+    FACTURACION_TABLE_COL_DEFAULTS,
+    FACTURACION_TABLE_COL_MINS
+  )
   const [billables, setBillables] = useState<BillableRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1200,11 +1244,11 @@ export default function FacturacionPage() {
                 Ventas y reparaciones facturables
               </CardTitle>
               <CardDescription>
-                Incluye ventas POS y órdenes de reparación en estado Aceptado o Entregado. Facturadas: ver comprobante, reemitir o anular por error con nota de crédito (cuando el backend lo habilite).
+                Incluye ventas POS y órdenes de reparación en estado Aceptado o Entregado. Facturadas: ver comprobante, reemitir o anular por error con nota de crédito (cuando el backend lo habilite). Arrastrá el borde derecho de cada encabezado para ajustar el ancho de las columnas.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex flex-col gap-3 md:flex-row">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
                 <div className="relative flex-1">
                   <Search className="text-muted-foreground absolute left-2 top-2.5 h-4 w-4" />
                   <Input
@@ -1226,19 +1270,59 @@ export default function FacturacionPage() {
                     <SelectItem value="error">Error</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground shrink-0"
+                  onClick={resetTableColumns}
+                >
+                  Restablecer columnas
+                </Button>
               </div>
 
               <div className="rounded-md border overflow-x-auto">
-              <Table className="min-w-[1040px]">
+              <Table
+                className="w-full"
+                style={{ tableLayout: "fixed", minWidth: tableTotalWidth }}
+              >
+                <colgroup>
+                  {FACTURACION_TABLE_COL_IDS.map((colId) => (
+                    <col key={colId} style={{ width: tableColWidths[colId] }} />
+                  ))}
+                </colgroup>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[11rem]">Comprobante</TableHead>
-                    <TableHead className="min-w-[10rem] max-w-[14rem]">Cliente</TableHead>
-                    <TableHead className="min-w-[9rem]">Fecha</TableHead>
-                    <TableHead className="min-w-[9rem] whitespace-normal">Estado ARCA</TableHead>
-                    <TableHead className="min-w-[6rem]">Tipo factura</TableHead>
-                    <TableHead className="min-w-[7rem] text-right">Total</TableHead>
-                    <TableHead className="min-w-[9.5rem] w-[9.5rem] text-center">Acciones</TableHead>
+                    <ResizableTableHead columnId="comprobante" onResizeStart={beginTableColResize}>
+                      Comprobante
+                    </ResizableTableHead>
+                    <ResizableTableHead columnId="cliente" onResizeStart={beginTableColResize}>
+                      Cliente
+                    </ResizableTableHead>
+                    <ResizableTableHead columnId="fecha" onResizeStart={beginTableColResize}>
+                      Fecha
+                    </ResizableTableHead>
+                    <ResizableTableHead columnId="estadoArca" onResizeStart={beginTableColResize}>
+                      Estado ARCA
+                    </ResizableTableHead>
+                    <ResizableTableHead columnId="tipoFactura" onResizeStart={beginTableColResize}>
+                      Tipo factura
+                    </ResizableTableHead>
+                    <ResizableTableHead
+                      columnId="total"
+                      className="text-right"
+                      onResizeStart={beginTableColResize}
+                    >
+                      Total
+                    </ResizableTableHead>
+                    <ResizableTableHead
+                      columnId="acciones"
+                      className="text-center"
+                      onResizeStart={beginTableColResize}
+                      resizable={false}
+                    >
+                      Acciones
+                    </ResizableTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1256,22 +1340,28 @@ export default function FacturacionPage() {
                       const emittedTipo = getBillableEmittedTipo(row)
                       return (
                         <TableRow key={row.key}>
-                          <TableCell className="font-medium">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span>{row.reference}</span>
+                          <TableCell className="overflow-hidden font-medium">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate" title={row.reference}>
+                                {row.reference}
+                              </span>
                               {row.kind === "repair_order" ? (
-                                <Badge variant="outline" className="text-xs font-normal">
+                                <Badge variant="outline" className="shrink-0 text-xs font-normal">
                                   Reparación
                                   {row.repairStatusLabel ? ` · ${row.repairStatusLabel}` : ""}
                                 </Badge>
                               ) : null}
                             </div>
                           </TableCell>
-                          <TableCell className="max-w-[14rem] truncate" title={row.clientName}>
-                            {row.clientName}
+                          <TableCell className="overflow-hidden">
+                            <span className="block truncate" title={row.clientName}>
+                              {row.clientName}
+                            </span>
                           </TableCell>
-                          <TableCell className="whitespace-nowrap">{formatDateTime(row.date)}</TableCell>
-                          <TableCell className="whitespace-normal">
+                          <TableCell className="overflow-hidden whitespace-nowrap">
+                            {formatDateTime(row.date)}
+                          </TableCell>
+                          <TableCell className="overflow-hidden whitespace-normal">
                             <div className="space-y-1">
                               <Badge variant={estadoBadge[status].variant}>{estadoBadge[status].label}</Badge>
                               {row.sale && isImportedSale(row.sale) ? (
@@ -1285,13 +1375,13 @@ export default function FacturacionPage() {
                                   {row.arcaNcCae ? ` · CAE ${row.arcaNcCae}` : ""}
                                 </Badge>
                               ) : row.arcaNcStatus === "error" && row.sale?.arca_nc_error_message ? (
-                                <p className="text-muted-foreground max-w-[220px] text-xs leading-snug">
+                                <p className="text-muted-foreground max-w-full text-xs leading-snug">
                                   NC: {row.sale.arca_nc_error_message}
                                 </p>
                               ) : null}
                               {status === "error" && (row.arcaErrorCode || row.arcaErrorMessage) ? (
                                 <p
-                                  className="text-muted-foreground max-w-[220px] text-xs leading-snug"
+                                  className="text-muted-foreground max-w-full text-xs leading-snug"
                                   title={row.arcaErrorMessage ?? undefined}
                                 >
                                   {resolveFacturacionErrorFromSale(row.arcaErrorCode, row.arcaErrorMessage)
