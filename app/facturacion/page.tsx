@@ -12,6 +12,12 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertTriangle,
@@ -24,6 +30,7 @@ import {
   FileText,
   FileUp,
   LayoutTemplate,
+  MoreVertical,
   RefreshCcw,
   Search,
   Loader2,
@@ -1331,25 +1338,35 @@ export default function FacturacionPage() {
                                     Modificar vinculación
                                   </Button>
                                 ) : null}
-                                {row.sale && canReemitirComprobante(row.sale) ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 shrink-0"
-                                  onClick={() => startEmitFromTable(row.key)}
-                                >
-                                  Reemitir
-                                </Button>
-                                ) : null}
-                                {row.sale && canEmitNotaCredito(row.sale) ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 shrink-0 text-xs text-amber-700 hover:text-amber-800 dark:text-amber-400"
-                                    onClick={() => setCreditNoteSale(row.sale!)}
-                                  >
-                                    ¿Fue un error?
-                                  </Button>
+                                {row.sale &&
+                                (canReemitirComprobante(row.sale) || canEmitNotaCredito(row.sale)) ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0"
+                                        aria-label="Opciones"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {canEmitNotaCredito(row.sale) ? (
+                                        <DropdownMenuItem
+                                          className="text-amber-700 focus:text-amber-800 dark:text-amber-400 dark:focus:text-amber-300"
+                                          onClick={() => setCreditNoteSale(row.sale!)}
+                                        >
+                                          ¿Fue un error? Emití una NC
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                      {canReemitirComprobante(row.sale) ? (
+                                        <DropdownMenuItem onClick={() => startEmitFromTable(row.key)}>
+                                          Reemitir
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 ) : null}
                               </div>
                             ) : (
