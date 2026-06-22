@@ -54,7 +54,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-import { formatSaleMoney } from "@/lib/pos-usd"
+import { formatSaleMoney, isUsdSale } from "@/lib/pos-usd"
+import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
 
 function conceptoLabel(concepto?: number): string {
   if (concepto === 2) return "Servicios"
@@ -152,6 +153,7 @@ export function FacturacionEmitConfirmDialog({
   )
 
   const invoiceCurrency = sale?.currency === "USD" ? "USD" : "ARS"
+  const saleInUsd = isUsdSale(sale?.currency)
   const formatCurrency = (value: number) =>
     formatSaleMoney(value, invoiceCurrency, { maximumFractionDigits: 2, minimumFractionDigits: 2 })
 
@@ -271,6 +273,8 @@ export function FacturacionEmitConfirmDialog({
       cliente,
       fechaEmision: fechaCbte ?? saleDate ?? sale?.sale_date,
       totalAmount: totalComprobante,
+      saleCurrency: sale?.currency,
+      exchangeRate: sale?.exchange_rate,
     })
   }, [
     payloadParaEmision,
@@ -281,6 +285,8 @@ export function FacturacionEmitConfirmDialog({
     saleDate,
     sale?.sale_date,
     totalComprobante,
+    sale?.currency,
+    sale?.exchange_rate,
   ])
 
   const facturarRequestJson = facturarFullPayloadPreview
@@ -302,10 +308,13 @@ export function FacturacionEmitConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] max-w-4xl flex-col gap-0 p-0">
         <DialogHeader className="shrink-0 border-b px-6 py-4">
-          <DialogTitle>Confirmar emisión del comprobante</DialogTitle>
+          <DialogTitle>
+            {saleInUsd ? "Confirmar factura en dólares (DOL)" : "Confirmar emisión del comprobante"}
+          </DialogTitle>
           <DialogDescription>
-            Revisá el detalle del comprobante antes de enviarlo al facturador ARCA. La emisión no se puede deshacer
-            desde esta pantalla.
+            {saleInUsd
+              ? "Esta venta se cobró en USD. El comprobante ARCA se emitirá en moneda dólar con el tipo de cambio guardado al momento del cobro."
+              : "Revisá el detalle del comprobante antes de enviarlo al facturador ARCA. La emisión no se puede deshacer desde esta pantalla."}
           </DialogDescription>
         </DialogHeader>
 
@@ -314,6 +323,15 @@ export function FacturacionEmitConfirmDialog({
             <Alert variant="warning" title="Sin comprobante" description="Seleccioná una venta u orden de reparación." />
           ) : (
             <>
+              {saleInUsd ? (
+                <SaleCurrencyNotice
+                  variant="facturacion"
+                  currency={sale?.currency}
+                  exchangeRate={sale?.exchange_rate}
+                  totalAmount={totalComprobante}
+                />
+              ) : null}
+
               {clienteLoading ? (
                 <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />
@@ -656,8 +674,7 @@ export function FacturacionEmitConfirmDialog({
                 </div>
                 {invoiceCurrency === "USD" && sale?.exchange_rate ? (
                   <p className="text-xs text-amber-700 dark:text-amber-400 mb-1">
-                    Facturación en dólares (DOL) · cotización {Number(sale.exchange_rate).toLocaleString("es-AR")}{" "}
-                    ARS/USD
+                    Importes en USD · moneda WSFE DOL · TC {Number(sale.exchange_rate).toLocaleString("es-AR")} ARS/USD
                   </p>
                 ) : null}
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>

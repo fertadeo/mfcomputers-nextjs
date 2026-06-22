@@ -72,3 +72,42 @@ export function applyUsdUnitPriceEdit(
     ars_unit_price: usdToArs(usd, rate),
   }
 }
+
+export function isUsdSale(currency: SaleCurrency | string | null | undefined): boolean {
+  return String(currency ?? "ARS").toUpperCase() === "USD"
+}
+
+export function resolveSaleCurrency(currency: SaleCurrency | string | null | undefined): SaleCurrency {
+  return isUsdSale(currency) ? "USD" : "ARS"
+}
+
+export function formatExchangeRate(rate: number | null | undefined): string {
+  if (rate == null || !Number.isFinite(Number(rate))) return "—"
+  return Number(rate).toLocaleString("es-AR", { maximumFractionDigits: 2 })
+}
+
+export function formatUsdPriceInput(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return ""
+  return value.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+export function parseUsdPriceInput(raw: string): number {
+  const normalized = raw.replace(/[^\d.,]/g, "").replace(",", ".")
+  const n = parseFloat(normalized)
+  if (!Number.isFinite(n) || n < 0) return 0
+  return roundUsd(n)
+}
+
+export function formatArsPriceInput(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return ""
+  return Math.round(value).toLocaleString("es-AR")
+}
+
+export function parseArsPriceInput(raw: string): number {
+  const digits = raw.replace(/\D/g, "")
+  return digits === "" ? 0 : Math.max(0, parseInt(digits, 10))
+}
+
+export function currencyPricePrefix(currency: SaleCurrency): string {
+  return currency === "USD" ? "U$S" : "$"
+}

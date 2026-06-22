@@ -10,16 +10,25 @@ import { IvaRateSelect } from "@/components/iva-rate-select"
 import { getPosCartLineKey, getPosCartLineLabel, isPosCustomLine, type PosCartLine } from "@/lib/pos-cart"
 import { posCatalogMaxQuantity } from "@/lib/pos-products"
 import type { SaleIvaRate } from "@/lib/sale-iva"
+import {
+  cartLineArsReference,
+  currencyPricePrefix,
+  formatArsPriceInput,
+  formatSaleMoney,
+  formatUsdPriceInput,
+  parseArsPriceInput,
+  parseUsdPriceInput,
+  resolveSaleCurrency,
+  type SaleCurrency,
+} from "@/lib/pos-usd"
 
 const FORMAT_NUM = { maximumFractionDigits: 0, minimumFractionDigits: 0 } as const
 
-function formatUnitPrice(n: number): string {
-  return n.toLocaleString("es-AR", FORMAT_NUM)
-}
-
-function parseUnitPriceInput(value: string): number {
-  const digits = value.replace(/\D/g, "")
-  return digits === "" ? 0 : Math.max(0, parseInt(digits, 10))
+function formatLineTotal(value: number, currency: SaleCurrency): string {
+  if (currency === "USD") {
+    return formatSaleMoney(value, "USD", { maximumFractionDigits: 2, minimumFractionDigits: 2 })
+  }
+  return `$ ${value.toLocaleString("es-AR", FORMAT_NUM)}`
 }
 
 export interface PosCartItemRowProps {
@@ -31,6 +40,8 @@ export interface PosCartItemRowProps {
   onRemove: (lineKey: string) => void
   /** Factura C: alícuota fija en 0% (exento). */
   ivaRateDisabled?: boolean
+  currency?: SaleCurrency
+  exchangeRate?: number | null
 }
 
 export function PosCartItemRow({
@@ -41,12 +52,23 @@ export function PosCartItemRow({
   onSetIvaRate,
   onRemove,
   ivaRateDisabled = false,
+  currency = "ARS",
+  exchangeRate,
 }: PosCartItemRowProps) {
   const lineKey = getPosCartLineKey(line)
   const label = getPosCartLineLabel(line)
   const custom = isPosCustomLine(line)
   const maxQty = custom ? undefined : posCatalogMaxQuantity(line.product)
   const lineTotal = line.quantity * line.unit_price
+  const resolvedCurrency = resolveSaleCurrency(currency)
+  const arsRef = resolvedCurrency === "USD" ? cartLineArsReference(line) : null
+  const pricePrefix = currencyPricePrefix(resolvedCurrency)
+
+  const formatUnitPriceDisplay = (n: number) =>
+    resolvedCurrency === "USD" ? formatUsdPriceInput(n) : formatArsPriceInput(n)
+
+  const parseUnitPriceInput = (value: string) =>
+    resolvedCurrency === "USD" ? parseUsdPriceInput(value) : parseArsPriceInput(value)
 
   const qtyControls = (
     <>
@@ -67,16 +89,23 @@ export function PosCartItemRow({
   )
 
   const priceInput = (
-    <div className="flex items-center gap-1 shrink-0">
-      <span className="text-xs text-muted-foreground">$</span>
-      <Input
-        type="text"
-        inputMode="numeric"
-        className={view === "grid" ? "h-6 text-xs w-20" : view === "table" ? "w-24 h-8 text-xs inline-block" : "w-24 h-7 text-xs"}
-        placeholder="0"
-        value={line.unit_price === 0 ? "" : formatUnitPrice(Math.round(line.unit_price))}
-        onChange={(e) => onSetUnitPrice(lineKey, parseUnitPriceInput(e.target.value))}
-      />
+    <div className="flex flex-col gap-0.5 shrink-0">
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-muted-foreground whitespace-nowrap">{pricePrefix}</span>
+        <Input
+          type="text"
+          inputMode={resolvedCurrency === "USD" ? "decimal" : "numeric"}
+          className={view === "grid" ? "h-6 text-xs w-20" : view === "table" ? "w-24 h-8 text-xs inline-block" : "w-24 h-7 text-xs"}
+          placeholder="0"
+          value={line.unit_price === 0 ? "" : formatUnitPriceDisplay(line.unit_price)}
+          onChange={(e) => onSetUnitPrice(lineKey, parseUnitPriceInput(e.target.value))}
+        />
+      </div>
+      {resolvedCurrency === "USD" && arsRef != null ? (
+        <span className="text-[10px] text-muted-foreground pl-5">
+          Lista ARS ${arsRef.toLocaleString("es-AR", FORMAT_NUM)}
+        </span>
+      ) : null}
     </div>
   )
 
@@ -120,7 +149,7 @@ export function PosCartItemRow({
         <td className="p-2 text-right">
           <div className="flex justify-end">{ivaSelect}</div>
         </td>
-        <td className="p-2 text-right font-medium">${lineTotal.toLocaleString("es-AR", FORMAT_NUM)}</td>
+        <td className="p-2 text-right font-medium">{formatLineTotal(lineTotal, resolvedCurrency)}</td>
         <td className="p-2 text-right">
           <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => onRemove(lineKey)}>
             <Trash2 className="h-4 w-4" />
@@ -156,7 +185,7 @@ export function PosCartItemRow({
           {ivaSelect}
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold">${lineTotal.toLocaleString("es-AR", FORMAT_NUM)}</span>
+          <span className="text-xs font-semibold">{formatLineTotal(lineTotal, resolvedCurrency)}</span>
           <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={() => onRemove(lineKey)}>
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -182,7 +211,16 @@ export function PosCartItemRow({
           {ivaSelect}
         </div>
       </div>
-      <span className="text-sm font-medium whitespace-nowrap">${lineTotal.toLocaleString("es-AR", FORMAT_NUM)}</span>
+      <div className="text-right shrink-0">
+        <span className="text-sm font-medium whitespace-nowrap block">
+          {formatLineTotal(lineTotal, resolvedCurrency)}
+        </span>
+        {resolvedCurrency === "USD" && arsRef != null ? (
+          <span className="text-[10px] text-muted-foreground">
+            ARS ${(arsRef * line.quantity).toLocaleString("es-AR", FORMAT_NUM)}
+          </span>
+        ) : null}
+      </div>
       <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => onRemove(lineKey)}>
         <Trash2 className="h-4 w-4" />
       </Button>

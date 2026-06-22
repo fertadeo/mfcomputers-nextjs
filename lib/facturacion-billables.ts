@@ -16,6 +16,8 @@ export interface BillableRow {
   clientName: string
   date: string
   totalAmount: number
+  currency?: Sale["currency"]
+  exchangeRate?: number | null
   arcaStatus: ArcaStatus
   arcaCae?: string | null
   arcaCaeVto?: string | null
@@ -74,6 +76,8 @@ export function saleToBillable(sale: Sale): BillableRow {
     clientName: sale.client_name?.trim() || "Consumidor final",
     date: sale.sale_date,
     totalAmount: sale.total_amount,
+    currency: sale.currency,
+    exchangeRate: sale.exchange_rate ?? null,
     arcaStatus: getArcaStatusFromSale(sale),
     arcaCae: sale.arca_cae,
     arcaCaeVto: sale.arca_cae_vto,

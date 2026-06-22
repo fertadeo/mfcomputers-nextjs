@@ -238,6 +238,9 @@ export interface BuildArcaInvoicePreviewFromLinesArgs {
   cliente?: Cliente | null
   fechaEmision?: string | null
   totalAmount: number
+  /** Moneda de la venta (USD → preview en DOL) */
+  saleCurrency?: string | null
+  exchangeRate?: number | null
   /** Tipo WSFE (factura o nota de crédito). Por defecto `facturarPayload.tipo`. */
   tipoComprobante?: number
   /** Aviso en el borrador (ej. comprobante asociado en NC). */
@@ -281,6 +284,12 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
     ""
 
   const condicionVentaPdf = condicionVentaLabelFromPayload(payload)
+  const saleCurrency = String(args.saleCurrency ?? "ARS").toUpperCase() === "USD" ? "USD" : "ARS"
+  const tipoCambio =
+    saleCurrency === "USD" && args.exchangeRate != null
+      ? toNumber(args.exchangeRate, 1)
+      : 1
+  const afipMoneda = saleCurrency === "USD" ? "DOL" : "PES"
 
   return {
     emisor: {
@@ -334,5 +343,8 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
     pagina: "1/1",
     comprobanteIncompleto: true,
     previewAviso: args.previewAviso ?? undefined,
+    moneda: afipMoneda,
+    tipoCambio,
+    currencySymbol: saleCurrency === "USD" ? "U$S" : "$",
   }
 }

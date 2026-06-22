@@ -56,6 +56,8 @@ import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { PosCartItemRow } from "@/components/pos-cart-item-row"
 import { ClientePicker } from "@/components/cliente-picker"
 import { SaleConfirmDialog } from "@/components/sale-confirm-dialog"
+import { SaleCurrencyBadge } from "@/components/sale-currency-badge"
+import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
 import { getClienteDisplayName } from "@/lib/cliente-display"
 import {
   clienteRequiresZeroItemIva,
@@ -69,6 +71,7 @@ import {
   convertCartLineToArs,
   convertCartLineToUsd,
   formatSaleMoney,
+  isUsdSale,
   recalcUsdCartLine,
   type SaleCurrency as PosSaleCurrency,
 } from "@/lib/pos-usd"
@@ -499,14 +502,37 @@ export default function PuntoVentaPage() {
       ? `Cliente #${selectedClientId}`
       : "Consumidor final"
 
+  const cartRowCurrencyProps = {
+    currency: saleCurrency as PosSaleCurrency,
+    exchangeRate,
+  }
+
   return (
     <Protected requiredRoles={["gerencia", "ventas", "admin"]}>
       <ERPLayout activeItem="punto-venta">
         <div className="space-y-4">
-          <div>
-            <h1 className="text-2xl font-bold">Punto de venta</h1>
-            <p className="text-muted-foreground">Ventas en local físico</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-bold flex flex-wrap items-center gap-2">
+                Punto de venta
+                {isUsdSale(saleCurrency) ? <SaleCurrencyBadge currency="USD" exchangeRate={exchangeRate} showRate /> : null}
+              </h1>
+              <p className="text-muted-foreground">
+                {isUsdSale(saleCurrency)
+                  ? "Cobro y facturación en dólares (USD → DOL en ARCA)"
+                  : "Ventas en local físico"}
+              </p>
+            </div>
           </div>
+
+          {isUsdSale(saleCurrency) && cart.length > 0 ? (
+            <SaleCurrencyNotice
+              variant="banner"
+              currency={saleCurrency}
+              exchangeRate={exchangeRate}
+              totalAmount={total}
+            />
+          ) : null}
 
           {apiKeyMissing && (
             <Card className="border-amber-500 bg-amber-50 dark:bg-amber-950/30">
@@ -783,6 +809,7 @@ export default function PuntoVentaPage() {
                           onSetIvaRate={setCartIvaRate}
                           onRemove={removeFromCart}
                           ivaRateDisabled={requiresZeroItemIva}
+                          {...cartRowCurrencyProps}
                         />
                       ))}
                     </div>
@@ -798,21 +825,104 @@ export default function PuntoVentaPage() {
                           onSetIvaRate={setCartIvaRate}
                           onRemove={removeFromCart}
                           ivaRateDisabled={requiresZeroItemIva}
+                          {...cartRowCurrencyProps}
                         />
                       ))}
                     </div>
                   )}
                   {cart.length > 0 && (
                     <p className="text-sm font-semibold mt-3 pt-2 border-t">
-                      Subtotal: ${total.toLocaleString("es-AR", FORMAT_NUM)}
+                      Subtotal: {formatPosMoney(total)}
+                      {isUsdSale(saleCurrency) && exchangeRate ? (
+                        <span className="block text-xs font-normal text-muted-foreground mt-0.5">
+                          Ref. ARS {formatSaleMoney(total * exchangeRate, "ARS")}
+                        </span>
+                      ) : null}
                     </p>
                   )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Columna derecha: cliente, pago, total, cobrar */}
+            {/* Columna derecha: moneda, cliente, pago, total, cobrar */}
             <div className="space-y-4">
+              <Card
+                className={
+                  isUsdSale(saleCurrency)
+                    ? "border-amber-400/70 bg-amber-50/30 dark:border-amber-600/40 dark:bg-amber-950/15"
+                    : undefined
+                }
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Moneda de cobro
+                    {isUsdSale(saleCurrency) ? (
+                      <SaleCurrencyBadge currency="USD" exchangeRate={exchangeRate} showRate className="ml-auto" />
+                    ) : null}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Elegí la moneda <strong>antes</strong> de armar el carrito. En USD, los precios se convierten y la
+                    factura se emite en dólares (DOL).
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["ARS", "USD"] as const).map((cur) => (
+                      <Button
+                        key={cur}
+                        type="button"
+                        variant={saleCurrency === cur ? "default" : "outline"}
+                        size="sm"
+                        className={saleCurrency === cur && cur === "USD" ? "bg-amber-600 hover:bg-amber-600" : ""}
+                        onClick={() => handleSaleCurrencyChange(cur)}
+                      >
+                        {cur === "ARS" ? "Pesos (ARS)" : "Dólares (USD)"}
+                      </Button>
+                    ))}
+                  </div>
+                  {saleCurrency === "USD" ? (
+                    <div className="space-y-2 rounded-md border border-amber-300/60 bg-background/80 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="pos-exchange-rate" className="text-xs font-medium">
+                          Cotización USD/ARS (obligatoria)
+                        </Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => void loadSuggestedExchangeRate()}
+                          disabled={dollarRateLoading}
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${dollarRateLoading ? "animate-spin" : ""}`} />
+                          Sugerir del día
+                        </Button>
+                      </div>
+                      <Input
+                        id="pos-exchange-rate"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={exchangeRateInput}
+                        onChange={(e) => handleExchangeRateInputChange(e.target.value)}
+                        placeholder="Ej. 1200"
+                      />
+                      {dollarRateLabel ? (
+                        <p className="text-xs text-muted-foreground">
+                          Sugerencia: {dollarRateLabel}
+                          {exchangeRate ? ` · ${exchangeRate.toLocaleString("es-AR")} ARS/USD` : ""}
+                        </p>
+                      ) : null}
+                      {dollarRateError ? (
+                        <p className="text-xs text-destructive">{dollarRateError}</p>
+                      ) : null}
+                      <SaleCurrencyNotice variant="panel" currency="USD" exchangeRate={exchangeRate} />
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -858,71 +968,6 @@ export default function PuntoVentaPage() {
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       Factura C: los ítems deben ir al 0% (exento); ARCA no admite IVA discriminado en este comprobante.
                     </p>
-                  ) : null}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" />
-                    Moneda de cobro
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["ARS", "USD"] as const).map((cur) => (
-                      <Button
-                        key={cur}
-                        type="button"
-                        variant={saleCurrency === cur ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleSaleCurrencyChange(cur)}
-                      >
-                        {cur === "ARS" ? "Pesos (ARS)" : "Dólares (USD)"}
-                      </Button>
-                    ))}
-                  </div>
-                  {saleCurrency === "USD" ? (
-                    <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <Label htmlFor="pos-exchange-rate" className="text-xs">
-                          Cotización USD/ARS
-                        </Label>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2"
-                          onClick={() => void loadSuggestedExchangeRate()}
-                          disabled={dollarRateLoading}
-                        >
-                          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${dollarRateLoading ? "animate-spin" : ""}`} />
-                          Sugerir del día
-                        </Button>
-                      </div>
-                      <Input
-                        id="pos-exchange-rate"
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={exchangeRateInput}
-                        onChange={(e) => handleExchangeRateInputChange(e.target.value)}
-                        placeholder="Ej. 1200"
-                      />
-                      {dollarRateLabel ? (
-                        <p className="text-xs text-muted-foreground">
-                          Sugerencia: {dollarRateLabel}
-                          {exchangeRate ? ` · ${exchangeRate.toLocaleString("es-AR")} ARS/USD` : ""}
-                        </p>
-                      ) : null}
-                      {dollarRateError ? (
-                        <p className="text-xs text-destructive">{dollarRateError}</p>
-                      ) : null}
-                      <p className="text-xs text-muted-foreground">
-                        Los precios del catálogo se convierten a USD según esta cotización. Podés editarla manualmente antes de cobrar.
-                      </p>
-                    </div>
                   ) : null}
                 </CardContent>
               </Card>
@@ -1022,38 +1067,32 @@ export default function PuntoVentaPage() {
                   {cart.length > 0 && (
                     <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-1">
                       <div className="flex justify-between">
-                        <span>Neto gravado</span>
-                        <span className="tabular-nums">
-                          ${ivaBreakdown.netoGravado.toLocaleString("es-AR", FORMAT_NUM)}
-                        </span>
+                        <span>Neto gravado ({isUsdSale(saleCurrency) ? "USD" : "ARS"})</span>
+                        <span className="tabular-nums">{formatPosMoney(ivaBreakdown.netoGravado)}</span>
                       </div>
                       {ivaBreakdown.iva21 > 0 ? (
                         <div className="flex justify-between">
                           <span>IVA 21% (contenido)</span>
-                          <span className="tabular-nums">
-                            ${ivaBreakdown.iva21.toLocaleString("es-AR", FORMAT_NUM)}
-                          </span>
+                          <span className="tabular-nums">{formatPosMoney(ivaBreakdown.iva21)}</span>
                         </div>
                       ) : null}
                       {ivaBreakdown.iva105 > 0 ? (
                         <div className="flex justify-between">
                           <span>IVA 10,5% (contenido)</span>
-                          <span className="tabular-nums">
-                            ${ivaBreakdown.iva105.toLocaleString("es-AR", FORMAT_NUM)}
-                          </span>
+                          <span className="tabular-nums">{formatPosMoney(ivaBreakdown.iva105)}</span>
                         </div>
                       ) : null}
                       {ivaBreakdown.ivaExento > 0 ? (
                         <div className="flex justify-between">
                           <span>Exento / 0%</span>
-                          <span className="tabular-nums">
-                            ${ivaBreakdown.ivaExento.toLocaleString("es-AR", FORMAT_NUM)}
-                          </span>
+                          <span className="tabular-nums">{formatPosMoney(ivaBreakdown.ivaExento)}</span>
                         </div>
                       ) : null}
                     </div>
                   )}
-                  <div className="text-2xl font-bold text-turquoise-600">
+                  <div
+                    className={`text-2xl font-bold ${isUsdSale(saleCurrency) ? "text-amber-700 dark:text-amber-400" : "text-turquoise-600"}`}
+                  >
                     Total: {formatPosMoney(total)}
                   </div>
                   {saleCurrency === "USD" && exchangeRate && total > 0 ? (
@@ -1077,7 +1116,7 @@ export default function PuntoVentaPage() {
                     onClick={handleCobrar}
                     disabled={cart.length === 0 || submitting || (paymentMethod === "mixto" && !mixtoValid) || apiKeyMissing}
                   >
-                    {submitting ? "Procesando..." : "Cobrar"}
+                    {submitting ? "Procesando..." : isUsdSale(saleCurrency) ? "Cobrar en dólares (USD)" : "Cobrar"}
                   </Button>
                 </CardContent>
               </Card>
@@ -1248,6 +1287,7 @@ export default function PuntoVentaPage() {
                               onSetIvaRate={setCartIvaRate}
                               onRemove={removeFromCart}
                               ivaRateDisabled={requiresZeroItemIva}
+                              {...cartRowCurrencyProps}
                             />
                           ))}
                         </tbody>
@@ -1293,7 +1333,7 @@ export default function PuntoVentaPage() {
             <Alert
               variant="success"
               floating
-              title="Venta registrada"
+              title={lastSale.currency === "USD" ? "Venta en USD registrada" : "Venta registrada"}
               action={
                 <div className="flex flex-col gap-2">
                   {lastSalePdfData && (
@@ -1325,10 +1365,19 @@ export default function PuntoVentaPage() {
                   {String(lastSale.sale_number ?? "").replace(/^[^\d]*/, "") || lastSale.sale_number}
                 </p>
                 <p>Total: {formatSaleMoney(lastSale.total_amount, lastSale.currency ?? "ARS")}</p>
-                {lastSale.currency === "USD" && lastSale.exchange_rate ? (
-                  <p className="text-xs text-muted-foreground">
-                    Cotización: {Number(lastSale.exchange_rate).toLocaleString("es-AR")} ARS/USD
-                  </p>
+                {lastSale.currency === "USD" ? (
+                  <div className="text-xs space-y-1 pt-1">
+                    <p className="text-amber-800 dark:text-amber-300">
+                      Facturá en <strong>Facturación</strong> con moneda DOL y TC{" "}
+                      {lastSale.exchange_rate
+                        ? Number(lastSale.exchange_rate).toLocaleString("es-AR")
+                        : "—"}{" "}
+                      ARS/USD.
+                    </p>
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild>
+                      <Link href="/facturacion">Ir a facturación →</Link>
+                    </Button>
+                  </div>
                 ) : null}
                 <p>Método: {PAYMENT_LABELS[lastSale.payment_method]}</p>
                 {lastSalePdfData?.clientName ? (

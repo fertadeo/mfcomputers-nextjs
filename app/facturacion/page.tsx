@@ -104,6 +104,8 @@ import { ResizableTableHead } from "@/components/resizable-table-head"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
+import { SaleCurrencyBadge } from "@/components/sale-currency-badge"
+import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
 import { ClienteInfoCard } from "@/components/cliente-picker"
 import { getClienteDisplayName } from "@/lib/cliente-display"
 import { FacturacionErrorAlert } from "@/components/facturacion-error-alert"
@@ -140,6 +142,7 @@ import {
   defaultCondicionVentaCodigoFromPayment,
 } from "@/lib/condicion-venta"
 import { useResizableTableColumns } from "@/lib/use-resizable-table-columns"
+import { formatSaleMoney, isUsdSale } from "@/lib/pos-usd"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -189,16 +192,8 @@ function formatBillableAmount(
   value: number,
   sale?: { currency?: string; exchange_rate?: number | null } | null
 ): string {
-  if (sale?.currency === "USD") {
-    const usd = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 2,
-    }).format(value)
-    if (sale.exchange_rate) {
-      return `${usd} · TC ${Number(sale.exchange_rate).toLocaleString("es-AR")}`
-    }
-    return usd
+  if (isUsdSale(sale?.currency)) {
+    return formatSaleMoney(value, "USD", { maximumFractionDigits: 2, minimumFractionDigits: 2 })
   }
   return formatCurrency(value)
 }
@@ -1390,6 +1385,14 @@ export default function FacturacionPage() {
                                   {row.repairStatusLabel ? ` · ${row.repairStatusLabel}` : ""}
                                 </Badge>
                               ) : null}
+                              {isUsdSale(row.currency ?? row.sale?.currency) ? (
+                                <SaleCurrencyBadge
+                                  currency="USD"
+                                  exchangeRate={row.exchangeRate ?? row.sale?.exchange_rate}
+                                  showRate
+                                  className="shrink-0 text-[10px]"
+                                />
+                              ) : null}
                             </div>
                           </TableCell>
                           <TableCell className="overflow-hidden">
@@ -1440,7 +1443,15 @@ export default function FacturacionPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right tabular-nums whitespace-nowrap">
-                            {formatBillableAmount(row.totalAmount, row.sale)}
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span>{formatBillableAmount(row.totalAmount, row.sale)}</span>
+                              {isUsdSale(row.currency ?? row.sale?.currency) &&
+                              (row.exchangeRate ?? row.sale?.exchange_rate) ? (
+                                <span className="text-[10px] text-muted-foreground">
+                                  TC {Number(row.exchangeRate ?? row.sale?.exchange_rate).toLocaleString("es-AR")}
+                                </span>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell className="text-center align-middle">
                             {status === "success" ? (() => {
@@ -1811,10 +1822,14 @@ export default function FacturacionPage() {
                     <div className="text-muted-foreground">
                       Monto: {formatBillableAmount(selectedSale.total_amount, selectedSale)}
                     </div>
-                    {selectedSale.currency === "USD" ? (
-                      <div className="text-xs text-amber-700 dark:text-amber-400">
-                        Comprobante en moneda dólar (DOL) con la cotización guardada al momento de la venta.
-                      </div>
+                    {isUsdSale(selectedSale.currency) ? (
+                      <SaleCurrencyNotice
+                        variant="facturacion"
+                        currency={selectedSale.currency}
+                        exchangeRate={selectedSale.exchange_rate}
+                        totalAmount={selectedSale.total_amount}
+                        className="mt-2"
+                      />
                     ) : null}
                     <div className="text-muted-foreground">Último intento: {formatDateTime(selectedSale.arca_last_attempt_at)}</div>
                     <div className="text-muted-foreground">CAE actual: {selectedSale.arca_cae || "-"}</div>
