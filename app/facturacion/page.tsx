@@ -1371,8 +1371,7 @@ export default function FacturacionPage() {
                               ) : null}
                               {row.arcaNcStatus === "success" || (row.sale && saleHasNotaCreditoEmitida(row.sale)) ? (
                                 <Badge variant="outline" className="text-xs font-normal text-amber-800 dark:text-amber-300">
-                                  Anulada por NC
-                                  {row.arcaNcCae ? ` · CAE ${row.arcaNcCae}` : ""}
+                                  Anulada con NC
                                 </Badge>
                               ) : row.arcaNcStatus === "error" && row.sale?.arca_nc_error_message ? (
                                 <p className="text-muted-foreground max-w-full text-xs leading-snug">
