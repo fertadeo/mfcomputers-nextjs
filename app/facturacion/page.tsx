@@ -1238,7 +1238,7 @@ export default function FacturacionPage() {
                     <TableHead className="min-w-[9rem] whitespace-normal">Estado ARCA</TableHead>
                     <TableHead className="min-w-[6rem]">Tipo factura</TableHead>
                     <TableHead className="min-w-[7rem] text-right">Total</TableHead>
-                    <TableHead className="min-w-[9.5rem] w-[9.5rem] text-right">Acciones</TableHead>
+                    <TableHead className="min-w-[9.5rem] w-[9.5rem] text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1314,7 +1314,7 @@ export default function FacturacionPage() {
                           <TableCell className="text-right tabular-nums whitespace-nowrap">
                             {formatCurrency(row.totalAmount)}
                           </TableCell>
-                          <TableCell className="text-right align-middle">
+                          <TableCell className="text-center align-middle">
                             {status === "success" ? (() => {
                               const sale = row.sale
                               const showEditLink = Boolean(sale && isLinkedPosExternalSale(sale))
@@ -1323,7 +1323,7 @@ export default function FacturacionPage() {
                               const showMenu = showEditLink || showNc || showReemit
 
                               return (
-                                <div className="flex items-center justify-end gap-1">
+                                <div className="mx-auto flex w-[6.5rem] items-center justify-center gap-1">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1378,11 +1378,13 @@ export default function FacturacionPage() {
                                         ) : null}
                                       </DropdownMenuContent>
                                     </DropdownMenu>
-                                  ) : null}
+                                  ) : (
+                                    <span className="inline-block h-8 w-8 shrink-0" aria-hidden />
+                                  )}
                                 </div>
                               )
                             })() : (
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="mx-auto flex w-[6.5rem] items-center justify-center gap-1">
                                 <Button
                                   size="sm"
                                   className="h-8 gap-1.5 px-2.5"
@@ -1418,7 +1420,9 @@ export default function FacturacionPage() {
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
-                                ) : null}
+                                ) : (
+                                  <span className="inline-block h-8 w-8 shrink-0" aria-hidden />
+                                )}
                               </div>
                             )}
                           </TableCell>
