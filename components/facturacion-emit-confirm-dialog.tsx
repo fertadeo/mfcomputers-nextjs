@@ -28,6 +28,14 @@ import { ClienteInfoCard } from "@/components/cliente-picker"
 import { buildArcaInvoicePdfInputFromPreviewLines } from "@/lib/build-arca-invoice-pdf-input"
 import { buildFacturarFullPayloadPreview } from "@/lib/facturacion-request-preview"
 import {
+  applyCondicionVentaToFacturarPayload,
+  CONDICION_VENTA_CATALOG,
+  CONDICION_VENTA_MAX_LENGTH,
+  DEFAULT_CONDICION_VENTA_CODIGO,
+  getCondicionVentaByCodigo,
+  resolveCondicionVentaEtiqueta,
+} from "@/lib/condicion-venta"
+import {
   buildVentaDestinatarioSnapshot,
   formatCuitInputDisplay,
   isFacturacionDestinatarioChanged,
@@ -36,11 +44,17 @@ import {
   requiresPadronForReceptorCuit,
   soloDigitosDoc,
 } from "@/lib/facturacion-receptor-doc"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(
-    value
-  )
+import { formatSaleMoney } from "@/lib/pos-usd"
 
 function conceptoLabel(concepto?: number): string {
   if (concepto === 2) return "Servicios"
@@ -75,7 +89,9 @@ export interface FacturacionEmitConfirmDialogProps {
   onReceptorCuitChange: (rawInput: string) => void
   onPadronApply: (data: ArcaPadronResult) => void
   onPadronReset: () => void
-  onConfirm: () => void
+  onCondicionVentaCodigoChange: (codigo: string) => void
+  onCondicionVentaTextoChange: (texto: string) => void
+  onConfirm: (payload: FacturarSaleRequest) => void
   /** Clave de fila seleccionada (reinicia estado al cambiar comprobante). */
   selectedBillableKey?: string | null
 }
@@ -102,6 +118,8 @@ export function FacturacionEmitConfirmDialog({
   onReceptorCuitChange,
   onPadronApply,
   onPadronReset,
+  onCondicionVentaCodigoChange,
+  onCondicionVentaTextoChange,
   onConfirm,
   selectedBillableKey = null,
 }: FacturacionEmitConfirmDialogProps) {
@@ -132,6 +150,10 @@ export function FacturacionEmitConfirmDialog({
     cliente?.tax_condition,
     cliente?.primary_tax_id
   )
+
+  const invoiceCurrency = sale?.currency === "USD" ? "USD" : "ARS"
+  const formatCurrency = (value: number) =>
+    formatSaleMoney(value, invoiceCurrency, { maximumFractionDigits: 2, minimumFractionDigits: 2 })
 
   const linesSubtotal = lines.reduce((acc, l) => acc + l.subtotal, 0)
   const totalComprobante = sale?.total_amount ?? billable?.totalAmount ?? linesSubtotal
@@ -175,18 +197,45 @@ export function FacturacionEmitConfirmDialog({
     return sale.id
   }, [billable, sale])
 
+  const condicionVentaCodigo = form.condicionVentaCodigo ?? DEFAULT_CONDICION_VENTA_CODIGO
+  const condicionVentaItem = getCondicionVentaByCodigo(condicionVentaCodigo)
+  const condicionVentaEtiqueta = resolveCondicionVentaEtiqueta(
+    condicionVentaCodigo,
+    form.condicionVentaTexto
+  )
+  const esOtroCondicionVenta = condicionVentaCodigo === "OTRO"
+  const condicionVentaOtroInvalido =
+    esOtroCondicionVenta && !(form.condicionVentaTexto ?? "").trim()
+
+  const payloadParaEmision = useMemo(() => {
+    const domicilio = [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null
+    return applyCondicionVentaToFacturarPayload(facturarPayload, {
+      fechaComprobante: fechaCbte ?? saleDate ?? sale?.sale_date,
+      receptorRazonSocial: comprobanteDestinatarioNombre,
+      receptorDomicilio: domicilio,
+    })
+  }, [
+    facturarPayload,
+    fechaCbte,
+    saleDate,
+    sale?.sale_date,
+    comprobanteDestinatarioNombre,
+    cliente?.address,
+    cliente?.city,
+  ])
+
   const facturarFullPayloadPreview = useMemo(() => {
     if (facturarSaleId == null || !sale) return null
 
-    const docTipo = facturarPayload.docTipo ?? 99
-    const docNro = facturarPayload.docNro ?? 0
-    const condicion = facturarPayload.condicionIvaReceptor ?? 5
+    const docTipo = payloadParaEmision.docTipo ?? 99
+    const docNro = payloadParaEmision.docNro ?? 0
+    const condicion = payloadParaEmision.condicionIvaReceptor ?? 5
 
     return buildFacturarFullPayloadPreview({
       saleId: facturarSaleId,
       saleNumber: sale.sale_number,
       clientId: sale.client_id,
-      facturarPayload,
+      facturarPayload: payloadParaEmision,
       lines,
       saleDate: saleDate ?? sale.sale_date,
       fechaCbte,
@@ -204,21 +253,19 @@ export function FacturacionEmitConfirmDialog({
   }, [
     facturarSaleId,
     sale,
-    facturarPayload,
+    payloadParaEmision,
     lines,
     saleDate,
     fechaCbte,
     totalComprobante,
     comprobanteDestinatarioNombre,
-    cliente?.tax_condition,
-    cliente?.address,
-    cliente?.city,
+    cliente,
   ])
 
   const arcaInvoicePreview = useMemo(() => {
     if (lines.length === 0) return null
     return buildArcaInvoicePdfInputFromPreviewLines({
-      facturarPayload,
+      facturarPayload: payloadParaEmision,
       lines,
       receptorRazonSocial: comprobanteDestinatarioNombre,
       cliente,
@@ -226,7 +273,7 @@ export function FacturacionEmitConfirmDialog({
       totalAmount: totalComprobante,
     })
   }, [
-    facturarPayload,
+    payloadParaEmision,
     lines,
     comprobanteDestinatarioNombre,
     cliente,
@@ -455,6 +502,69 @@ export function FacturacionEmitConfirmDialog({
                 ) : null}
               </div>
 
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold">Condición de venta</h3>
+                  <p className="text-muted-foreground text-xs">
+                    Dato comercial para el PDF del comprobante. No afecta el CAE ni WSFE, salvo el vencimiento de pago
+                    cuando el concepto es servicios o mixto.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-condicion-venta">Forma de pago / plazo</Label>
+                    <Select
+                      value={condicionVentaCodigo}
+                      onValueChange={onCondicionVentaCodigoChange}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="confirm-condicion-venta">
+                        <SelectValue placeholder="Seleccioná condición de venta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONDICION_VENTA_CATALOG.map((item) => (
+                          <SelectItem key={item.codigo} value={item.codigo}>
+                            {item.etiquetaPdf}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Texto en el PDF</Label>
+                    <p className="text-sm font-medium leading-snug min-h-[2.5rem] rounded-md border bg-muted/30 px-3 py-2">
+                      {condicionVentaEtiqueta}
+                    </p>
+                  </div>
+                </div>
+                {esOtroCondicionVenta ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-condicion-venta-otro">Texto libre (máx. {CONDICION_VENTA_MAX_LENGTH})</Label>
+                    <Input
+                      id="confirm-condicion-venta-otro"
+                      value={form.condicionVentaTexto ?? ""}
+                      maxLength={CONDICION_VENTA_MAX_LENGTH}
+                      disabled={isSubmitting}
+                      placeholder="Ej. Pago contra entrega — 50% anticipo"
+                      onChange={(e) => onCondicionVentaTextoChange(e.target.value)}
+                    />
+                  </div>
+                ) : null}
+                {(form.concepto === 2 || form.concepto === 3) &&
+                condicionVentaItem?.diasPlazo != null &&
+                payloadParaEmision.fechaVencimientoPago ? (
+                  <p className="text-muted-foreground text-xs">
+                    Vencimiento de pago (servicios):{" "}
+                    <span className="font-medium text-foreground">
+                      {formatFacturacionFecha(payloadParaEmision.fechaVencimientoPago)}
+                    </span>
+                  </p>
+                ) : null}
+                {condicionVentaOtroInvalido ? (
+                  <p className="text-destructive text-xs">Ingresá el texto de la condición de venta.</p>
+                ) : null}
+              </div>
+
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold">Detalle del comprobante</h3>
                 {linesLoading ? (
@@ -544,6 +654,12 @@ export function FacturacionEmitConfirmDialog({
                     <p>Total a facturar en ARCA (precios con IVA incluido)</p>
                   )}
                 </div>
+                {invoiceCurrency === "USD" && sale?.exchange_rate ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mb-1">
+                    Facturación en dólares (DOL) · cotización {Number(sale.exchange_rate).toLocaleString("es-AR")}{" "}
+                    ARS/USD
+                  </p>
+                ) : null}
                 <p className="text-2xl font-bold tabular-nums">{formatCurrency(totalComprobante)}</p>
               </div>
 
@@ -625,7 +741,7 @@ export function FacturacionEmitConfirmDialog({
             </Button>
             <Button
               type="button"
-              onClick={onConfirm}
+              onClick={() => onConfirm(payloadParaEmision)}
               disabled={
                 isSubmitting ||
                 !sale ||
@@ -634,6 +750,7 @@ export function FacturacionEmitConfirmDialog({
                 lines.length === 0 ||
                 cuitInvalid ||
                 padronPending ||
+                condicionVentaOtroInvalido ||
                 !!itemIvaError ||
                 !!receptorFiscalError
               }

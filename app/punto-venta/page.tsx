@@ -20,8 +20,9 @@ import {
   type SalePaymentMethod,
   type SaleResponseData,
   type CreateSaleRequest,
+  type SaleCurrency,
 } from "@/lib/api"
-import { Search, Plus, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle, LayoutGrid, LayoutList, Maximize2, Loader2, Check } from "lucide-react"
+import { Search, Plus, Receipt, User, CreditCard, Banknote, Wallet, AlertCircle, LayoutGrid, LayoutList, Maximize2, Loader2, Check, DollarSign, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { getProductImageUrl } from "@/lib/product-image-utils"
 import Image from "next/image"
@@ -61,6 +62,16 @@ import {
   effectiveSaleItemIvaRate,
 } from "@/lib/facturacion-cliente-fiscal"
 import { computeSaleIvaBreakdown, DEFAULT_SALE_IVA_RATE, productIvaRate, type SaleIvaRate } from "@/lib/sale-iva"
+import { getDollarRate } from "@/lib/product-pricing"
+import {
+  applyUsdUnitPriceEdit,
+  arsToUsd,
+  convertCartLineToArs,
+  convertCartLineToUsd,
+  formatSaleMoney,
+  recalcUsdCartLine,
+  type SaleCurrency as PosSaleCurrency,
+} from "@/lib/pos-usd"
 
 const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
   efectivo: "Efectivo",
@@ -109,6 +120,12 @@ export default function PuntoVentaPage() {
   const [productsModalFilter, setProductsModalFilter] = useState<"all" | "active" | "inactive" | "out_of_stock">("all")
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
   const [addedProductId, setAddedProductId] = useState<number | null>(null)
+  const [saleCurrency, setSaleCurrency] = useState<SaleCurrency>("ARS")
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null)
+  const [exchangeRateInput, setExchangeRateInput] = useState("")
+  const [dollarRateLoading, setDollarRateLoading] = useState(false)
+  const [dollarRateError, setDollarRateError] = useState<string | null>(null)
+  const [dollarRateLabel, setDollarRateLabel] = useState<string | null>(null)
 
   const total = useMemo(
     () => cart.reduce((sum, i) => sum + i.quantity * i.unit_price, 0),
@@ -143,6 +160,53 @@ export default function PuntoVentaPage() {
   useEffect(() => {
     loadProducts()
   }, [])
+
+  async function loadSuggestedExchangeRate() {
+    setDollarRateLoading(true)
+    setDollarRateError(null)
+    try {
+      const data = await getDollarRate()
+      const rate = data.current_rate
+      setExchangeRate(rate)
+      setExchangeRateInput(String(rate))
+      setDollarRateLabel(data.quote?.dollar_label ?? "Dólar del día")
+      if (saleCurrency === "USD" && cart.length > 0) {
+        setCart((prev) => prev.map((line) => recalcUsdCartLine(line, rate)))
+      }
+    } catch (e) {
+      setDollarRateError(e instanceof Error ? e.message : "No se pudo cargar la cotización")
+    } finally {
+      setDollarRateLoading(false)
+    }
+  }
+
+  function handleSaleCurrencyChange(next: SaleCurrency) {
+    if (next === saleCurrency) return
+    if (next === "USD") {
+      setSaleCurrency("USD")
+      void loadSuggestedExchangeRate()
+      if (exchangeRate && exchangeRate > 0) {
+        setCart((prev) => prev.map((line) => convertCartLineToUsd(line, exchangeRate)))
+      }
+      return
+    }
+    setSaleCurrency("ARS")
+    setCart((prev) => prev.map((line) => convertCartLineToArs(line)))
+  }
+
+  function handleExchangeRateInputChange(raw: string) {
+    setExchangeRateInput(raw)
+    const parsed = Number(raw.replace(",", "."))
+    if (!Number.isFinite(parsed) || parsed <= 0) return
+    setExchangeRate(parsed)
+    if (saleCurrency === "USD") {
+      setCart((prev) => prev.map((line) => recalcUsdCartLine(line, parsed)))
+    }
+  }
+
+  function formatPosMoney(value: number): string {
+    return formatSaleMoney(value, saleCurrency as PosSaleCurrency)
+  }
 
   function checkAuthForSale() {
     const hasAuth = !!getAccessToken() || !!getPosApiKey()
@@ -242,6 +306,11 @@ export default function PuntoVentaPage() {
   function addToCartInternal(product: Product, qty = 1) {
     if (!canAddPosCatalogProduct(product)) return
     const maxQty = posCatalogMaxQuantity(product)
+    const arsPrice = product.price
+    const unitPrice =
+      saleCurrency === "USD" && exchangeRate && exchangeRate > 0
+        ? arsToUsd(arsPrice, exchangeRate)
+        : arsPrice
     setCart((prev) => {
       const existing = prev.find(
         (i) => i.kind === "catalog" && i.product.id === product.id
@@ -259,16 +328,17 @@ export default function PuntoVentaPage() {
             : i
         )
       }
-      return [
-        ...prev,
-        {
-          kind: "catalog",
-          product,
-          quantity: Math.min(qty, maxQty),
-          unit_price: product.price,
-          iva_rate: effectiveSaleItemIvaRate(productIvaRate(product), selectedCliente),
-        },
-      ]
+      const line = {
+        kind: "catalog" as const,
+        product,
+        quantity: Math.min(qty, maxQty),
+        unit_price: unitPrice,
+        iva_rate: effectiveSaleItemIvaRate(productIvaRate(product), selectedCliente),
+      }
+      if (saleCurrency === "USD") {
+        return [...prev, { ...line, ars_unit_price: arsPrice }]
+      }
+      return [...prev, line]
     })
   }
 
@@ -278,6 +348,11 @@ export default function PuntoVentaPage() {
     unit_price: number
     iva_rate: SaleIvaRate
   }) {
+    const arsPrice = payload.unit_price
+    const unitPrice =
+      saleCurrency === "USD" && exchangeRate && exchangeRate > 0
+        ? arsToUsd(arsPrice, exchangeRate)
+        : arsPrice
     setCart((prev) => [
       ...prev,
       {
@@ -285,8 +360,9 @@ export default function PuntoVentaPage() {
         lineId: newCustomLineId(),
         description: payload.description,
         quantity: payload.quantity,
-        unit_price: payload.unit_price,
+        unit_price: unitPrice,
         iva_rate: effectiveSaleItemIvaRate(payload.iva_rate, selectedCliente),
+        ...(saleCurrency === "USD" ? { ars_unit_price: arsPrice } : {}),
       },
     ])
     setError(null)
@@ -316,7 +392,13 @@ export default function PuntoVentaPage() {
   function setCartUnitPrice(lineKey: string, unit_price: number) {
     if (unit_price < 0) return
     setCart((prev) =>
-      prev.map((i) => (getPosCartLineKey(i) === lineKey ? { ...i, unit_price } : i))
+      prev.map((i) => {
+        if (getPosCartLineKey(i) !== lineKey) return i
+        if (saleCurrency === "USD" && exchangeRate && exchangeRate > 0) {
+          return applyUsdUnitPriceEdit(i, unit_price, exchangeRate)
+        }
+        return { ...i, unit_price }
+      })
     )
   }
 
@@ -340,6 +422,12 @@ export default function PuntoVentaPage() {
     if (cart.length === 0) {
       setError("Agregá al menos un ítem al carrito")
       return
+    }
+    if (saleCurrency === "USD") {
+      if (!exchangeRate || exchangeRate <= 0) {
+        setError("Indicá una cotización USD/ARS válida para cobrar en dólares")
+        return
+      }
     }
     const invalidCustom = cart.some(
       (i) => i.kind === "custom" && !i.description.trim()
@@ -365,7 +453,11 @@ export default function PuntoVentaPage() {
         payment_method: paymentMethod,
         client_id: selectedClientId ?? undefined,
         notes: notes.trim() || undefined,
-        sync_to_woocommerce: true,
+        sync_to_woocommerce: saleCurrency === "USD" ? false : true,
+      }
+      if (saleCurrency === "USD" && exchangeRate) {
+        body.currency = "USD"
+        body.exchange_rate = exchangeRate
       }
       if (paymentMethod === "mixto") {
         body.payment_details = {
@@ -390,6 +482,10 @@ export default function PuntoVentaPage() {
       setSelectedCliente(null)
       setNotes("")
       setPaymentDetails({ efectivo: 0, tarjeta: 0, transferencia: 0 })
+      setSaleCurrency("ARS")
+      setExchangeRate(null)
+      setExchangeRateInput("")
+      setDollarRateLabel(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al crear la venta")
     } finally {
@@ -768,6 +864,71 @@ export default function PuntoVentaPage() {
 
               <Card>
                 <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Moneda de cobro
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["ARS", "USD"] as const).map((cur) => (
+                      <Button
+                        key={cur}
+                        type="button"
+                        variant={saleCurrency === cur ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleSaleCurrencyChange(cur)}
+                      >
+                        {cur === "ARS" ? "Pesos (ARS)" : "Dólares (USD)"}
+                      </Button>
+                    ))}
+                  </div>
+                  {saleCurrency === "USD" ? (
+                    <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="pos-exchange-rate" className="text-xs">
+                          Cotización USD/ARS
+                        </Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => void loadSuggestedExchangeRate()}
+                          disabled={dollarRateLoading}
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${dollarRateLoading ? "animate-spin" : ""}`} />
+                          Sugerir del día
+                        </Button>
+                      </div>
+                      <Input
+                        id="pos-exchange-rate"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={exchangeRateInput}
+                        onChange={(e) => handleExchangeRateInputChange(e.target.value)}
+                        placeholder="Ej. 1200"
+                      />
+                      {dollarRateLabel ? (
+                        <p className="text-xs text-muted-foreground">
+                          Sugerencia: {dollarRateLabel}
+                          {exchangeRate ? ` · ${exchangeRate.toLocaleString("es-AR")} ARS/USD` : ""}
+                        </p>
+                      ) : null}
+                      {dollarRateError ? (
+                        <p className="text-xs text-destructive">{dollarRateError}</p>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        Los precios del catálogo se convierten a USD según esta cotización. Podés editarla manualmente antes de cobrar.
+                      </p>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
                   <CardTitle className="text-base">Método de pago</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -839,8 +1000,7 @@ export default function PuntoVentaPage() {
                       </div>
                       {!mixtoValid && total > 0 && (
                         <p className="text-xs text-red-600">
-                          Suma: ${mixtoSum.toLocaleString("es-AR", FORMAT_NUM)} — Total: $
-                          {total.toLocaleString("es-AR", FORMAT_NUM)}
+                          Suma: {formatPosMoney(mixtoSum)} — Total: {formatPosMoney(total)}
                         </p>
                       )}
                     </div>
@@ -894,8 +1054,17 @@ export default function PuntoVentaPage() {
                     </div>
                   )}
                   <div className="text-2xl font-bold text-turquoise-600">
-                    Total: ${total.toLocaleString("es-AR", FORMAT_NUM)}
+                    Total: {formatPosMoney(total)}
                   </div>
+                  {saleCurrency === "USD" && exchangeRate && total > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Referencia ARS: {(total * exchangeRate).toLocaleString("es-AR", {
+                        style: "currency",
+                        currency: "ARS",
+                        maximumFractionDigits: 0,
+                      })}
+                    </p>
+                  ) : null}
                   {error && (
                     <div className="flex items-center gap-2 p-2 rounded bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 text-sm">
                       <AlertCircle className="h-4 w-4 shrink-0" />
@@ -1155,7 +1324,12 @@ export default function PuntoVentaPage() {
                 <p className="font-mono font-medium">
                   {String(lastSale.sale_number ?? "").replace(/^[^\d]*/, "") || lastSale.sale_number}
                 </p>
-                <p>Total: ${lastSale.total_amount.toLocaleString("es-AR", FORMAT_NUM)}</p>
+                <p>Total: {formatSaleMoney(lastSale.total_amount, lastSale.currency ?? "ARS")}</p>
+                {lastSale.currency === "USD" && lastSale.exchange_rate ? (
+                  <p className="text-xs text-muted-foreground">
+                    Cotización: {Number(lastSale.exchange_rate).toLocaleString("es-AR")} ARS/USD
+                  </p>
+                ) : null}
                 <p>Método: {PAYMENT_LABELS[lastSale.payment_method]}</p>
                 {lastSalePdfData?.clientName ? (
                   <p className="text-sm">
@@ -1177,6 +1351,8 @@ export default function PuntoVentaPage() {
             onOpenChange={setConfirmSaleOpen}
             cart={cart}
             total={total}
+            currency={saleCurrency}
+            exchangeRate={exchangeRate}
             paymentMethod={paymentMethod}
             paymentLabel={PAYMENT_LABELS[paymentMethod]}
             selectedCliente={selectedCliente}

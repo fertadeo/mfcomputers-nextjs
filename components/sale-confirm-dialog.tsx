@@ -18,16 +18,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { Cliente, SalePaymentMethod } from "@/lib/api"
+import type { Cliente, SaleCurrency, SalePaymentMethod } from "@/lib/api"
 import { ClienteInfoCard } from "@/components/cliente-picker"
 import { getPosCartLineKey, getPosCartLineLabel, type PosCartLine } from "@/lib/pos-cart"
 import { formatSaleIvaRateLabel } from "@/lib/sale-iva"
+import { formatSaleMoney } from "@/lib/pos-usd"
 import { Loader2 } from "lucide-react"
 
 const FORMAT_NUM = { maximumFractionDigits: 2, minimumFractionDigits: 2 } as const
 
-function formatMoney(value: number): string {
-  return value.toLocaleString("es-AR", { style: "currency", currency: "ARS", ...FORMAT_NUM })
+function formatMoney(value: number, currency: SaleCurrency = "ARS"): string {
+  return formatSaleMoney(value, currency, FORMAT_NUM)
 }
 
 export interface SaleConfirmDialogProps {
@@ -35,6 +36,8 @@ export interface SaleConfirmDialogProps {
   onOpenChange: (open: boolean) => void
   cart: PosCartLine[]
   total: number
+  currency?: SaleCurrency
+  exchangeRate?: number | null
   paymentMethod: SalePaymentMethod
   paymentLabel: string
   selectedCliente: Cliente | null
@@ -47,6 +50,8 @@ export function SaleConfirmDialog({
   onOpenChange,
   cart,
   total,
+  currency = "ARS",
+  exchangeRate,
   paymentMethod,
   paymentLabel,
   selectedCliente,
@@ -72,6 +77,16 @@ export function SaleConfirmDialog({
               <p className="text-xs text-muted-foreground mt-1">La venta se registrará sin cliente asociado.</p>
             </div>
           )}
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Moneda:</span>
+            <Badge variant="outline">{currency === "USD" ? "Dólares (USD)" : "Pesos (ARS)"}</Badge>
+            {currency === "USD" && exchangeRate ? (
+              <span className="text-xs text-muted-foreground">
+                Cotización {Number(exchangeRate).toLocaleString("es-AR")} ARS/USD
+              </span>
+            ) : null}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">Método de pago:</span>
@@ -102,13 +117,13 @@ export function SaleConfirmDialog({
                         <TableCell className="font-medium text-sm">{getPosCartLineLabel(line)}</TableCell>
                         <TableCell className="text-right tabular-nums">{line.quantity}</TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {formatMoney(line.unit_price)}
+                          {formatMoney(line.unit_price, currency)}
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
                           {formatSaleIvaRateLabel(line.iva_rate)}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
-                          {formatMoney(subtotal)}
+                          {formatMoney(subtotal, currency)}
                         </TableCell>
                       </TableRow>
                     )
@@ -120,7 +135,7 @@ export function SaleConfirmDialog({
 
           <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-3">
             <span className="text-sm font-medium text-muted-foreground">Total a cobrar</span>
-            <span className="text-2xl font-bold tabular-nums">{formatMoney(total)}</span>
+            <span className="text-2xl font-bold tabular-nums">{formatMoney(total, currency)}</span>
           </div>
         </div>
 

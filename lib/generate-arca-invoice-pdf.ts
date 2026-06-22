@@ -185,6 +185,15 @@ export interface GenerateArcaInvoicePdfParams {
   /** Texto adicional en borradores previos a la emisión. */
   previewAviso?: string
 
+  /** Moneda AFIP: PES o DOL */
+  moneda?: "PES" | "DOL"
+
+  /** Cotización de moneda extranjera */
+  tipoCambio?: number
+
+  /** Símbolo para importes en PDF (default $) */
+  currencySymbol?: string
+
 }
 
 
@@ -272,6 +281,10 @@ async function drawInvoicePage(
   const codigo = getCodigoComprobanteAfip(tipo)
 
   const condicionVenta = params.condicionVenta ?? "Contado"
+
+  const currencySym = params.currencySymbol ?? "$"
+
+  const moneyWithSym = (n: number | string | null | undefined) => `${currencySym} ${moneyAr(n)}`
 
   const pagina =
 
@@ -535,9 +548,9 @@ async function drawInvoicePage(
 
 
 
-  doc.text("Importe Otros Tributos: $", margin + 3, yT)
+  doc.text(`Importe Otros Tributos: ${currencySym}`, margin + 3, yT)
 
-  doc.text(moneyArWithSymbol(otrosTributos), margin + innerW * 0.45, yT, { align: "right" })
+  doc.text(moneyWithSym(otrosTributos), margin + innerW * 0.45, yT, { align: "right" })
 
 
 
@@ -549,7 +562,7 @@ async function drawInvoicePage(
 
     doc.text(label, labelX, yT)
 
-    doc.text(moneyArWithSymbol(amount), margin + innerW - 2, yT, { align: "right" })
+    doc.text(moneyWithSym(amount), margin + innerW - 2, yT, { align: "right" })
 
     yT += 4.5
 
@@ -557,15 +570,15 @@ async function drawInvoicePage(
 
 
 
-  drawTotalLine("Importe Neto Gravado: $", ivaDisc.netoGravado)
+  drawTotalLine(`Importe Neto Gravado: ${currencySym}`, ivaDisc.netoGravado)
 
   for (const row of ivaRateLines) {
     drawTotalLine(row.label, row.amount)
   }
 
-  drawTotalLine("Importe Otros Tributos: $", otrosTributos)
+  drawTotalLine(`Importe Otros Tributos: ${currencySym}`, otrosTributos)
 
-  drawTotalLine("Importe Total: $", params.totales.total, true)
+  drawTotalLine(`Importe Total: ${currencySym}`, params.totales.total, true)
 
 
 
@@ -593,9 +606,9 @@ async function drawInvoicePage(
 
     doc.setFont("helvetica", "normal")
 
-    doc.text("IVA Contenido: $", labelX, transY + 7)
+    doc.text(`IVA Contenido: ${currencySym}`, labelX, transY + 7)
 
-    doc.text(moneyArWithSymbol(params.totales.ivaContenido), margin + innerW - 2, transY + 7, {
+    doc.text(moneyWithSym(params.totales.ivaContenido), margin + innerW - 2, transY + 7, {
 
       align: "right",
 

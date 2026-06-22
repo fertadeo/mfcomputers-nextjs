@@ -721,6 +721,8 @@ export interface ProductResponse {
 // --- Ventas en local (Punto de venta) - POST /api/sales con x-api-key ---
 export type SalePaymentMethod = 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto'
 
+export type SaleCurrency = 'ARS' | 'USD'
+
 /** Línea de catálogo (descuenta stock en backend). */
 export interface CreateSaleCatalogItem {
   product_id: number
@@ -758,6 +760,10 @@ export interface CreateSaleRequest {
   payment_details?: CreateSalePaymentDetails
   notes?: string
   sync_to_woocommerce?: boolean
+  /** Moneda de cobro (default ARS). */
+  currency?: SaleCurrency
+  /** Cotización USD/ARS obligatoria si currency = USD. */
+  exchange_rate?: number
   /** true = permitir vender productos inactivos (el backend rechaza por defecto) */
   allow_inactive?: boolean
 }
@@ -803,6 +809,9 @@ export interface SaleArcaFields {
   arca_nc_error_code?: string | null
   arca_nc_error_message?: string | null
   arca_nc_last_attempt_at?: string | null
+  condicion_venta_codigo?: string | null
+  condicion_venta_texto?: string | null
+  fecha_vencimiento_pago?: string | null
 }
 
 export interface SaleResponseData extends SaleArcaFields {
@@ -817,6 +826,8 @@ export interface SaleResponseData extends SaleArcaFields {
   client_city?: string | null
   client_cuil_cuit?: string | null
   total_amount: number
+  currency?: SaleCurrency
+  exchange_rate?: number | null
   payment_method: SalePaymentMethod
   payment_details?: CreateSalePaymentDetails
   notes?: string | null
@@ -977,6 +988,8 @@ export interface Sale extends SaleArcaFields {
   client_city?: string | null
   client_cuil_cuit?: string | null
   total_amount: number
+  currency?: SaleCurrency
+  exchange_rate?: number | null
   payment_method: SalePaymentMethod
   sale_date: string
   sync_status?: 'pending' | 'synced' | 'error'
@@ -1182,6 +1195,15 @@ export interface FacturarSaleRequest {
   concepto?: 1 | 2 | 3
   fechaServicioDesde?: string
   fechaServicioHasta?: string
+  /** Código catálogo ERP (CONTADO, CC_30, OTRO, …). */
+  condicionVentaCodigo?: string
+  /** Etiqueta resuelta enviada al facturador como condicionVenta. */
+  condicionVenta?: string
+  /** Texto libre si condicionVentaCodigo = OTRO. */
+  condicionVentaTexto?: string
+  fechaVencimientoPago?: string
+  receptorRazonSocial?: string
+  receptorDomicilio?: string
   force?: boolean
 }
 

@@ -6,6 +6,8 @@ export type PosCatalogCartLine = {
   product: Product
   quantity: number
   unit_price: number
+  /** Precio de lista en ARS cuando la venta es en USD */
+  ars_unit_price?: number
   iva_rate: SaleIvaRate
 }
 
@@ -15,6 +17,8 @@ export type PosCustomCartLine = {
   description: string
   quantity: number
   unit_price: number
+  /** Referencia ARS cuando la venta es en USD */
+  ars_unit_price?: number
   iva_rate: SaleIvaRate
 }
 

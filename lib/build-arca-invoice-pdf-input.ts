@@ -17,6 +17,7 @@ import {
 } from "@/lib/facturacion-settings"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { mergeFacturarSaleRequestBody } from "@/lib/facturacion-request-preview"
+import { condicionVentaLabelFromPayload } from "@/lib/condicion-venta"
 import { facturadorTipoRequiereIva } from "@/lib/facturacion-comprobantes"
 import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
 import {
@@ -122,9 +123,16 @@ export async function buildArcaInvoicePdfInput(
   }
 
   const docTipo = toNumber(facturarPayload.docTipo, 99)
+  const condicionVentaPdf = condicionVentaLabelFromPayload(facturarPayload)
   const docNro = toNumber(facturarPayload.docNro, 0)
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
   const total = toNumber(emision.importe ?? sale.total_amount)
+  const saleCurrency = String(sale.currency ?? "ARS").toUpperCase() === "USD" ? "USD" : "ARS"
+  const tipoCambio =
+    saleCurrency === "USD" && sale.exchange_rate != null
+      ? toNumber(sale.exchange_rate, 1)
+      : 1
+  const afipMoneda = saleCurrency === "USD" ? "DOL" : "PES"
   const lineItemsForIva = items.map((item) => ({
     subtotal: lineSubtotal(item),
     iva_rate: normalizeSaleIvaRate(item.iva_rate),
@@ -154,6 +162,8 @@ export async function buildArcaInvoicePdfInput(
           tipoComprobante: tipo,
           numeroComprobante: numero,
           importe: total,
+          moneda: afipMoneda,
+          cotizacion: tipoCambio,
           docTipoReceptor: docTipo,
           docNroReceptor: docNro,
           cae: emision.cae,
@@ -210,10 +220,13 @@ export async function buildArcaInvoicePdfInput(
     cae: emision.cae,
     caeVencimiento: emision.vencimientoCaeIso,
     qrUrl,
-    condicionVenta: "Contado",
+    condicionVenta: condicionVentaPdf,
     pagina: "1/1",
     comprobanteIncompleto: numeroMissing && previewAllowMissingNumero,
     previewAviso: previewAviso ?? undefined,
+    moneda: afipMoneda,
+    tipoCambio,
+    currencySymbol: saleCurrency === "USD" ? "U$S" : "$",
   }
 }
 
@@ -267,6 +280,8 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
     process.env.NEXT_PUBLIC_FACTURADOR_CUIT_EMISOR?.replace(/\D/g, "") ||
     ""
 
+  const condicionVentaPdf = condicionVentaLabelFromPayload(payload)
+
   return {
     emisor: {
       razonSocial: EMISOR_DEFAULT.razonSocial,
@@ -315,7 +330,7 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
     cae: "",
     caeVencimiento: null,
     qrUrl: "",
-    condicionVenta: "Contado",
+    condicionVenta: condicionVentaPdf,
     pagina: "1/1",
     comprobanteIncompleto: true,
     previewAviso: args.previewAviso ?? undefined,

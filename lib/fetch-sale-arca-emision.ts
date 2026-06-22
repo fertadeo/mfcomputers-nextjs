@@ -11,6 +11,7 @@ import {
   getStoredFacturacionCuitEmisor,
   getStoredFacturacionPuntoVenta,
 } from "@/lib/facturacion-settings"
+import { condicionVentaFieldsFromSale } from "@/lib/condicion-venta"
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v)
@@ -108,7 +109,12 @@ export interface ResolvedSaleArcaEmision {
 export async function fetchSaleArcaEmision(sale: Sale): Promise<ResolvedSaleArcaEmision | null> {
   const cached = getCachedFacturacionEmision(sale.id)
   const defaults = buildDefaultFacturarFormRequest()
-  const facturarPayload = cached?.facturarPayload ?? defaults
+  const fromSaleCondicion = condicionVentaFieldsFromSale(sale)
+  const facturarPayload = {
+    ...defaults,
+    ...fromSaleCondicion,
+    ...(cached?.facturarPayload ?? {}),
+  }
 
   const fromRow = extractEmisionFromSaleRow(sale)
   const cae = pickString(sale.arca_cae, fromRow?.cae, cached?.emision.cae)

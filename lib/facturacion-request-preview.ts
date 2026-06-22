@@ -110,6 +110,10 @@ export interface FacturadorEmitirPayloadPreview {
   iva?: Array<{ id: number; base: number; cuota: number }>
   fechaServicioDesde?: string
   fechaServicioHasta?: string
+  fechaVencimientoPago?: string
+  condicionVenta?: string
+  receptorRazonSocial?: string
+  receptorDomicilio?: string
   omitirPdf: boolean
   nota?: string
 }
@@ -242,6 +246,18 @@ export function buildFacturarFullPayloadPreview(
     const hasta = normalizeFechaYmd(body.fechaServicioHasta)
     if (desde) facturadorPayload.fechaServicioDesde = desde
     if (hasta) facturadorPayload.fechaServicioHasta = hasta
+    const vto = normalizeFechaYmd(body.fechaVencimientoPago)
+    if (vto) facturadorPayload.fechaVencimientoPago = vto
+  }
+
+  if (body.condicionVenta?.trim()) {
+    facturadorPayload.condicionVenta = body.condicionVenta.trim()
+  }
+  if (body.receptorRazonSocial?.trim()) {
+    facturadorPayload.receptorRazonSocial = body.receptorRazonSocial.trim()
+  }
+  if (body.receptorDomicilio?.trim()) {
+    facturadorPayload.receptorDomicilio = body.receptorDomicilio.trim()
   }
 
   const totales = requiereIva

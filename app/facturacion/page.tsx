@@ -135,6 +135,10 @@ import {
   clienteCuitDigitos,
   validateFacturarReceptorFiscal,
 } from "@/lib/facturacion-form-from-cliente"
+import {
+  condicionVentaFieldsFromSale,
+  defaultCondicionVentaCodigoFromPayment,
+} from "@/lib/condicion-venta"
 import { useResizableTableColumns } from "@/lib/use-resizable-table-columns"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
@@ -180,6 +184,24 @@ const estadoBadge: Record<string, { label: string; variant: "default" | "seconda
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(value)
+
+function formatBillableAmount(
+  value: number,
+  sale?: { currency?: string; exchange_rate?: number | null } | null
+): string {
+  if (sale?.currency === "USD") {
+    const usd = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    }).format(value)
+    if (sale.exchange_rate) {
+      return `${usd} · TC ${Number(sale.exchange_rate).toLocaleString("es-AR")}`
+    }
+    return usd
+  }
+  return formatCurrency(value)
+}
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "-"
@@ -754,6 +776,23 @@ export default function FacturacionPage() {
   }, [isConfirmEmitOpen, selectedBillableKey, invoiceModalMode])
 
   useEffect(() => {
+    if (!isConfirmEmitOpen || !selectedSale) return
+    setForm((prev) => {
+      if (prev.condicionVentaCodigo) return prev
+      const fromSale = condicionVentaFieldsFromSale(selectedSale)
+      return {
+        ...prev,
+        condicionVentaCodigo:
+          fromSale.condicionVentaCodigo ??
+          defaultCondicionVentaCodigoFromPayment(selectedSale.payment_method),
+        ...(fromSale.condicionVenta ? { condicionVenta: fromSale.condicionVenta } : {}),
+        ...(fromSale.condicionVentaTexto ? { condicionVentaTexto: fromSale.condicionVentaTexto } : {}),
+        ...(fromSale.fechaVencimientoPago ? { fechaVencimientoPago: fromSale.fechaVencimientoPago } : {}),
+      }
+    })
+  }, [isConfirmEmitOpen, selectedSale?.id, selectedSale?.payment_method])
+
+  useEffect(() => {
     if (!isConfirmEmitOpen) {
       setConfirmLines([])
       setConfirmSaleDate(null)
@@ -993,7 +1032,7 @@ export default function FacturacionPage() {
     }
   }
 
-  const onSubmitFacturar = async () => {
+  const onSubmitFacturar = async (payloadOverride?: FacturarSaleRequest) => {
     if (!selectedBillable || !selectedSale) {
       setErrorMsg("Seleccioná una venta u orden de reparación antes de facturar.")
       return
@@ -1026,7 +1065,7 @@ export default function FacturacionPage() {
       return
     }
 
-    const payloadPreview = buildFacturarPayload(form, modalCliente)
+    const payloadPreview = payloadOverride ?? buildFacturarPayload(form, modalCliente)
     const receptorErr = validateFacturarReceptorFiscal(selectedSale, modalCliente, payloadPreview)
     if (receptorErr) {
       setErrorMsg(receptorErr)
@@ -1058,7 +1097,7 @@ export default function FacturacionPage() {
         saleForArca = { ...(saleRes.data as Sale), client_name: selectedSale.client_name }
       }
 
-      const payload = buildFacturarPayload(form, modalCliente)
+      const payload = payloadOverride ?? buildFacturarPayload(form, modalCliente)
       console.log("[FACTURAR UI] Emitiendo comprobante:", {
         billableKind: selectedBillable.kind,
         saleId,
@@ -1106,7 +1145,7 @@ export default function FacturacionPage() {
         err?.name === "TypeError" ||
         /failed to fetch|network|load failed/i.test(String(err?.message ?? ""))
 
-      const payloadAttempt = buildFacturarPayload(form, modalCliente)
+      const payloadAttempt = payloadOverride ?? buildFacturarPayload(form, modalCliente)
       const resolved = resolveFacturacionApiError(err, {
         isNetwork,
         payload: payloadAttempt,
@@ -1401,7 +1440,7 @@ export default function FacturacionPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right tabular-nums whitespace-nowrap">
-                            {formatCurrency(row.totalAmount)}
+                            {formatBillableAmount(row.totalAmount, row.sale)}
                           </TableCell>
                           <TableCell className="text-center align-middle">
                             {status === "success" ? (() => {
@@ -1769,7 +1808,14 @@ export default function FacturacionPage() {
                       Al facturar, el backend asigna la fecha del comprobante según la venta (ver confirmación).
                     </div>
                     <div className="text-muted-foreground">CUIT emisor: {emisorCuitMostrar}</div>
-                    <div className="text-muted-foreground">Monto: {formatCurrency(selectedSale.total_amount)}</div>
+                    <div className="text-muted-foreground">
+                      Monto: {formatBillableAmount(selectedSale.total_amount, selectedSale)}
+                    </div>
+                    {selectedSale.currency === "USD" ? (
+                      <div className="text-xs text-amber-700 dark:text-amber-400">
+                        Comprobante en moneda dólar (DOL) con la cotización guardada al momento de la venta.
+                      </div>
+                    ) : null}
                     <div className="text-muted-foreground">Último intento: {formatDateTime(selectedSale.arca_last_attempt_at)}</div>
                     <div className="text-muted-foreground">CAE actual: {selectedSale.arca_cae || "-"}</div>
                     {selectedSale.arca_cae_vto ? (
@@ -2127,7 +2173,17 @@ export default function FacturacionPage() {
                 setForm((prev) => applyReceptorCuitToFacturarForm(prev, "", null))
               }
             }}
-            onConfirm={() => void onSubmitFacturar()}
+            onCondicionVentaCodigoChange={(codigo) =>
+              setForm((prev) => ({
+                ...prev,
+                condicionVentaCodigo: codigo,
+                ...(codigo !== "OTRO" ? { condicionVentaTexto: undefined } : {}),
+              }))
+            }
+            onCondicionVentaTextoChange={(texto) =>
+              setForm((prev) => ({ ...prev, condicionVentaTexto: texto }))
+            }
+            onConfirm={(payload) => void onSubmitFacturar(payload)}
           />
 
           <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>
