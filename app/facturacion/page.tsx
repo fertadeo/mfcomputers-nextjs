@@ -16,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -30,7 +31,8 @@ import {
   FileText,
   FileUp,
   LayoutTemplate,
-  MoreVertical,
+  Link2,
+  MoreHorizontal,
   RefreshCcw,
   Search,
   Loader2,
@@ -1236,7 +1238,7 @@ export default function FacturacionPage() {
                     <TableHead className="min-w-[9rem] whitespace-normal">Estado ARCA</TableHead>
                     <TableHead className="min-w-[6rem]">Tipo factura</TableHead>
                     <TableHead className="min-w-[7rem] text-right">Total</TableHead>
-                    <TableHead className="min-w-[15rem] text-right whitespace-normal">Acciones</TableHead>
+                    <TableHead className="min-w-[9.5rem] w-[9.5rem] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1312,89 +1314,110 @@ export default function FacturacionPage() {
                           <TableCell className="text-right tabular-nums whitespace-nowrap">
                             {formatCurrency(row.totalAmount)}
                           </TableCell>
-                          <TableCell className="text-right align-top whitespace-normal">
-                            {status === "success" ? (
-                              <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                <Button
-                                  size="sm"
-                                  className="h-8 shrink-0"
-                                  disabled={row.kind === "repair_order" && !row.linkedSaleId}
-                                  onClick={() => {
-                                    setSelectedBillableKey(row.key)
-                                    setInvoiceModalMode("view")
-                                    setIsEmitModalOpen(true)
-                                  }}
-                                >
-                                  <Eye className="mr-1 h-3.5 w-3.5 shrink-0" />
-                                  Ver comprobante
-                                </Button>
-                                {row.sale && isLinkedPosExternalSale(row.sale) ? (
+                          <TableCell className="text-right align-middle">
+                            {status === "success" ? (() => {
+                              const sale = row.sale
+                              const showEditLink = Boolean(sale && isLinkedPosExternalSale(sale))
+                              const showNc = Boolean(sale && canEmitNotaCredito(sale))
+                              const showReemit = Boolean(sale && canReemitirComprobante(sale))
+                              const showMenu = showEditLink || showNc || showReemit
+
+                              return (
+                                <div className="flex items-center justify-end gap-1">
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-8 shrink-0"
-                                    onClick={() => openEditLinkModal(row)}
+                                    className="h-8 gap-1.5 px-2.5"
+                                    title="Ver comprobante"
+                                    disabled={row.kind === "repair_order" && !row.linkedSaleId}
+                                    onClick={() => {
+                                      setSelectedBillableKey(row.key)
+                                      setInvoiceModalMode("view")
+                                      setIsEmitModalOpen(true)
+                                    }}
                                   >
-                                    Modificar vinculación
+                                    <Eye className="h-3.5 w-3.5 shrink-0" />
+                                    <span>Ver</span>
                                   </Button>
-                                ) : null}
-                                {row.sale &&
-                                (canReemitirComprobante(row.sale) || canEmitNotaCredito(row.sale)) ? (
+                                  {showMenu ? (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 shrink-0 text-muted-foreground"
+                                          aria-label="Más acciones"
+                                        >
+                                          <MoreHorizontal className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="w-56">
+                                        {showEditLink ? (
+                                          <DropdownMenuItem onClick={() => openEditLinkModal(row)}>
+                                            <Link2 className="mr-2 h-4 w-4" />
+                                            Modificar vinculación
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                        {showEditLink && (showNc || showReemit) ? (
+                                          <DropdownMenuSeparator />
+                                        ) : null}
+                                        {showNc ? (
+                                          <DropdownMenuItem
+                                            className="text-amber-700 focus:text-amber-800 dark:text-amber-400 dark:focus:text-amber-300"
+                                            onClick={() => setCreditNoteSale(sale!)}
+                                          >
+                                            <AlertTriangle className="mr-2 h-4 w-4" />
+                                            Emitir nota de crédito
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                        {showReemit ? (
+                                          <DropdownMenuItem onClick={() => startEmitFromTable(row.key)}>
+                                            <RefreshCcw className="mr-2 h-4 w-4" />
+                                            Reemitir comprobante
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  ) : null}
+                                </div>
+                              )
+                            })() : (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  className="h-8 gap-1.5 px-2.5"
+                                  onClick={() => startEmitFromTable(row.key)}
+                                >
+                                  <Send className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Emitir</span>
+                                </Button>
+                                {row.kind === "sale" && row.sale ? (
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                       <Button
-                                        variant="outline"
+                                        variant="ghost"
                                         size="icon"
-                                        className="h-8 w-8 shrink-0"
-                                        aria-label="Opciones"
+                                        className="h-8 w-8 shrink-0 text-muted-foreground"
+                                        aria-label="Más acciones"
                                       >
-                                        <MoreVertical className="h-4 w-4" />
+                                        <MoreHorizontal className="h-4 w-4" />
                                       </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      {canEmitNotaCredito(row.sale) ? (
-                                        <DropdownMenuItem
-                                          className="text-amber-700 focus:text-amber-800 dark:text-amber-400 dark:focus:text-amber-300"
-                                          onClick={() => setCreditNoteSale(row.sale!)}
-                                        >
-                                          ¿Fue un error? Emití una NC
-                                        </DropdownMenuItem>
-                                      ) : null}
-                                      {canReemitirComprobante(row.sale) ? (
-                                        <DropdownMenuItem onClick={() => startEmitFromTable(row.key)}>
-                                          Reemitir
-                                        </DropdownMenuItem>
-                                      ) : null}
+                                    <DropdownMenuContent align="end" className="w-56">
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          openImportInvoiceModal({
+                                            saleId: row.sale!.id,
+                                            clientId: row.clientId ?? undefined,
+                                            hint: `Vincular PDF externo a ${row.reference} · ${row.clientName}`,
+                                          })
+                                        }
+                                      >
+                                        <FileUp className="mr-2 h-4 w-4" />
+                                        Vincular PDF externo
+                                      </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-end gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 shrink-0"
-                                  onClick={() => startEmitFromTable(row.key)}
-                                >
-                                  Emitir comprobante
-                                </Button>
-                                {row.kind === "sale" && row.sale ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 shrink-0 text-xs"
-                                    onClick={() =>
-                                      openImportInvoiceModal({
-                                        saleId: row.sale!.id,
-                                        clientId: row.clientId ?? undefined,
-                                        hint: `Vincular PDF externo a ${row.reference} · ${row.clientName}`,
-                                      })
-                                    }
-                                  >
-                                    <FileUp className="mr-1 h-3 w-3" />
-                                    Vincular PDF externo
-                                  </Button>
                                 ) : null}
                               </div>
                             )}
