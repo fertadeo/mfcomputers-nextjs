@@ -848,6 +848,8 @@ export interface UpdateSaleRequest {
   notes?: string | null
   allow_inactive?: boolean
   sync_to_woocommerce?: boolean
+  currency?: SaleCurrency
+  exchange_rate?: number
 }
 
 export interface CreateSaleResponse {

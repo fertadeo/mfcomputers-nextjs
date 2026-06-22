@@ -1,7 +1,8 @@
 import type { PosCartLine } from "@/lib/pos-cart"
 import { getPosCartLineLabel } from "@/lib/pos-cart"
-import type { SalePaymentMethod } from "@/lib/api"
+import type { SalePaymentMethod, SaleCurrency } from "@/lib/api"
 import { formatSaleIvaRateLabel, type SaleIvaRate } from "@/lib/sale-iva"
+import { formatSaleMoney, resolveSaleCurrency } from "@/lib/pos-usd"
 
 export interface SaleEditLineSnapshot {
   matchKey: string
@@ -17,6 +18,8 @@ export interface SaleEditOriginalSnapshot {
   clientLabel: string
   notes: string
   paymentMethod: SalePaymentMethod
+  currency: SaleCurrency
+  exchangeRate: number | null
   total: number
   lines: SaleEditLineSnapshot[]
 }
@@ -50,10 +53,14 @@ export interface SaleEditConfirmSummary {
   finalLines: SaleEditLineSnapshot[]
   hasItemChanges: boolean
   hasAnyChange: boolean
+  currencyChanged: boolean
+  currencyBefore: SaleCurrency
+  currencyAfter: SaleCurrency
+  exchangeRateAfter: number | null
 }
 
-function formatMoney(n: number): string {
-  return n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 })
+function formatMoney(n: number, currency: SaleCurrency = "ARS"): string {
+  return formatSaleMoney(n, resolveSaleCurrency(currency), { maximumFractionDigits: 2, minimumFractionDigits: 2 })
 }
 
 export function clientLabelFromSale(clientId: number | null, clientName?: string | null): string {
@@ -78,13 +85,19 @@ export function cartToLineSnapshots(cart: PosCartLine[]): SaleEditLineSnapshot[]
   }))
 }
 
-function lineDetailChanges(before: SaleEditLineSnapshot, after: SaleEditLineSnapshot): string[] {
+function lineDetailChanges(
+  before: SaleEditLineSnapshot,
+  after: SaleEditLineSnapshot,
+  currency: SaleCurrency
+): string[] {
   const details: string[] = []
   if (before.quantity !== after.quantity) {
     details.push(`Cantidad: ${before.quantity} → ${after.quantity}`)
   }
   if (Math.abs(before.unit_price - after.unit_price) >= 0.01) {
-    details.push(`Precio unit.: ${formatMoney(before.unit_price)} → ${formatMoney(after.unit_price)}`)
+    details.push(
+      `Precio unit.: ${formatMoney(before.unit_price, currency)} → ${formatMoney(after.unit_price, currency)}`
+    )
   }
   if (before.iva_rate !== after.iva_rate) {
     details.push(
@@ -101,10 +114,13 @@ export function buildSaleEditConfirmSummary(params: {
   notes: string
   paymentMethod: SalePaymentMethod
   paymentLabel: (m: SalePaymentMethod) => string
+  currency: SaleCurrency
+  exchangeRate: number | null
   total: number
   cart: PosCartLine[]
 }): SaleEditConfirmSummary {
   const currentLines = cartToLineSnapshots(params.cart)
+  const currency = resolveSaleCurrency(params.currency)
   const beforeMap = new Map(params.original.lines.map((l) => [l.matchKey, l]))
   const afterMap = new Map(currentLines.map((l) => [l.matchKey, l]))
 
@@ -124,7 +140,7 @@ export function buildSaleEditConfirmSummary(params: {
       })
       continue
     }
-    const details = lineDetailChanges(prev, line)
+    const details = lineDetailChanges(prev, line, currency)
     if (details.length > 0) {
       lineChanges.push({
         kind: "modified",
@@ -169,6 +185,13 @@ export function buildSaleEditConfirmSummary(params: {
   const totalChanged = Math.abs(params.total - params.original.total) >= 0.01
   const hasItemChanges = lineChanges.some((l) => l.kind !== "unchanged")
 
+  const currencyChanged = currency !== resolveSaleCurrency(params.original.currency)
+  const exchangeRateChanged =
+    currency === "USD" &&
+    params.exchangeRate != null &&
+    params.original.exchangeRate != null &&
+    Math.abs(params.exchangeRate - params.original.exchangeRate) >= 0.01
+
   return {
     clientChanged,
     clientBefore: params.original.clientLabel,
@@ -185,8 +208,21 @@ export function buildSaleEditConfirmSummary(params: {
     lineChanges,
     finalLines: currentLines,
     hasItemChanges,
-    hasAnyChange: clientChanged || notesChanged || paymentChanged || totalChanged || hasItemChanges,
+    currencyChanged,
+    currencyBefore: resolveSaleCurrency(params.original.currency),
+    currencyAfter: currency,
+    exchangeRateAfter: params.exchangeRate,
+    hasAnyChange:
+      clientChanged ||
+      notesChanged ||
+      paymentChanged ||
+      totalChanged ||
+      hasItemChanges ||
+      currencyChanged ||
+      exchangeRateChanged,
   }
 }
 
-export { formatMoney as formatSaleEditMoney }
+export function formatSaleEditMoney(n: number, currency: SaleCurrency = "ARS"): string {
+  return formatMoney(n, currency)
+}

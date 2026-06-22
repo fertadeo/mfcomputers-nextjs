@@ -33,6 +33,7 @@ import {
   updateSale,
   type Cliente,
   type Product,
+  type SaleCurrency,
   type SalePaymentMethod,
   type SaleResponseData,
   type UpdateSaleRequest,
@@ -64,7 +65,21 @@ import {
   type SaleEditOriginalSnapshot,
 } from "@/lib/sale-edit-summary"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
-import { Loader2, Plus, Save } from "lucide-react"
+import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
+import { SaleCurrencyBadge } from "@/components/sale-currency-badge"
+import { getDollarRate } from "@/lib/product-pricing"
+import {
+  applyUsdUnitPriceEdit,
+  arsToUsd,
+  convertCartLineToArs,
+  convertCartLineToUsd,
+  formatSaleMoney,
+  isUsdSale,
+  recalcUsdCartLine,
+  resolveSaleCurrency,
+  usdToArs,
+} from "@/lib/pos-usd"
+import { Loader2, Plus, RefreshCw, Save } from "lucide-react"
 import { toast } from "sonner"
 
 const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
@@ -74,10 +89,8 @@ const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
   mixto: "Mixto",
 }
 
-const FORMAT_NUM = { maximumFractionDigits: 0, minimumFractionDigits: 0 } as const
-
-function formatMoney(n: number) {
-  return n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 })
+function formatEditMoney(n: number, currency: SaleCurrency) {
+  return formatSaleMoney(n, resolveSaleCurrency(currency), { maximumFractionDigits: 2, minimumFractionDigits: 2 })
 }
 
 interface SaleEditModalProps {
@@ -110,6 +123,12 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [saleCurrency, setSaleCurrency] = useState<SaleCurrency>("ARS")
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null)
+  const [exchangeRateInput, setExchangeRateInput] = useState("")
+  const [dollarRateLoading, setDollarRateLoading] = useState(false)
+  const [dollarRateError, setDollarRateError] = useState<string | null>(null)
+  const [dollarRateLabel, setDollarRateLabel] = useState<string | null>(null)
 
   const initFromSale = useCallback(async (s: SaleResponseData) => {
     setLoading(true)
@@ -125,7 +144,16 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
           }
         })
       )
-      const initialCart = saleItemsToPosCartLines(s.items || [], productById)
+      const initialCartRaw = saleItemsToPosCartLines(s.items || [], productById)
+      const currency = resolveSaleCurrency(s.currency)
+      const rate = s.exchange_rate ?? null
+      const initialCart =
+        currency === "USD" && rate && rate > 0
+          ? initialCartRaw.map((line) => ({
+              ...line,
+              ars_unit_price: usdToArs(line.unit_price, rate),
+            }))
+          : initialCartRaw
       const clientLabel = clientLabelFromSale(s.client_id, s.client_name)
       setCart(initialCart)
       setOriginalTotal(s.total_amount)
@@ -145,9 +173,16 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
         clientLabel,
         notes: s.notes ?? "",
         paymentMethod: s.payment_method,
+        currency,
+        exchangeRate: rate,
         total: s.total_amount,
         lines: cartToLineSnapshots(initialCart),
       })
+      setSaleCurrency(currency)
+      setExchangeRate(rate)
+      setExchangeRateInput(rate != null ? String(rate) : "")
+      setDollarRateError(null)
+      setDollarRateLabel(null)
       setNotes(s.notes ?? "")
       setPaymentMethod(s.payment_method)
       setOriginalPaymentMethod(s.payment_method)
@@ -210,6 +245,53 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
     return () => clearTimeout(t)
   }, [clientSearch])
 
+  async function loadSuggestedExchangeRate() {
+    setDollarRateLoading(true)
+    setDollarRateError(null)
+    try {
+      const data = await getDollarRate()
+      const rate = data.current_rate
+      setExchangeRate(rate)
+      setExchangeRateInput(String(rate))
+      setDollarRateLabel(data.quote?.dollar_label ?? "Dólar del día")
+      if (isUsdSale(saleCurrency) && cart.length > 0) {
+        setCart((prev) => prev.map((line) => recalcUsdCartLine(line, rate)))
+        markDirty()
+      }
+    } catch (e) {
+      setDollarRateError(e instanceof Error ? e.message : "No se pudo cargar la cotización")
+    } finally {
+      setDollarRateLoading(false)
+    }
+  }
+
+  function handleSaleCurrencyChange(next: SaleCurrency) {
+    if (next === saleCurrency) return
+    if (next === "USD") {
+      setSaleCurrency("USD")
+      void loadSuggestedExchangeRate()
+      if (exchangeRate && exchangeRate > 0) {
+        setCart((prev) => prev.map((line) => convertCartLineToUsd(line, exchangeRate)))
+      }
+      markDirty()
+      return
+    }
+    setSaleCurrency("ARS")
+    setCart((prev) => prev.map((line) => convertCartLineToArs(line)))
+    markDirty()
+  }
+
+  function handleExchangeRateInputChange(raw: string) {
+    setExchangeRateInput(raw)
+    const parsed = Number(raw.replace(",", "."))
+    if (!Number.isFinite(parsed) || parsed <= 0) return
+    setExchangeRate(parsed)
+    if (isUsdSale(saleCurrency)) {
+      setCart((prev) => prev.map((line) => recalcUsdCartLine(line, parsed)))
+      markDirty()
+    }
+  }
+
   const total = useMemo(
     () => cart.reduce((sum, i) => sum + i.quantity * i.unit_price, 0),
     [cart]
@@ -265,6 +347,11 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       toast.error("Sin stock disponible para este producto")
       return
     }
+    const arsPrice = Number(p.price) || 0
+    const unitPrice =
+      isUsdSale(saleCurrency) && exchangeRate && exchangeRate > 0
+        ? arsToUsd(arsPrice, exchangeRate)
+        : arsPrice
     const exists = cart.find((l) => l.kind === "catalog" && l.product.id === p.id)
     if (exists) {
       setCart((prev) =>
@@ -278,11 +365,12 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       setCart((prev) => [
         ...prev,
         {
-          kind: "catalog",
+          kind: "catalog" as const,
           product: p,
           quantity: 1,
-          unit_price: Number(p.price) || 0,
+          unit_price: unitPrice,
           iva_rate: effectiveSaleItemIvaRate(productIvaRate(p), selectedCliente),
+          ...(isUsdSale(saleCurrency) ? { ars_unit_price: arsPrice } : {}),
         },
       ])
     }
@@ -296,6 +384,11 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
     unit_price: number
     iva_rate?: SaleIvaRate
   }) {
+    const arsPrice = payload.unit_price
+    const unitPrice =
+      isUsdSale(saleCurrency) && exchangeRate && exchangeRate > 0
+        ? arsToUsd(arsPrice, exchangeRate)
+        : arsPrice
     setCart((prev) => [
       ...prev,
       {
@@ -303,8 +396,9 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
         lineId: newCustomLineId(),
         description: payload.description,
         quantity: payload.quantity,
-        unit_price: payload.unit_price,
+        unit_price: unitPrice,
         iva_rate: effectiveSaleItemIvaRate(payload.iva_rate ?? 21, selectedCliente),
+        ...(isUsdSale(saleCurrency) ? { ars_unit_price: arsPrice } : {}),
       },
     ])
     markDirty()
@@ -330,7 +424,13 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
 
   function setCartUnitPrice(lineKey: string, unit_price: number) {
     setCart((prev) =>
-      prev.map((i) => (getPosCartLineKey(i) === lineKey ? { ...i, unit_price } : i))
+      prev.map((i) => {
+        if (getPosCartLineKey(i) !== lineKey) return i
+        if (isUsdSale(saleCurrency) && exchangeRate && exchangeRate > 0) {
+          return applyUsdUnitPriceEdit(i, unit_price, exchangeRate)
+        }
+        return { ...i, unit_price }
+      })
     )
     markDirty()
   }
@@ -355,8 +455,12 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
     }
     if (needsMixtoDetails && !mixtoValid) {
       toast.error("En pago mixto, la suma debe coincidir con el nuevo total", {
-        description: `${formatMoney(mixtoSum)} ≠ ${formatMoney(total)}`,
+        description: `${formatEditMoney(mixtoSum, saleCurrency)} ≠ ${formatEditMoney(total, saleCurrency)}`,
       })
+      return false
+    }
+    if (isUsdSale(saleCurrency) && (!exchangeRate || exchangeRate <= 0)) {
+      toast.error("Indicá una cotización USD/ARS válida para ventas en dólares")
       return false
     }
     return true
@@ -368,7 +472,16 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       notes: notes.trim() || null,
       items: posCartLinesToCreateSaleItems(cart),
       allow_inactive: allowInactive || undefined,
-      sync_to_woocommerce: syncWoo || undefined,
+      sync_to_woocommerce: isUsdSale(saleCurrency) ? false : syncWoo || undefined,
+    }
+    const resolvedCurrency = resolveSaleCurrency(saleCurrency)
+    if (isUsdSale(resolvedCurrency)) {
+      if (exchangeRate) {
+        body.currency = "USD"
+        body.exchange_rate = exchangeRate
+      }
+    } else if (originalSnapshot && isUsdSale(originalSnapshot.currency)) {
+      body.currency = "ARS"
     }
     if (paymentMethodChanged) {
       body.payment_method = paymentMethod
@@ -394,6 +507,8 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
       notes,
       paymentMethod,
       paymentLabel: (m) => PAYMENT_LABELS[m],
+      currency: saleCurrency,
+      exchangeRate,
       total,
       cart,
     })
@@ -460,13 +575,81 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                 <Alert
                   variant="warning"
                   title="El total cambió"
-                  description={`De ${formatMoney(originalTotal)} a ${formatMoney(total)}.${
+                  description={`De ${formatEditMoney(originalTotal, saleCurrency)} a ${formatEditMoney(total, saleCurrency)}.${
                     originalPaymentMethod === "mixto" || paymentMethod === "mixto"
                       ? " Redistribuí el pago mixto antes de guardar."
                       : " La caja se actualizará automáticamente."
                   }`}
                 />
               )}
+
+              <div
+                className={`rounded-lg border p-4 space-y-3 ${
+                  isUsdSale(saleCurrency)
+                    ? "border-amber-400/70 bg-amber-50/30 dark:border-amber-600/40 dark:bg-amber-950/15"
+                    : "bg-muted/20"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Moneda de cobro</Label>
+                  {isUsdSale(saleCurrency) ? (
+                    <SaleCurrencyBadge currency="USD" exchangeRate={exchangeRate} showRate className="ml-auto" />
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["ARS", "USD"] as const).map((cur) => (
+                    <Button
+                      key={cur}
+                      type="button"
+                      variant={saleCurrency === cur ? "default" : "outline"}
+                      size="sm"
+                      className={saleCurrency === cur && cur === "USD" ? "bg-amber-600 hover:bg-amber-600" : ""}
+                      onClick={() => handleSaleCurrencyChange(cur)}
+                    >
+                      {cur === "ARS" ? "Pesos (ARS)" : "Dólares (USD)"}
+                    </Button>
+                  ))}
+                </div>
+                {isUsdSale(saleCurrency) ? (
+                  <div className="space-y-2 rounded-md border border-amber-300/60 bg-background/80 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="sale-edit-exchange-rate" className="text-xs font-medium">
+                        Cotización USD/ARS (obligatoria)
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => void loadSuggestedExchangeRate()}
+                        disabled={dollarRateLoading}
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 mr-1 ${dollarRateLoading ? "animate-spin" : ""}`} />
+                        Sugerir del día
+                      </Button>
+                    </div>
+                    <Input
+                      id="sale-edit-exchange-rate"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={exchangeRateInput}
+                      onChange={(e) => handleExchangeRateInputChange(e.target.value)}
+                      placeholder="Ej. 1200"
+                    />
+                    {dollarRateLabel ? (
+                      <p className="text-xs text-muted-foreground">
+                        Sugerencia: {dollarRateLabel}
+                        {exchangeRate ? ` · ${exchangeRate.toLocaleString("es-AR")} ARS/USD` : ""}
+                      </p>
+                    ) : null}
+                    {dollarRateError ? (
+                      <p className="text-xs text-destructive">{dollarRateError}</p>
+                    ) : null}
+                    <SaleCurrencyNotice variant="panel" currency="USD" exchangeRate={exchangeRate} />
+                  </div>
+                ) : null}
+              </div>
 
               <div className="space-y-2">
                 <Label>Cliente</Label>
@@ -577,6 +760,8 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                             key={getPosCartLineKey(line)}
                             line={line}
                             view="table"
+                            currency={saleCurrency}
+                            exchangeRate={exchangeRate}
                             onUpdateQuantity={updateCartQuantity}
                             onSetUnitPrice={setCartUnitPrice}
                             onSetIvaRate={setCartIvaRate}
@@ -592,11 +777,21 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
 
               <div className="rounded-lg border bg-muted/20 p-4 space-y-1 text-sm">
                 <p className="text-muted-foreground">
-                  Neto gravado: ${ivaBreakdown.netoGravado.toLocaleString("es-AR", FORMAT_NUM)}
+                  Neto gravado ({isUsdSale(saleCurrency) ? "USD" : "ARS"}):{" "}
+                  {formatEditMoney(ivaBreakdown.netoGravado, saleCurrency)}
                 </p>
-                <p className="text-lg font-bold tabular-nums">
-                  Total: ${total.toLocaleString("es-AR", FORMAT_NUM)}
+                <p
+                  className={`text-lg font-bold tabular-nums ${
+                    isUsdSale(saleCurrency) ? "text-amber-700 dark:text-amber-400" : ""
+                  }`}
+                >
+                  Total: {formatEditMoney(total, saleCurrency)}
                 </p>
+                {isUsdSale(saleCurrency) && exchangeRate && total > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Referencia ARS: {formatEditMoney(total * exchangeRate, "ARS")}
+                  </p>
+                ) : null}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -671,7 +866,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                     />
                   </div>
                   <p className="sm:col-span-3 text-xs text-muted-foreground">
-                    Suma: {formatMoney(mixtoSum)} — debe ser {formatMoney(total)}
+                    Suma: {formatEditMoney(mixtoSum, saleCurrency)} — debe ser {formatEditMoney(total, saleCurrency)}
                     {!mixtoValid && (
                       <span className="text-destructive ml-1">No coincide</span>
                     )}
@@ -706,7 +901,7 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                     Permitir productos inactivos
                   </Label>
                 </div>
-                {sale.sync_status === "synced" && (
+                {sale.sync_status === "synced" && !isUsdSale(saleCurrency) && (
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="sale-edit-woo"

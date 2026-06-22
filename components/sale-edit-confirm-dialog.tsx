@@ -123,18 +123,48 @@ export function SaleEditConfirmDialog({
                 </dd>
               </div>
               <div className="px-3 py-2 grid gap-1 sm:grid-cols-[7rem_1fr]">
+                <dt className="text-muted-foreground">Moneda</dt>
+                <dd>
+                  {summary.currencyChanged ? (
+                    <>
+                      <span className="line-through text-muted-foreground">
+                        {summary.currencyBefore === "USD" ? "Dólares (USD)" : "Pesos (ARS)"}
+                      </span>
+                      <span className="mx-2 text-muted-foreground">→</span>
+                      <span className="font-medium">
+                        {summary.currencyAfter === "USD" ? "Dólares (USD)" : "Pesos (ARS)"}
+                        {summary.currencyAfter === "USD" && summary.exchangeRateAfter
+                          ? ` · ${summary.exchangeRateAfter.toLocaleString("es-AR")} ARS/USD`
+                          : ""}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="font-medium">
+                      {summary.currencyAfter === "USD" ? "Dólares (USD)" : "Pesos (ARS)"}
+                      {summary.currencyAfter === "USD" && summary.exchangeRateAfter
+                        ? ` · ${summary.exchangeRateAfter.toLocaleString("es-AR")} ARS/USD`
+                        : ""}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div className="px-3 py-2 grid gap-1 sm:grid-cols-[7rem_1fr]">
                 <dt className="text-muted-foreground">Total</dt>
                 <dd>
                   {summary.totalChanged ? (
                     <>
                       <span className="line-through text-muted-foreground">
-                        {formatSaleEditMoney(summary.totalBefore)}
+                        {formatSaleEditMoney(summary.totalBefore, summary.currencyAfter)}
                       </span>
                       <span className="mx-2 text-muted-foreground">→</span>
-                      <span className="font-semibold">{formatSaleEditMoney(summary.totalAfter)}</span>
+                      <span className="font-semibold">
+                        {formatSaleEditMoney(summary.totalAfter, summary.currencyAfter)}
+                      </span>
                     </>
                   ) : (
-                    <span className="font-semibold">{formatSaleEditMoney(summary.totalAfter)}</span>
+                    <span className="font-semibold">
+                      {formatSaleEditMoney(summary.totalAfter, summary.currencyAfter)}
+                    </span>
                   )}
                 </dd>
               </div>
@@ -182,7 +212,7 @@ export function SaleEditConfirmDialog({
                         ))}
                         {line.kind === "added" && (
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {line.quantity} × {formatSaleEditMoney(line.unit_price)} · IVA{" "}
+                            {line.quantity} × {formatSaleEditMoney(line.unit_price, summary.currencyAfter)} · IVA{" "}
                             {formatSaleIvaRateLabel(line.iva_rate)}
                           </p>
                         )}
@@ -228,13 +258,13 @@ export function SaleEditConfirmDialog({
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{line.quantity}</TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {formatSaleEditMoney(line.unit_price)}
+                          {formatSaleEditMoney(line.unit_price, summary.currencyAfter)}
                         </TableCell>
                         <TableCell className="text-right text-xs text-muted-foreground">
                           {formatSaleIvaRateLabel(line.iva_rate)}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
-                          {formatSaleEditMoney(line.subtotal)}
+                          {formatSaleEditMoney(line.subtotal, summary.currencyAfter)}
                         </TableCell>
                       </TableRow>
                     )
