@@ -7,7 +7,7 @@ import {
   type SaleItemResponse,
 } from "@/lib/api"
 import { getSaleItemDisplayName, isSaleCustomItem, saleItemCatalogProductIds } from "@/lib/sale-items"
-import { buildAfipQrUrl } from "@/lib/arca-invoice-afip-qr"
+import { buildAfipQrUrl, parseAfipQrReceptorDoc } from "@/lib/arca-invoice-afip-qr"
 import { toNumber } from "@/lib/arca-invoice-format"
 import type { GenerateArcaInvoicePdfParams } from "@/lib/generate-arca-invoice-pdf"
 import type { FacturacionEmisionData } from "@/lib/facturacion-errors"
@@ -20,7 +20,7 @@ import { mergeFacturarSaleRequestBody } from "@/lib/facturacion-request-preview"
 import { condicionVentaLabelFromPayload } from "@/lib/condicion-venta"
 import { facturadorTipoRequiereIva } from "@/lib/facturacion-comprobantes"
 import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
-import { resolveReceptorDocForInvoicePdf } from "@/lib/facturacion-receptor-doc"
+import { extractDocFromArcaRequest, resolveReceptorDocForInvoicePdf } from "@/lib/facturacion-receptor-doc"
 import { saleToClienteSnapshot } from "@/lib/sale-cliente"
 import {
   buildArcaIvaDiscriminado,
@@ -127,7 +127,24 @@ export async function buildArcaInvoicePdfInput(
   const condicionVentaPdf = condicionVentaLabelFromPayload(facturarPayload)
   const clienteForDoc =
     cliente ?? saleToClienteSnapshot(sale) ?? (saleSnapshot ? saleToClienteSnapshot(saleSnapshot) : null)
-  const { docTipo, docNro } = resolveReceptorDocForInvoicePdf(facturarPayload, clienteForDoc)
+  const fromSaleRequest = extractDocFromArcaRequest(sale)
+  const fromQr = parseAfipQrReceptorDoc(emision.qrUrl)
+  const mergedPayload = {
+    ...facturarPayload,
+    ...fromSaleRequest,
+    ...(fromQr.docNro ? { docTipo: fromQr.docTipo ?? 80, docNro: fromQr.docNro } : {}),
+  }
+  const docHints =
+    fromQr.docNro && fromQr.docNro > 0
+      ? fromQr
+      : fromSaleRequest.docNro && fromSaleRequest.docNro > 0
+        ? { docTipo: fromSaleRequest.docTipo ?? 80, docNro: fromSaleRequest.docNro }
+        : undefined
+  const { docTipo, docNro } = resolveReceptorDocForInvoicePdf(
+    mergedPayload,
+    clienteForDoc,
+    docHints
+  )
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
   const total = toNumber(emision.importe ?? sale.total_amount)
   const saleCurrency = String(sale.currency ?? "ARS").toUpperCase() === "USD" ? "USD" : "ARS"

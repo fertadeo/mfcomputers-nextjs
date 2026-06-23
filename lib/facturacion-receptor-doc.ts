@@ -1,4 +1,4 @@
-import type { FacturarSaleRequest } from "@/lib/api"
+import type { FacturarSaleRequest, Sale } from "@/lib/api"
 import type { ArcaPadronResult } from "@/lib/arca-padron"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
 import { resolveTipoComprobanteFromCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
@@ -35,16 +35,68 @@ export function clienteCuitForDisplay(cliente?: { cuil_cuit?: string | null; pri
   return clienteCuitDigitos(cliente as Parameters<typeof clienteCuitDigitos>[0])
 }
 
-/** docTipo/docNro efectivos para PDF y vista previa (payload + cliente ERP). */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === "object" && !Array.isArray(v)
+}
+
+function docNroFromUnknown(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined
+  const digits = String(value).replace(/\D/g, "")
+  if (!digits || digits === "0") return undefined
+  const n = Number(digits)
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
+/** Extrae docTipo/docNro del request persistido al emitir o campos planos del GET /sales. */
+export function extractDocFromArcaRequest(
+  sale: Sale | Record<string, unknown>
+): Pick<FacturarSaleRequest, "docTipo" | "docNro" | "condicionIvaReceptor" | "tipo"> {
+  const row = sale as Record<string, unknown>
+  const out: Pick<FacturarSaleRequest, "docTipo" | "docNro" | "condicionIvaReceptor" | "tipo"> = {}
+
+  const flatTipo = row.arca_receptor_doc_tipo
+  const flatNro = row.arca_receptor_doc_nro
+  if (flatTipo != null && !Number.isNaN(Number(flatTipo))) {
+    out.docTipo = Number(flatTipo)
+  }
+  const flatDocNro = docNroFromUnknown(flatNro)
+  if (flatDocNro != null) out.docNro = flatDocNro
+
+  const req = row.arca_request_json
+  if (isRecord(req)) {
+    if (req.docTipo != null && !Number.isNaN(Number(req.docTipo))) {
+      out.docTipo = Number(req.docTipo)
+    }
+    const reqDocNro = docNroFromUnknown(req.docNro)
+    if (reqDocNro != null) out.docNro = reqDocNro
+    if (req.condicionIvaReceptor != null && !Number.isNaN(Number(req.condicionIvaReceptor))) {
+      out.condicionIvaReceptor = Number(req.condicionIvaReceptor)
+    }
+    if (req.tipo != null && !Number.isNaN(Number(req.tipo))) {
+      out.tipo = Number(req.tipo)
+    }
+  }
+
+  return out
+}
+
+/** docTipo/docNro efectivos para PDF y vista previa (QR / request / payload / cliente ERP). */
 export function resolveReceptorDocForInvoicePdf(
   payload: FacturarSaleRequest,
-  cliente?: { cuil_cuit?: string | null; primary_tax_id?: string } | null
+  cliente?: { cuil_cuit?: string | null; primary_tax_id?: string } | null,
+  hints?: { docTipo?: number; docNro?: number }
 ): { docTipo: number; docNro: number } {
-  const docTipo = payload.docTipo ?? 99
-  const docNro = payload.docNro ?? 0
+  const hintNro = hints?.docNro ?? 0
+  if (hintNro > 0) {
+    return { docTipo: hints?.docTipo ?? 80, docNro: hintNro }
+  }
 
-  if (docTipo === 80 && docNro > 0) {
-    return { docTipo, docNro }
+  const payloadNro = payload.docNro ?? 0
+  if ((payload.docTipo ?? 99) === 80 && payloadNro > 0) {
+    return { docTipo: 80, docNro: payloadNro }
+  }
+  if (payloadNro > 0) {
+    return { docTipo: payload.docTipo ?? 80, docNro: payloadNro }
   }
 
   const cuit = clienteCuitDigitos(cliente as Parameters<typeof clienteCuitDigitos>[0])
@@ -52,7 +104,7 @@ export function resolveReceptorDocForInvoicePdf(
     return { docTipo: 80, docNro: parseInt(cuit, 10) }
   }
 
-  return { docTipo, docNro }
+  return { docTipo: payload.docTipo ?? 99, docNro: payloadNro }
 }
 
 export function isReceptorCuitInputInvalid(rawInput: string): boolean {

@@ -44,6 +44,11 @@ export function fmtDateAr(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
+/** Etiqueta del campo documento receptor en PDF / vista previa. */
+export function labelReceptorDocumento(docTipo: number | string, docNro: number | string): string {
+  return toNumber(docNro, 0) > 0 ? "CUIT/CUIL: " : "Doc.: "
+}
+
 /** Muestra CUIT/CUIL del receptor en el PDF (XX-XXXXXXXX-X). Sin número → guión. */
 export function formatDocReceptor(docTipo: number | string, docNro: number | string): string {
   void docTipo

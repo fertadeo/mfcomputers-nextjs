@@ -9,6 +9,7 @@ import {
 import {
   fmtDateAr,
   formatDocReceptor,
+  labelReceptorDocumento,
   getArcaItemTableColumnPercents,
   moneyAr,
   moneyArWithSymbol,
@@ -115,7 +116,7 @@ function ArcaInvoiceCopyPreview({ data, copia, pagina }: ArcaInvoiceCopyPreviewP
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: border }}>
           <div style={{ padding: "6px 10px", borderRight: border }}>
             <LabelValue
-              label="Doc.: "
+              label={labelReceptorDocumento(data.receptor.docTipo, data.receptor.docNro)}
               value={formatDocReceptor(data.receptor.docTipo, data.receptor.docNro)}
             />
           </div>

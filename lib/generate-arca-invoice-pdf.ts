@@ -19,6 +19,7 @@ import {
   fmtDateAr,
 
   formatDocReceptor,
+  labelReceptorDocumento,
 
   getArcaItemTableColumnWidthsMm,
 
@@ -341,7 +342,7 @@ async function drawInvoicePage(
 
     doc,
 
-    "Doc.: ",
+    labelReceptorDocumento(params.receptor.docTipo, params.receptor.docNro),
 
     formatDocReceptor(params.receptor.docTipo, params.receptor.docNro),
 

@@ -796,6 +796,9 @@ export interface SaleArcaFields {
   arca_cuit_emisor?: string | null
   /** Payload enviado al facturador al emitir (incluye docTipo/docNro del receptor). */
   arca_request_json?: Record<string, unknown> | null
+  /** Denormalizado en GET /sales desde arca_request_json */
+  arca_receptor_doc_tipo?: number | null
+  arca_receptor_doc_nro?: string | null
   arca_last_attempt_at?: string | null
   arca_error_code?: string | null
   arca_error_message?: string | null
