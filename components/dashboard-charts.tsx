@@ -14,11 +14,13 @@ import {
 import {
   DASHBOARD_CHART_PERIOD_OPTIONS,
   getSalesBlockTitles,
+  type DailySalesPoint,
   type DashboardChartData,
   type DashboardChartPeriod,
 } from "@/lib/dashboard-chart-data"
 import { cn } from "@/lib/utils"
 import { Loader2, LineChart, PieChartIcon, Wrench } from "lucide-react"
+import type { TooltipProps } from "recharts"
 
 const salesChartConfig = {
   pos: { label: "POS", color: "var(--color-chart-1)" },
@@ -35,6 +37,55 @@ function formatCurrency(value: number) {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}k`
   return `$${value.toLocaleString("es-AR")}`
+}
+
+const salesTooltipRows = [
+  { key: "pos" as const, label: "POS", color: "var(--color-chart-1)" },
+  { key: "orders" as const, label: "WooCommerce", color: "var(--color-chart-2)" },
+]
+
+function SalesChartTooltip({ active, payload, label }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null
+
+  const point = payload[0]?.payload as DailySalesPoint | undefined
+  if (!point) return null
+
+  return (
+    <div
+      className={cn(
+        "pointer-events-none min-w-[11.5rem] rounded-xl border border-border/70",
+        "bg-popover/95 px-3.5 py-3 shadow-xl backdrop-blur-md",
+        "animate-in fade-in-0 zoom-in-95 duration-150"
+      )}
+    >
+      <p className="mb-2.5 border-b border-border/50 pb-2 text-[13px] font-semibold capitalize leading-tight tracking-tight text-foreground">
+        {label}
+      </p>
+      <ul className="space-y-2">
+        {salesTooltipRows.map((row) => (
+          <li key={row.key} className="flex items-center justify-between gap-5">
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                className="size-2 shrink-0 rounded-full ring-1 ring-border/40"
+                style={{ backgroundColor: row.color }}
+                aria-hidden
+              />
+              <span className="truncate text-xs text-muted-foreground">{row.label}</span>
+            </span>
+            <span className="shrink-0 text-xs font-semibold tabular-nums tracking-tight text-foreground">
+              {formatCurrency(point[row.key])}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2.5 flex items-center justify-between gap-5 border-t border-border/50 pt-2.5">
+        <span className="text-xs font-medium text-muted-foreground">Total</span>
+        <span className="text-sm font-bold tabular-nums tracking-tight text-turquoise-600 dark:text-turquoise-400">
+          {formatCurrency(point.total)}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 interface DashboardChartsProps {
@@ -142,16 +193,8 @@ export function DashboardCharts({
                     tickFormatter={(v) => formatCurrency(Number(v))}
                   />
                   <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value, name) => (
-                          <span className="font-mono">
-                            {formatCurrency(Number(value))} ·{" "}
-                            {salesChartConfig[name as keyof typeof salesChartConfig]?.label ?? name}
-                          </span>
-                        )}
-                      />
-                    }
+                    cursor={{ stroke: "var(--color-border)", strokeWidth: 1, strokeDasharray: "4 4" }}
+                    content={<SalesChartTooltip />}
                   />
                   <ChartLegend content={<ChartLegendContent />} />
                   <Area
