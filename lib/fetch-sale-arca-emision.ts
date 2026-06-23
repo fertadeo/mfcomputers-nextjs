@@ -80,6 +80,37 @@ function mergeEmision(
   }
 }
 
+function extractDocFromArcaRequest(
+  sale: Sale | Record<string, unknown>
+): Pick<FacturarSaleRequest, "docTipo" | "docNro" | "condicionIvaReceptor" | "tipo"> {
+  const row = sale as Record<string, unknown>
+  const req = row.arca_request_json
+  if (!isRecord(req)) return {}
+
+  const out: Pick<FacturarSaleRequest, "docTipo" | "docNro" | "condicionIvaReceptor" | "tipo"> = {}
+
+  if (req.docTipo != null && !Number.isNaN(Number(req.docTipo))) {
+    out.docTipo = Number(req.docTipo)
+  }
+
+  if (req.docNro != null && req.docNro !== "") {
+    const digits = String(req.docNro).replace(/\D/g, "")
+    if (digits && digits !== "0") {
+      out.docNro = parseInt(digits, 10)
+    }
+  }
+
+  if (req.condicionIvaReceptor != null && !Number.isNaN(Number(req.condicionIvaReceptor))) {
+    out.condicionIvaReceptor = Number(req.condicionIvaReceptor)
+  }
+
+  if (req.tipo != null && !Number.isNaN(Number(req.tipo))) {
+    out.tipo = Number(req.tipo)
+  }
+
+  return out
+}
+
 function tryParseStoredArcaJson(raw: unknown): FacturacionEmisionData | null {
   if (typeof raw === "string") {
     try {
@@ -110,9 +141,11 @@ export async function fetchSaleArcaEmision(sale: Sale): Promise<ResolvedSaleArca
   const cached = getCachedFacturacionEmision(sale.id)
   const defaults = buildDefaultFacturarFormRequest()
   const fromSaleCondicion = condicionVentaFieldsFromSale(sale)
-  const facturarPayload = {
+  const fromArcaRequest = extractDocFromArcaRequest(sale)
+  let facturarPayload = {
     ...defaults,
     ...fromSaleCondicion,
+    ...fromArcaRequest,
     ...(cached?.facturarPayload ?? {}),
   }
 
@@ -176,6 +209,11 @@ export async function fetchSaleArcaEmision(sale: Sale): Promise<ResolvedSaleArca
     if (storedJson) {
       emision = mergeEmision(emision, storedJson)
       if (!sources.includes("sale_detail")) sources.push("sale_detail")
+    }
+
+    const fromDetailArcaRequest = extractDocFromArcaRequest(data as Sale)
+    if (Object.keys(fromDetailArcaRequest).length > 0) {
+      facturarPayload = { ...facturarPayload, ...fromDetailArcaRequest }
     }
   } catch {
     /* detalle opcional */

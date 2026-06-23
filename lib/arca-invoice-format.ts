@@ -44,9 +44,14 @@ export function fmtDateAr(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
+/** Muestra CUIT/CUIL del receptor en el PDF (XX-XXXXXXXX-X). Sin número → guión. */
 export function formatDocReceptor(docTipo: number | string, docNro: number | string): string {
-  const tipo = toNumber(docTipo, 99)
+  void docTipo
   const nro = toNumber(docNro, 0)
-  if (nro === 0 || tipo === 99) return "-"
+  if (nro <= 0) return "-"
+  const digits = String(Math.trunc(nro)).replace(/\D/g, "")
+  if (digits.length === 11) {
+    return `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10)}`
+  }
   return String(nro)
 }

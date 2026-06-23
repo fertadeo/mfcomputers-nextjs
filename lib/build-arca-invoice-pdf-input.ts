@@ -20,6 +20,8 @@ import { mergeFacturarSaleRequestBody } from "@/lib/facturacion-request-preview"
 import { condicionVentaLabelFromPayload } from "@/lib/condicion-venta"
 import { facturadorTipoRequiereIva } from "@/lib/facturacion-comprobantes"
 import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
+import { resolveReceptorDocForInvoicePdf } from "@/lib/facturacion-receptor-doc"
+import { saleToClienteSnapshot } from "@/lib/sale-cliente"
 import {
   buildArcaIvaDiscriminado,
   computeSaleIvaBreakdown,
@@ -122,9 +124,10 @@ export async function buildArcaInvoicePdfInput(
     )
   }
 
-  const docTipo = toNumber(facturarPayload.docTipo, 99)
   const condicionVentaPdf = condicionVentaLabelFromPayload(facturarPayload)
-  const docNro = toNumber(facturarPayload.docNro, 0)
+  const clienteForDoc =
+    cliente ?? saleToClienteSnapshot(sale) ?? (saleSnapshot ? saleToClienteSnapshot(saleSnapshot) : null)
+  const { docTipo, docNro } = resolveReceptorDocForInvoicePdf(facturarPayload, clienteForDoc)
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
   const total = toNumber(emision.importe ?? sale.total_amount)
   const saleCurrency = String(sale.currency ?? "ARS").toUpperCase() === "USD" ? "USD" : "ARS"
@@ -254,8 +257,7 @@ export function buildArcaInvoicePdfInputFromPreviewLines(
   const payload = mergeFacturarSaleRequestBody(args.facturarPayload)
   const tipo = args.tipoComprobante ?? toNumber(payload.tipo, 6)
   const puntoVenta = toNumber(payload.puntoVenta ?? getStoredFacturacionPuntoVenta(), 1)
-  const docTipo = toNumber(payload.docTipo, 99)
-  const docNro = toNumber(payload.docNro, 0)
+  const { docTipo, docNro } = resolveReceptorDocForInvoicePdf(payload, args.cliente)
   const condicionIva = payload.condicionIvaReceptor ?? 5
   const requiereIva = facturadorTipoRequiereIva(tipo)
 

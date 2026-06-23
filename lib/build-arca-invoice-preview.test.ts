@@ -34,4 +34,47 @@ describe("buildArcaInvoicePdfInputFromPreviewLines", () => {
     expect(preview.items).toHaveLength(1)
     expect(preview.cae).toBe("")
   })
+
+  it("completa CUIT del receptor desde el cliente ERP si el payload tiene docTipo 99", () => {
+    const preview = buildArcaInvoicePdfInputFromPreviewLines({
+      facturarPayload: {
+        tipo: 6,
+        docTipo: 99,
+        docNro: 0,
+        condicionIvaReceptor: 4,
+        concepto: 1,
+        puntoVenta: 5,
+      },
+      lines: [
+        {
+          description: "Servicio",
+          quantity: 1,
+          unitPrice: 1000,
+          subtotal: 1000,
+          ivaRate: 21,
+        },
+      ],
+      receptorRazonSocial: "ENTE PROVINCIAL DEL RIO COLORADO O. P.",
+      cliente: {
+        id: 1,
+        code: "C001",
+        client_type: "mayorista",
+        sales_channel: "sistema_mf",
+        name: "ENTE PROVINCIAL DEL RIO COLORADO O. P.",
+        email: "",
+        phone: "",
+        city: "Santa Rosa",
+        country: "AR",
+        is_active: 1,
+        created_at: "",
+        updated_at: "",
+        cuil_cuit: "30709212083",
+        condicion_iva_receptor: 4,
+      },
+      totalAmount: 1000,
+    })
+
+    expect(preview.receptor.docTipo).toBe(80)
+    expect(preview.receptor.docNro).toBe(30709212083)
+  })
 })

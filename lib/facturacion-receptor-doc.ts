@@ -35,6 +35,26 @@ export function clienteCuitForDisplay(cliente?: { cuil_cuit?: string | null; pri
   return clienteCuitDigitos(cliente as Parameters<typeof clienteCuitDigitos>[0])
 }
 
+/** docTipo/docNro efectivos para PDF y vista previa (payload + cliente ERP). */
+export function resolveReceptorDocForInvoicePdf(
+  payload: FacturarSaleRequest,
+  cliente?: { cuil_cuit?: string | null; primary_tax_id?: string } | null
+): { docTipo: number; docNro: number } {
+  const docTipo = payload.docTipo ?? 99
+  const docNro = payload.docNro ?? 0
+
+  if (docTipo === 80 && docNro > 0) {
+    return { docTipo, docNro }
+  }
+
+  const cuit = clienteCuitDigitos(cliente as Parameters<typeof clienteCuitDigitos>[0])
+  if (cuit.length === 11) {
+    return { docTipo: 80, docNro: parseInt(cuit, 10) }
+  }
+
+  return { docTipo, docNro }
+}
+
 export function isReceptorCuitInputInvalid(rawInput: string): boolean {
   const d = soloDigitosDoc(rawInput)
   return d.length > 0 && d.length !== 11
