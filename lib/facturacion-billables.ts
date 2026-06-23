@@ -1,5 +1,6 @@
 import type { RepairOrder, RepairOrderStatus, Sale } from "@/lib/api"
 import { REPAIR_ORDER_STATUS_LABELS } from "@/lib/api"
+import { isSaleFacturacionArchived } from "@/lib/facturacion-archive"
 
 export type ArcaStatus = "pending" | "success" | "error" | "not_issued"
 export type BillableKind = "sale" | "repair_order"
@@ -27,6 +28,8 @@ export interface BillableRow {
   arcaNcStatus?: "pending" | "success" | "error" | null
   arcaNcCae?: string | null
   arcaNcNumero?: number | null
+  /** Oculta en listado de facturación (venta subyacente archivada). */
+  facturacionArchived?: boolean
   sale?: Sale
   repairOrder?: RepairOrder
   linkedSaleId?: number | null
@@ -87,6 +90,7 @@ export function saleToBillable(sale: Sale): BillableRow {
     arcaNcStatus: sale.arca_nc_status ?? null,
     arcaNcCae: sale.arca_nc_cae ?? null,
     arcaNcNumero: sale.arca_nc_numero ?? null,
+    facturacionArchived: isSaleFacturacionArchived(sale),
     sale,
     linkedSaleId: sale.id,
   }
@@ -122,7 +126,11 @@ export function repairOrderToBillable(order: RepairOrder, clientName?: string): 
 }
 
 /** Une ventas POS y órdenes de reparación facturables sin duplicar la venta vinculada. */
-export function mergeFacturacionBillables(sales: Sale[], repairOrders: RepairOrder[]): BillableRow[] {
+export function mergeFacturacionBillables(
+  sales: Sale[],
+  repairOrders: RepairOrder[],
+  options?: { showArchived?: boolean }
+): BillableRow[] {
   const saleIdsLinkedToRepair = new Set(
     repairOrders
       .map((o) => o.sale_id)
@@ -138,6 +146,12 @@ export function mergeFacturacionBillables(sales: Sale[], repairOrders: RepairOrd
   }
 
   for (const order of repairOrders) {
+    const linkedArchived = Boolean(
+      (order as RepairOrder & { linked_sale_facturacion_archived?: number | boolean })
+        .linked_sale_facturacion_archived
+    )
+    if (linkedArchived && !options?.showArchived) continue
+
     const row = repairOrderToBillable(order)
     if (row.linkedSaleId != null) {
       const linked = salesById.get(row.linkedSaleId)
@@ -148,7 +162,10 @@ export function mergeFacturacionBillables(sales: Sale[], repairOrders: RepairOrd
         row.arcaErrorCode = linked.arca_error_code
         row.arcaErrorMessage = linked.arca_error_message
         row.arcaLastAttemptAt = linked.arca_last_attempt_at
+        row.facturacionArchived = isSaleFacturacionArchived(linked)
         row.sale = linked
+      } else if (linkedArchived) {
+        row.facturacionArchived = true
       }
     }
     rows.push(row)

@@ -37,6 +37,8 @@ import {
   Search,
   Loader2,
   Send,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react"
 import {
   emitirNotaCreditoSale,
@@ -50,6 +52,7 @@ import {
   downloadSaleSourcePdf,
   fetchSaleSourcePdfBlob,
   resolveSaleIdForRepairOrderFacturacion,
+  setFacturacionArchivedForSales,
   type Cliente,
   type EmitirNotaCreditoError,
   type FacturarSaleRequest,
@@ -143,6 +146,13 @@ import {
 } from "@/lib/condicion-venta"
 import { useResizableTableColumns } from "@/lib/use-resizable-table-columns"
 import { formatSaleMoney, isUsdSale } from "@/lib/pos-usd"
+import { useRole } from "@/app/hooks/useRole"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  canSuperadminArchiveBillable,
+  isBillableArchivedInFacturacion,
+  resolveBillableArchiveSaleId,
+} from "@/lib/facturacion-archive"
 
 const ARCA_STATUS_OPTIONS = ["all", "pending", "success", "error", "not_issued"] as const
 
@@ -254,6 +264,8 @@ function getBillableEmittedTipo(row: BillableRow): number | null {
 }
 
 export default function FacturacionPage() {
+  const { isSuperAdmin } = useRole()
+  const superadminArchiveEnabled = isSuperAdmin()
   const {
     widths: tableColWidths,
     beginResize: beginTableColResize,
@@ -302,6 +314,9 @@ export default function FacturacionPage() {
   const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false)
   const [viewInvoiceError, setViewInvoiceError] = useState<string | null>(null)
   const [viewInvoiceIncomplete, setViewInvoiceIncomplete] = useState(false)
+  const [showArchivedFacturacion, setShowArchivedFacturacion] = useState(false)
+  const [selectedArchiveSaleIds, setSelectedArchiveSaleIds] = useState<Set<number>>(() => new Set())
+  const [isArchiveSubmitting, setIsArchiveSubmitting] = useState(false)
 
   const [modalCliente, setModalCliente] = useState<Cliente | null>(null)
   const [modalClienteLoading, setModalClienteLoading] = useState(false)
@@ -478,6 +493,65 @@ export default function FacturacionPage() {
     [billables, query, statusFilter]
   )
 
+  const selectableArchiveRows = useMemo(
+    () =>
+      filteredBillables.filter((row) => {
+        const saleId = resolveBillableArchiveSaleId(row)
+        if (!saleId) return false
+        if (isBillableArchivedInFacturacion(row)) return true
+        return canSuperadminArchiveBillable(row)
+      }),
+    [filteredBillables]
+  )
+
+  const allSelectableArchiveChecked =
+    selectableArchiveRows.length > 0 &&
+    selectableArchiveRows.every((row) => {
+      const id = resolveBillableArchiveSaleId(row)
+      return id != null && selectedArchiveSaleIds.has(id)
+    })
+
+  const toggleArchiveRowSelection = (row: BillableRow) => {
+    const saleId = resolveBillableArchiveSaleId(row)
+    if (!saleId) return
+    setSelectedArchiveSaleIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(saleId)) next.delete(saleId)
+      else next.add(saleId)
+      return next
+    })
+  }
+
+  const toggleSelectAllArchiveRows = () => {
+    if (allSelectableArchiveChecked) {
+      setSelectedArchiveSaleIds(new Set())
+      return
+    }
+    const next = new Set<number>()
+    for (const row of selectableArchiveRows) {
+      const id = resolveBillableArchiveSaleId(row)
+      if (id != null) next.add(id)
+    }
+    setSelectedArchiveSaleIds(next)
+  }
+
+  const submitFacturacionArchive = async (archived: boolean) => {
+    const saleIds = [...selectedArchiveSaleIds]
+    if (!saleIds.length) return
+    setIsArchiveSubmitting(true)
+    setErrorMsg(null)
+    try {
+      const res = await setFacturacionArchivedForSales(saleIds, archived)
+      setSuccessMsg(res.message)
+      setSelectedArchiveSaleIds(new Set())
+      await loadBillables()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "No se pudo actualizar el archivo de facturación.")
+    } finally {
+      setIsArchiveSubmitting(false)
+    }
+  }
+
   const stats = useMemo(() => billableStats(billables), [billables])
 
   const clienteFiscalSnapshot = useMemo(() => {
@@ -494,7 +568,11 @@ export default function FacturacionPage() {
     setErrorMsg(null)
     try {
       const [salesRes, ...repairResponses] = await Promise.all([
-        getSales({ page: 1, limit: 200 }),
+        getSales({
+          page: 1,
+          limit: 200,
+          include_facturacion_archived: showArchivedFacturacion,
+        }),
         ...REPAIR_ORDER_FACTURABLE_STATUSES.map((status) =>
           getRepairOrders({ status, page: 1, limit: 100 })
         ),
@@ -504,7 +582,9 @@ export default function FacturacionPage() {
         const data = res.data as { repair_orders?: RepairOrder[] }
         return data?.repair_orders ?? []
       })
-      const merged = mergeFacturacionBillables(sales, repairOrders)
+      const merged = mergeFacturacionBillables(sales, repairOrders, {
+        showArchived: showArchivedFacturacion,
+      })
       setBillables(merged)
       if (!selectedBillableKey && merged.length > 0) setSelectedBillableKey(merged[0].key)
     } catch (error) {
@@ -518,7 +598,7 @@ export default function FacturacionPage() {
 
   useEffect(() => {
     void loadBillables()
-  }, [])
+  }, [showArchivedFacturacion])
 
   function openImportInvoiceModal(options?: {
     saleId?: number
@@ -1315,6 +1395,55 @@ export default function FacturacionPage() {
                 </Button>
               </div>
 
+              {superadminArchiveEnabled ? (
+                <div className="flex flex-col gap-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="facturacion-show-archived"
+                      checked={showArchivedFacturacion}
+                      onCheckedChange={(checked) => {
+                        setShowArchivedFacturacion(checked === true)
+                        setSelectedArchiveSaleIds(new Set())
+                      }}
+                    />
+                    <Label htmlFor="facturacion-show-archived" className="text-sm font-normal cursor-pointer">
+                      Mostrar archivadas
+                    </Label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                    <span className="text-muted-foreground text-xs">
+                      {selectedArchiveSaleIds.size > 0
+                        ? `${selectedArchiveSaleIds.size} seleccionada(s)`
+                        : "Seleccioná comprobantes con error o emitidos como prueba"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedArchiveSaleIds.size === 0 || isArchiveSubmitting}
+                      onClick={() => void submitFacturacionArchive(true)}
+                    >
+                      {isArchiveSubmitting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Archive className="mr-2 h-4 w-4" />
+                      )}
+                      Archivar / ocultar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedArchiveSaleIds.size === 0 || isArchiveSubmitting}
+                      onClick={() => void submitFacturacionArchive(false)}
+                    >
+                      <ArchiveRestore className="mr-2 h-4 w-4" />
+                      Restaurar
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-md border overflow-x-auto">
               <Table
                 className="w-full"
@@ -1327,6 +1456,16 @@ export default function FacturacionPage() {
                 </colgroup>
                 <TableHeader>
                   <TableRow>
+                    {superadminArchiveEnabled ? (
+                      <th className="h-10 w-10 px-2 text-left align-middle font-medium text-muted-foreground">
+                        <Checkbox
+                          aria-label="Seleccionar todas las filas archivables"
+                          checked={allSelectableArchiveChecked}
+                          onCheckedChange={toggleSelectAllArchiveRows}
+                          disabled={selectableArchiveRows.length === 0}
+                        />
+                      </th>
+                    ) : null}
                     <ResizableTableHead columnId="comprobante" onResizeStart={beginTableColResize}>
                       Comprobante
                     </ResizableTableHead>
@@ -1362,23 +1501,50 @@ export default function FacturacionPage() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={7}>Cargando comprobantes...</TableCell>
+                      <TableCell colSpan={superadminArchiveEnabled ? 8 : 7}>Cargando comprobantes...</TableCell>
                     </TableRow>
                   ) : filteredBillables.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7}>No hay ventas ni reparaciones para los filtros aplicados.</TableCell>
+                      <TableCell colSpan={superadminArchiveEnabled ? 8 : 7}>
+                        No hay ventas ni reparaciones para los filtros aplicados.
+                      </TableCell>
                     </TableRow>
                   ) : (
                     filteredBillables.map((row) => {
                       const status = row.arcaStatus
                       const emittedTipo = getBillableEmittedTipo(row)
+                      const archivedRow = isBillableArchivedInFacturacion(row)
+                      const archiveSaleId = resolveBillableArchiveSaleId(row)
+                      const rowSelectable =
+                        superadminArchiveEnabled &&
+                        archiveSaleId != null &&
+                        (archivedRow || canSuperadminArchiveBillable(row))
                       return (
-                        <TableRow key={row.key}>
+                        <TableRow
+                          key={row.key}
+                          className={archivedRow ? "opacity-60 bg-muted/30" : undefined}
+                        >
+                          {superadminArchiveEnabled ? (
+                            <TableCell className="w-10 px-2">
+                              {rowSelectable ? (
+                                <Checkbox
+                                  aria-label={`Seleccionar ${row.reference}`}
+                                  checked={archiveSaleId != null && selectedArchiveSaleIds.has(archiveSaleId)}
+                                  onCheckedChange={() => toggleArchiveRowSelection(row)}
+                                />
+                              ) : null}
+                            </TableCell>
+                          ) : null}
                           <TableCell className="overflow-hidden font-medium">
                             <div className="flex min-w-0 items-center gap-2">
                               <span className="truncate" title={row.reference}>
                                 {row.reference}
                               </span>
+                              {archivedRow ? (
+                                <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
+                                  Archivada
+                                </Badge>
+                              ) : null}
                               {row.kind === "repair_order" ? (
                                 <Badge variant="outline" className="shrink-0 text-xs font-normal">
                                   Reparación

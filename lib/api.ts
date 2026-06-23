@@ -814,6 +814,9 @@ export interface SaleArcaFields {
   arca_nc_error_code?: string | null
   arca_nc_error_message?: string | null
   arca_nc_last_attempt_at?: string | null
+  facturacion_archived?: boolean | number | null
+  facturacion_archived_at?: string | null
+  facturacion_archived_by?: number | null
   condicion_venta_codigo?: string | null
   condicion_venta_texto?: string | null
   fecha_vencimiento_pago?: string | null
@@ -1059,6 +1062,7 @@ export async function getSales(params?: {
   date_from?: string
   date_to?: string
   include_items?: boolean
+  include_facturacion_archived?: boolean
 }): Promise<SalesListResponse> {
   const apiUrl = getApiUrl()
   const queryParams = new URLSearchParams()
@@ -1070,6 +1074,9 @@ export async function getSales(params?: {
   if (params?.date_from) queryParams.append('date_from', params.date_from)
   if (params?.date_to) queryParams.append('date_to', params.date_to)
   if (params?.include_items) queryParams.append('include_items', 'true')
+  if (params?.include_facturacion_archived) {
+    queryParams.append('include_facturacion_archived', 'true')
+  }
 
   const url = `${apiUrl}sales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
   const headers: HeadersInit = { ...getAuthHeaders() }
@@ -1092,6 +1099,32 @@ export async function getSales(params?: {
   // Algunos entornos (proxy, gateway) en producción devuelven { sales, total } en la raíz; normalizar a data.sales
   if (data && typeof data === 'object' && (data.data == null || data.data === undefined) && Array.isArray(data.sales)) {
     return { ...data, data: { sales: data.sales, total: data.total, page: data.page, limit: data.limit } }
+  }
+  return data
+}
+
+export async function setFacturacionArchivedForSales(
+  saleIds: number[],
+  archived: boolean
+): Promise<{
+  success: boolean
+  message: string
+  data?: { updated: number; saleIds: number[]; rejected?: Array<{ id: number; reason: string }> }
+}> {
+  const apiUrl = getApiUrl()
+  const headers: HeadersInit = { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+  const response = await fetch(`${apiUrl}sales/facturacion-archive`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ saleIds, archived }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const msg = data?.message || data?.error || `Error ${response.status}`
+    const err = new Error(msg) as Error & { status?: number }
+    err.status = response.status
+    if (response.status === 401) logout()
+    throw err
   }
   return data
 }
@@ -7346,6 +7379,7 @@ export interface RepairOrder {
   balance?: string
   /** Venta POS vinculada para facturación ARCA (si el backend la creó al aceptar/entregar). */
   sale_id?: number | null
+  linked_sale_facturacion_archived?: boolean | number | null
   arca_status?: 'pending' | 'success' | 'error' | null
   arca_factura_id?: string | null
   arca_cae?: string | null
