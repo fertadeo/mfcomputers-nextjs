@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -116,6 +116,26 @@ function buildEditFormFromUi(cliente: ClienteUI): EditClientData {
   }
 }
 
+function normalizeEditFormForCompare(data: EditClientData): EditClientData {
+  return {
+    ...data,
+    name: data.name.trim(),
+    email: data.email.trim(),
+    phone: data.phone.trim(),
+    address: data.address.trim(),
+    city: data.city.trim(),
+    country: data.country.trim(),
+    cuil_cuit: onlyDigitsCuil(data.cuil_cuit),
+  }
+}
+
+function editFormsEqual(a: EditClientData, b: EditClientData): boolean {
+  return (
+    JSON.stringify(normalizeEditFormForCompare(a)) ===
+    JSON.stringify(normalizeEditFormForCompare(b))
+  )
+}
+
 function buildEditFormFromApi(cliente: Cliente): EditClientData {
   const personeria: ClientPersoneria =
     cliente.personeria === "persona_fisica" ||
@@ -169,45 +189,76 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const [padronLocked, setPadronLocked] = useState(false)
   const [padronSuggestedTax, setPadronSuggestedTax] = useState<ClientTaxCondition | undefined>()
   const [loadingCliente, setLoadingCliente] = useState(false)
+  const [savedSnapshot, setSavedSnapshot] = useState<EditClientData | null>(null)
   const loadedForDbIdRef = useRef<number | null>(null)
   const clienteRef = useRef(cliente)
+  const formDataRef = useRef(formData)
+  const savedSnapshotRef = useRef(savedSnapshot)
   clienteRef.current = cliente
+  formDataRef.current = formData
+  savedSnapshotRef.current = savedSnapshot
+
+  const isDirty = useMemo(() => {
+    if (!savedSnapshot) return false
+    return !editFormsEqual(formData, savedSnapshot)
+  }, [formData, savedSnapshot])
 
   // Cargar datos frescos del cliente al abrir (evita props desactualizadas y resets al re-renderizar)
   useEffect(() => {
     if (!isOpen || !cliente?.dbId) {
-      if (!isOpen) loadedForDbIdRef.current = null
+      if (!isOpen) {
+        loadedForDbIdRef.current = null
+        setSavedSnapshot(null)
+        setLoadingCliente(false)
+      }
       return
     }
 
-    if (loadedForDbIdRef.current === cliente.dbId) return
-
-    let cancelled = false
-    setLoadingCliente(true)
     setErrors({})
     setSuccessMessage("")
     setPadronLocked(false)
     setPadronSuggestedTax(undefined)
 
+    if (loadedForDbIdRef.current === cliente.dbId) return
+
+    const snapshot = clienteRef.current
+    if (snapshot) {
+      const uiForm = buildEditFormFromUi(snapshot)
+      setFormData(uiForm)
+      setSavedSnapshot(uiForm)
+    }
+
+    let cancelled = false
+    setLoadingCliente(true)
+
     void (async () => {
-      const snapshot = clienteRef.current
       try {
         const fresh = await getClienteById(cliente.dbId)
         if (cancelled) return
-        setFormData(buildEditFormFromApi(fresh))
+        const freshForm = buildEditFormFromApi(fresh)
+        const baseline = savedSnapshotRef.current
+        const userEdited =
+          baseline != null && !editFormsEqual(formDataRef.current, baseline)
+        if (!userEdited) {
+          setFormData(freshForm)
+          setSavedSnapshot(freshForm)
+        }
       } catch {
         if (cancelled) return
-        if (snapshot) setFormData(buildEditFormFromUi(snapshot))
-      } finally {
-        if (!cancelled) {
-          loadedForDbIdRef.current = cliente.dbId
-          setLoadingCliente(false)
+        if (snapshot) {
+          const fallbackForm = buildEditFormFromUi(snapshot)
+          setFormData(fallbackForm)
+          setSavedSnapshot(fallbackForm)
         }
+      } finally {
+        loadedForDbIdRef.current = cliente.dbId
+        if (!cancelled) setLoadingCliente(false)
       }
     })()
 
     return () => {
       cancelled = true
+      setLoadingCliente(false)
     }
   }, [isOpen, cliente?.dbId])
 
@@ -327,6 +378,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
 
       const updated = await updateCliente(cliente.dbId, payload)
       loadedForDbIdRef.current = null
+      setSavedSnapshot(formData)
 
       setSuccessMessage("Cliente actualizado exitosamente")
       toast.success("Cliente actualizado")
@@ -373,15 +425,32 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     }
   }
 
-  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose((open) => {
-    if (!open) onClose()
-  })
+  const [handleOpenChange, confirmDialog] = useConfirmBeforeClose(
+    (open) => {
+      if (!open) onClose()
+    },
+    "¿Descartar cambios?",
+    "Hay modificaciones sin guardar en este cliente."
+  )
 
   if (!cliente) return null
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (open) {
+          handleOpenChange(open)
+          return
+        }
+        if (isDirty) {
+          handleOpenChange(false)
+          return
+        }
+        onClose()
+      }}
+    >
       <DialogContent className="w-[95vw] max-w-4xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
@@ -669,18 +738,18 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
             </Button>
             <Button
               type="submit"
-              disabled={isLoading || loadingCliente}
+              disabled={isLoading || !isDirty}
               className="flex items-center gap-2 bg-turquoise-600 hover:bg-turquoise-700"
             >
-              {isLoading || loadingCliente ? (
+              {isLoading ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  {loadingCliente ? "Cargando datos…" : "Actualizando..."}
+                  Actualizando...
                 </>
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  Guardar Cambios
+                  {loadingCliente ? "Guardar Cambios…" : "Guardar Cambios"}
                 </>
               )}
             </Button>
