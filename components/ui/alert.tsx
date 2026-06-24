@@ -93,7 +93,8 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
       config.root,
       config.border,
       "border-l-4",
-      floating && "fixed top-6 right-6 z-50 min-w-[20rem] max-w-md shadow-lg animate-in fade-in-0 slide-in-from-top-4 duration-300",
+      floating &&
+        "fixed top-6 right-6 z-[100] min-w-[20rem] max-w-md shadow-lg animate-in fade-in-0 slide-in-from-top-4 duration-300",
       className
     )
 

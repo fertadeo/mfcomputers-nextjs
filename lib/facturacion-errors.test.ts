@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { buildFacturacionErrorDiagnosis, resolveFacturacionErrorFromExtracted } from "@/lib/facturacion-errors"
+import {
+  buildFacturacionErrorDiagnosis,
+  formatFacturacionErrorForUi,
+  formatFacturacionErrorSummaryForUi,
+  resolveFacturacionErrorFromExtracted,
+} from "@/lib/facturacion-errors"
 
 describe("facturacion-errors diagnosis", () => {
   it("diagnostica CUIT + consumidor final", () => {
@@ -30,5 +35,15 @@ describe("facturacion-errors diagnosis", () => {
     })
     expect(info.issues?.[0]?.message).toBe("Detalle issue")
     expect(info.suggestions).toContain("Consultá padrón ARCA")
+  })
+
+  it("prioriza diagnosis en el resumen para la UI", () => {
+    const info = resolveFacturacionErrorFromExtracted({
+      code: "10056",
+      message: "Condicion IVA receptor invalida",
+      remoteDetail: "Observacion 10056",
+    })
+    expect(formatFacturacionErrorSummaryForUi(info)).toMatch(/condición IVA/i)
+    expect(formatFacturacionErrorForUi(info)).toMatch(/condición IVA/i)
   })
 })

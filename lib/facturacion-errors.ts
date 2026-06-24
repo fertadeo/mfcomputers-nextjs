@@ -599,10 +599,25 @@ export function resolveFacturacionError(input: ResolveFacturacionErrorInput): Fa
   )
 }
 
+/** Mensaje principal legible para operadores (sin jerga técnica si hay diagnóstico). */
+export function formatFacturacionErrorSummaryForUi(info: FacturacionErrorInfo): string {
+  if (info.diagnosis?.trim()) return info.diagnosis.trim()
+  if (info.message?.trim()) return info.message.trim()
+  return "No se pudo completar la facturación. Revisá los datos del comprobante o contactá a soporte."
+}
+
 export function formatFacturacionErrorForUi(info: FacturacionErrorInfo, requestId?: string | null): string {
-  const parts = [info.message]
-  if (info.actionHint) parts.push(info.actionHint)
-  if (info.showRequestId && requestId) parts.push(`Referencia: ${requestId}`)
+  const main = formatFacturacionErrorSummaryForUi(info)
+  const parts: string[] = [main]
+  if (info.actionHint?.trim()) {
+    const hint = info.actionHint.trim()
+    if (!main.includes(hint.slice(0, Math.min(48, hint.length)))) {
+      parts.push(hint)
+    }
+  }
+  if (info.showRequestId && requestId) {
+    parts.push(`Referencia para soporte: ${requestId}`)
+  }
   return parts.join(" ")
 }
 

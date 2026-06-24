@@ -1335,17 +1335,54 @@ export default function FacturacionPage() {
             </Card>
           </div>
 
-          {errorMsg && errorDetail ? (
+          {errorMsg && !isConfirmEmitOpen && !isEmitModalOpen && errorDetail ? (
             <FacturacionErrorAlert
               info={errorDetail}
               title={errorTitle ?? undefined}
               requestId={undefined}
             />
-          ) : errorMsg ? (
+          ) : errorMsg && !isConfirmEmitOpen && !isEmitModalOpen ? (
             <Alert
               variant="error"
               title={errorTitle ?? "No se pudo completar la facturación"}
               description={errorMsg}
+            />
+          ) : null}
+
+          {errorMsg && (isConfirmEmitOpen || isEmitModalOpen) && errorDetail ? (
+            <FacturacionErrorAlert
+              floating
+              compact
+              info={errorDetail}
+              title={errorTitle ?? "No se pudo emitir el comprobante"}
+              onDismiss={() => {
+                setErrorMsg(null)
+                setErrorTitle(null)
+                setErrorDetail(null)
+                setRetryAfterHint(null)
+              }}
+            />
+          ) : errorMsg && (isConfirmEmitOpen || isEmitModalOpen) ? (
+            <Alert
+              floating
+              variant="error"
+              title={errorTitle ?? "No se pudo emitir el comprobante"}
+              description={errorMsg}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setErrorMsg(null)
+                    setErrorTitle(null)
+                    setErrorDetail(null)
+                    setRetryAfterHint(null)
+                  }}
+                >
+                  Cerrar
+                </Button>
+              }
             />
           ) : null}
           {retryAfterHint ? <Alert variant="warning" title="Backoff recomendado" description={retryAfterHint} /> : null}
@@ -2046,9 +2083,13 @@ export default function FacturacionPage() {
                     />
                   ) : null}
 
-                  {errorMsg && isEmitModalOpen && errorDetail ? (
-                    <FacturacionErrorAlert info={errorDetail} title={errorTitle ?? "Error al facturar"} />
-                  ) : errorMsg && isEmitModalOpen ? (
+                  {errorMsg && isEmitModalOpen && !isConfirmEmitOpen && errorDetail ? (
+                    <FacturacionErrorAlert
+                      info={errorDetail}
+                      title={errorTitle ?? "Error al facturar"}
+                      compact
+                    />
+                  ) : errorMsg && isEmitModalOpen && !isConfirmEmitOpen ? (
                     <Alert variant="error" title={errorTitle ?? "Error al facturar"} description={errorMsg} />
                   ) : null}
 
@@ -2336,6 +2377,9 @@ export default function FacturacionPage() {
             linesError={confirmLinesError}
             itemIvaError={itemIvaValidationError}
             receptorFiscalError={receptorFiscalValidationError}
+            emitError={errorDetail}
+            emitErrorTitle={errorTitle}
+            emitErrorRequestId={undefined}
             facturarPayload={facturarPayloadForEmit}
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}

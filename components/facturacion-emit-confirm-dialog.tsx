@@ -56,6 +56,8 @@ import {
 
 import { formatSaleMoney, isUsdSale } from "@/lib/pos-usd"
 import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
+import { FacturacionErrorAlert } from "@/components/facturacion-error-alert"
+import type { FacturacionErrorInfo } from "@/lib/facturacion-errors"
 
 function conceptoLabel(concepto?: number): string {
   if (concepto === 2) return "Servicios"
@@ -82,6 +84,10 @@ export interface FacturacionEmitConfirmDialogProps {
   itemIvaError?: string | null
   /** Cliente con CUIT en ERP pero payload a consumidor final. */
   receptorFiscalError?: string | null
+  /** Error devuelto al confirmar emisión (visible dentro del modal, no detrás del overlay). */
+  emitError?: FacturacionErrorInfo | null
+  emitErrorTitle?: string | null
+  emitErrorRequestId?: string | null
   /** Body definitivo para POST /sales/:id/facturar (tras buildFacturarPayload). */
   facturarPayload: FacturarSaleRequest
   emisorCuitLabel: string
@@ -112,6 +118,9 @@ export function FacturacionEmitConfirmDialog({
   linesError,
   itemIvaError = null,
   receptorFiscalError = null,
+  emitError = null,
+  emitErrorTitle = null,
+  emitErrorRequestId = null,
   facturarPayload,
   emisorCuitLabel,
   isSubmitting,
@@ -317,6 +326,17 @@ export function FacturacionEmitConfirmDialog({
               : "Revisá el detalle del comprobante antes de enviarlo al facturador ARCA. La emisión no se puede deshacer desde esta pantalla."}
           </DialogDescription>
         </DialogHeader>
+
+        {emitError ? (
+          <div className="shrink-0 border-b border-red-200 bg-red-50/90 px-6 py-3 dark:border-red-900 dark:bg-red-950/40">
+            <FacturacionErrorAlert
+              info={emitError}
+              title={emitErrorTitle ?? "No se pudo emitir el comprobante"}
+              requestId={emitErrorRequestId}
+              compact
+            />
+          </div>
+        ) : null}
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
           {!sale || !billable ? (
