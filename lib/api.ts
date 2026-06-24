@@ -1680,6 +1680,9 @@ export async function createProduct(productData: CreateProductData): Promise<any
       formData.append('category_id', productData.category_id.toString())
     }
     formData.append('price', productData.price.toString())
+    if (productData.iva_rate !== undefined && productData.iva_rate !== null) {
+      formData.append('iva_rate', productData.iva_rate.toString())
+    }
     formData.append('stock', (productData.stock ?? 0).toString())
     formData.append('min_stock', (productData.min_stock ?? 0).toString())
     formData.append('max_stock', (productData.max_stock ?? 0).toString())
