@@ -52,8 +52,12 @@ interface EditClientData {
   cuil_cuit: string
 }
 
-function onlyDigitsCuil(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 11)
+function onlyDigitsCuil(value: string | null | undefined): string {
+  return (value ?? "").replace(/\D/g, "").slice(0, 11)
+}
+
+function coerceFormText(value: string | null | undefined): string {
+  return (value ?? "").trim()
 }
 
 function cuilCuitDigitCount(value: string): number {
@@ -104,11 +108,11 @@ function buildEditFormFromUi(cliente: ClienteUI): EditClientData {
   return {
     client_type: cliente.tipo.toLowerCase() as "minorista" | "mayorista" | "personalizado",
     sales_channel: cliente.salesChannel ?? "manual",
-    name: cliente.nombre,
-    email: cliente.email,
-    phone: cliente.telefono,
-    address: cliente.direccion || "",
-    city: cliente.ciudad,
+    name: coerceFormText(cliente.nombre),
+    email: coerceFormText(cliente.email),
+    phone: coerceFormText(cliente.telefono),
+    address: coerceFormText(cliente.direccion),
+    city: coerceFormText(cliente.ciudad),
     country: "Argentina",
     personeria,
     tax_condition: taxConditionFromUi(cliente, personeria),
@@ -119,12 +123,12 @@ function buildEditFormFromUi(cliente: ClienteUI): EditClientData {
 function normalizeEditFormForCompare(data: EditClientData): EditClientData {
   return {
     ...data,
-    name: data.name.trim(),
-    email: data.email.trim(),
-    phone: data.phone.trim(),
-    address: data.address.trim(),
-    city: data.city.trim(),
-    country: data.country.trim(),
+    name: coerceFormText(data.name),
+    email: coerceFormText(data.email),
+    phone: coerceFormText(data.phone),
+    address: coerceFormText(data.address),
+    city: coerceFormText(data.city),
+    country: coerceFormText(data.country),
     cuil_cuit: onlyDigitsCuil(data.cuil_cuit),
   }
 }
@@ -154,12 +158,12 @@ function buildEditFormFromApi(cliente: Cliente): EditClientData {
   return {
     client_type: cliente.client_type,
     sales_channel: cliente.sales_channel,
-    name: cliente.name,
-    email: cliente.email,
-    phone: cliente.phone,
-    address: cliente.address || "",
-    city: cliente.city,
-    country: cliente.country || "Argentina",
+    name: coerceFormText(cliente.name),
+    email: coerceFormText(cliente.email),
+    phone: coerceFormText(cliente.phone),
+    address: coerceFormText(cliente.address),
+    city: coerceFormText(cliente.city),
+    country: coerceFormText(cliente.country) || "Argentina",
     personeria,
     tax_condition: isTaxConditionAllowedForPersoneria(personeria, tax_condition)
       ? tax_condition
@@ -320,21 +324,24 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    if (!formData.name.trim()) {
+    if (!coerceFormText(formData.name)) {
       newErrors.name = "El nombre es requerido"
-    } else if (formData.name.trim().length < 2) {
+    } else if (coerceFormText(formData.name).length < 2) {
       newErrors.name = "El nombre debe tener al menos 2 caracteres"
     }
 
-    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    const email = coerceFormText(formData.email)
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = "El formato del email no es válido"
     }
 
-    if (formData.phone.trim() && formData.phone.trim().length < 8) {
+    const phone = coerceFormText(formData.phone)
+    if (phone && phone.length < 8) {
       newErrors.phone = "El teléfono debe tener al menos 8 dígitos"
     }
 
-    if (formData.cuil_cuit.trim() && cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
+    const cuil = coerceFormText(formData.cuil_cuit)
+    if (cuil && cuilCuitDigitCount(cuil) !== 11) {
       newErrors.cuil_cuit = "El CUIL/CUIT debe tener exactamente 11 dígitos"
     }
 
@@ -364,15 +371,17 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
       const payload = {
         client_type: formData.client_type,
         sales_channel: formData.sales_channel,
-        name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        address: formData.address.trim() || undefined,
-        city: formData.city.trim(),
-        country: formData.country.trim(),
+        name: coerceFormText(formData.name),
+        email: coerceFormText(formData.email),
+        phone: coerceFormText(formData.phone),
+        address: coerceFormText(formData.address) || undefined,
+        city: coerceFormText(formData.city),
+        country: coerceFormText(formData.country),
         personeria: formData.personeria,
         tax_condition: formData.tax_condition,
-        cuil_cuit: formData.cuil_cuit.trim() ? onlyDigitsCuil(formData.cuil_cuit) : null
+        cuil_cuit: coerceFormText(formData.cuil_cuit)
+          ? onlyDigitsCuil(formData.cuil_cuit)
+          : null
       }
       console.log('📝 [EDIT] Enviando datos de actualización:', { clienteId: cliente.dbId, payload })
 
