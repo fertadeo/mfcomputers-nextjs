@@ -795,6 +795,7 @@ export default function FacturacionPage() {
     setErrorMsg(null)
     setErrorTitle(null)
     setErrorDetail(null)
+    setIsEmitModalOpen(false)
     setIsConfirmEmitOpen(true)
   }
 
