@@ -147,7 +147,7 @@ describe("facturacion-request-preview", () => {
       puntoVenta: 5,
       docTipo: 80,
       docNro: "20355026656",
-      condicionIvaReceptor: 7,
+      condicionIvaReceptor: 6,
       concepto: 1,
       importe: 2,
       iva: [{ id: 3, base: 2, cuota: 0 }],

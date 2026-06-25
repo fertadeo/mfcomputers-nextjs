@@ -144,7 +144,7 @@ describe("facturacion-form-from-cliente", () => {
     expect(err).toMatch(/no coincide/)
   })
 
-  it("buildFacturarPayload normaliza monotributo (6) a condición 7 en Factura B para WSFE", () => {
+  it("buildFacturarPayload conserva monotributo (6) en Factura B para WSFE", () => {
     const payload = buildFacturarPayload(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
       cliente({
@@ -157,7 +157,7 @@ describe("facturacion-form-from-cliente", () => {
     )
     expect(payload.tipo).toBe(6)
     expect(payload.docTipo).toBe(80)
-    expect(payload.condicionIvaReceptor).toBe(7)
+    expect(payload.condicionIvaReceptor).toBe(6)
   })
 
   it("validateFacturarReceptorFiscal rechaza CF si cliente es monotributo", () => {

@@ -1173,6 +1173,17 @@ export interface FacturarSugerenciaDefaults {
   fechaComprobanteEsperada?: string
 }
 
+export interface FacturarSugerenciaPadronCondicion {
+  checked: boolean
+  coincide: boolean
+  condicionEnviada: number
+  condicionSugerida?: number | null
+  condicionSugeridaLabel?: string | null
+  unavailable?: boolean
+  message?: string | null
+  advertencias?: string[]
+}
+
 export interface FacturarSugerenciaData {
   totalAmount: number
   emisorRegimen?: "responsable_inscripto" | "monotributo" | "exento"
@@ -1182,6 +1193,7 @@ export interface FacturarSugerenciaData {
   ivaResumen?: Array<{ id: number; base: number; cuota: number }>
   alicuotasPermitidas?: Array<{ rate: number; label: string; afipId: number }>
   defaults?: FacturarSugerenciaDefaults
+  padronCondicionIva?: FacturarSugerenciaPadronCondicion | null
 }
 
 /** Fechas comercial y de comprobante desde GET /facturar/sugerencia. */
@@ -1245,6 +1257,7 @@ export interface FacturarSaleRequest {
   receptorRazonSocial?: string
   receptorDomicilio?: string
   force?: boolean
+  skipPadronCondicionCheck?: boolean
 }
 
 export interface FacturarSaleResponseData {

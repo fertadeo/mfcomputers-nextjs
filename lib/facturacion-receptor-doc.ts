@@ -232,5 +232,5 @@ export function requiresPadronForReceptorCuit(
   esConsumidorFinal: boolean
 ): boolean {
   if (esConsumidorFinal) return false
-  return receptorCuitDigits.length === 11 && receptorCuitDigits !== ventaCuitDigits
+  return receptorCuitDigits.length === 11
 }

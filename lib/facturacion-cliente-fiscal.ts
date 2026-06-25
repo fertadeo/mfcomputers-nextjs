@@ -108,7 +108,7 @@ export function labelCondicionIvaReceptor(codigo: number): string {
 
 /**
  * Etiqueta legible para PDF/UI: prioriza la condición fiscal del cliente en el ERP
- * (ej. monotributo) aunque el payload WSFE use otro código (ej. 7 en Factura B).
+ * cuando difiere del código enviado en el payload WSFE.
  */
 export function labelCondicionIvaReceptorForDisplay(
   codigoWsfe: number,

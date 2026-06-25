@@ -44,6 +44,10 @@ import {
   requiresPadronForReceptorCuit,
   soloDigitosDoc,
 } from "@/lib/facturacion-receptor-doc"
+import {
+  formatCondicionPadronMismatchHint,
+  validateCondicionIvaConPadronSugerencia,
+} from "@/lib/facturacion-padron-condicion"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -136,6 +140,7 @@ export function FacturacionEmitConfirmDialog({
   const [receptorCuitInput, setReceptorCuitInput] = useState("")
   const [padronDisplayName, setPadronDisplayName] = useState<string | null>(null)
   const [padronVerifiedDigits, setPadronVerifiedDigits] = useState<string | null>(null)
+  const [padronCondicionCodigo, setPadronCondicionCodigo] = useState<number | null>(null)
   const [payloadJsonOpen, setPayloadJsonOpen] = useState(false)
   const [payloadCopied, setPayloadCopied] = useState(false)
 
@@ -144,6 +149,7 @@ export function FacturacionEmitConfirmDialog({
     setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id))
     setPadronDisplayName(null)
     setPadronVerifiedDigits(null)
+    setPadronCondicionCodigo(null)
     setPayloadJsonOpen(false)
     setPayloadCopied(false)
   }, [open, billable?.key, selectedBillableKey])
@@ -198,9 +204,24 @@ export function FacturacionEmitConfirmDialog({
       ? formatCuitInputDisplay(receptorCuitDigits)
       : null
 
-  const needsPadron =
-    requiresPadronForReceptorCuit(ventaDestinatario.cuitDigits, receptorCuitDigits, esConsumidorFinal)
+  const needsPadron = requiresPadronForReceptorCuit(
+    ventaDestinatario.cuitDigits,
+    receptorCuitDigits,
+    esConsumidorFinal
+  )
   const padronPending = needsPadron && padronVerifiedDigits !== receptorCuitDigits
+  const condicionPadronValidation = useMemo(() => {
+    if (esConsumidorFinal || padronPending || padronCondicionCodigo == null) return null
+    return validateCondicionIvaConPadronSugerencia(
+      form.condicionIvaReceptor ?? 5,
+      padronCondicionCodigo
+    )
+  }, [esConsumidorFinal, padronPending, padronCondicionCodigo, form.condicionIvaReceptor])
+  const condicionPadronError = formatCondicionPadronMismatchHint(condicionPadronValidation ?? {
+    checked: false,
+    coincide: true,
+    condicionEnviada: form.condicionIvaReceptor ?? 5,
+  })
 
   const facturarSaleId = useMemo(() => {
     if (!billable || !sale) return null
@@ -507,6 +528,7 @@ export function FacturacionEmitConfirmDialog({
                     if (d !== padronVerifiedDigits) {
                       setPadronVerifiedDigits(null)
                       setPadronDisplayName(null)
+                      setPadronCondicionCodigo(null)
                     }
                   }}
                   onApplyPadron={(data) => {
@@ -514,11 +536,17 @@ export function FacturacionEmitConfirmDialog({
                     const digits = soloDigitosDoc(data.cuit)
                     setPadronVerifiedDigits(digits)
                     setPadronDisplayName(getArcaPadronDisplayName(data) || null)
+                    setPadronCondicionCodigo(
+                      data.condicionIvaCodigo != null && data.condicionIvaCodigo > 0
+                        ? data.condicionIvaCodigo
+                        : null
+                    )
                   }}
                   onPadronReset={() => {
                     onPadronReset()
                     setPadronVerifiedDigits(null)
                     setPadronDisplayName(null)
+                    setPadronCondicionCodigo(null)
                   }}
                 />
 
@@ -531,8 +559,15 @@ export function FacturacionEmitConfirmDialog({
                 {padronPending ? (
                   <Alert
                     variant="warning"
-                    title="Consultá ARCA para el nuevo CUIT"
-                    description="Ingresaste un CUIT distinto al de la venta. Usá «Buscar en ARCA» o esperá la consulta automática para validar el destinatario."
+                    title="Consultá ARCA para validar el CUIT"
+                    description="Con CUIT/CUIL es obligatorio consultar el padrón ARCA antes de emitir. Usá «Buscar en ARCA» o esperá la consulta automática."
+                  />
+                ) : null}
+                {condicionPadronError ? (
+                  <Alert
+                    variant="error"
+                    title="Condición IVA distinta al padrón ARCA"
+                    description={condicionPadronError}
                   />
                 ) : null}
                 {esConsumidorFinal ? (
@@ -787,6 +822,7 @@ export function FacturacionEmitConfirmDialog({
                 lines.length === 0 ||
                 cuitInvalid ||
                 padronPending ||
+                !!condicionPadronError ||
                 condicionVentaOtroInvalido ||
                 !!itemIvaError ||
                 !!receptorFiscalError

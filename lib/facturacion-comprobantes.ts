@@ -129,8 +129,8 @@ const TIPOS_CLASE_C = new Set([11, 12, 13, 15])
 /** Condiciones permitidas solo en comprobantes clase A/M/C (p. ej. RI=1, Monotributo=6). */
 const CONDICION_IVA_SOLO_AMC = new Set([1, 6, 13, 16])
 
-/** Condiciones permitidas en comprobantes clase B/C (p. ej. CF=5, Exento=4). */
-const CONDICION_IVA_SOLO_BC = new Set([4, 5, 7, 8, 9, 10, 15])
+/** Condiciones permitidas en comprobantes clase B/C (p. ej. CF=5, monotributo=6, exento=4). */
+const CONDICION_IVA_SOLO_BC = new Set([4, 5, 6, 7, 8, 9, 10, 13, 15, 16])
 
 export function getWsfeComprobanteClase(tipo: number): WsfeComprobanteClase {
   if (TIPOS_CLASE_A.has(tipo)) return "A"
@@ -143,19 +143,12 @@ export function isComprobanteClaseB(tipo: number): boolean {
 }
 
 /**
- * Condición IVA para el payload WSFE según tipo de comprobante.
- * Clase B no admite códigos 6/13/16 (monotributo A/M/C): se usa 7 (Sujeto no categorizado), nunca 5 (CF).
+ * Condición IVA del receptor para WSFE.
+ * El tipo de comprobante (A/B/C) y la condición fiscal del receptor son campos independientes:
+ * Factura B (tipo 6) a monotributista lleva condicionIvaReceptor 6, no 7.
  */
-export function resolveCondicionIvaReceptorForWsfe(tipo: number, condicionErp: number): number {
-  const clase = getWsfeComprobanteClase(tipo)
-  const condicion = Number(condicionErp)
-
-  if (clase === "B" && CONDICION_IVA_SOLO_AMC.has(condicion)) {
-    if (condicion === 1) return condicion
-    return 7
-  }
-
-  return condicion
+export function resolveCondicionIvaReceptorForWsfe(_tipo: number, condicionErp: number): number {
+  return Number(condicionErp)
 }
 
 /** @deprecated Usar resolveCondicionIvaReceptorForWsfe */
