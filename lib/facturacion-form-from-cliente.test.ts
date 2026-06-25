@@ -144,7 +144,7 @@ describe("facturacion-form-from-cliente", () => {
     expect(err).toMatch(/no coincide/)
   })
 
-  it("buildFacturarPayload conserva monotributo (6) en Factura B para WSFE", () => {
+  it("buildFacturarPayload conserva monotributo (6) en el POST al ERP (mapeo a WSFE 5 es en el backend)", () => {
     const payload = buildFacturarPayload(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
       cliente({

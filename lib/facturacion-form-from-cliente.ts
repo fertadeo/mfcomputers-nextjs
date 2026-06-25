@@ -11,7 +11,6 @@ import {
 } from "@/lib/facturacion-cliente-fiscal"
 import {
   isComprobanteClaseB,
-  resolveCondicionIvaReceptorForWsfe,
 } from "@/lib/facturacion-comprobantes"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
@@ -96,14 +95,6 @@ export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest)
   }
 
   return null
-}
-
-function applyWsfeCondicionToPayload(payload: FacturarSaleRequest): FacturarSaleRequest {
-  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
-  const condicionErp = payload.condicionIvaReceptor ?? 5
-  const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
-  if (condicionWsfe === condicionErp) return payload
-  return { ...payload, tipo, condicionIvaReceptor: condicionWsfe }
 }
 
 /** Evita combinaciones inválidas (ej. Factura A + consumidor final sin CUIT). */
@@ -240,13 +231,13 @@ export function buildFacturarPayload(
       puntoVenta: form.puntoVenta,
     }
     payload.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
-    return applyWsfeCondicionToPayload(payload)
+    return payload
   }
 
   const payload: FacturarSaleRequest = { ...form }
 
   if (payload.docTipo === 80 && payload.docNro != null && payload.docNro > 0) {
-    return applyWsfeCondicionToPayload(payload)
+    return payload
   }
 
   payload.docTipo = 99
@@ -254,7 +245,7 @@ export function buildFacturarPayload(
   payload.condicionIvaReceptor = payload.condicionIvaReceptor ?? 5
   payload.tipo =
     payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor)
-  return applyWsfeCondicionToPayload(payload)
+  return payload
 }
 
 export function validateFacturarReceptorFiscal(

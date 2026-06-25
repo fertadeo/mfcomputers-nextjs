@@ -18,18 +18,11 @@ import {
 export function mergeFacturarSaleRequestBody(body: FacturarSaleRequest): FacturarSaleRequest {
   const storedCuit = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
   const storedPv = typeof window !== "undefined" ? getStoredFacturacionPuntoVenta() : undefined
-  const merged: FacturarSaleRequest = {
+  return {
     ...body,
     ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
     ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
   }
-  const tipo = merged.tipo ?? 6
-  const condicionErp = merged.condicionIvaReceptor ?? 5
-  const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
-  if (condicionWsfe !== condicionErp) {
-    return { ...merged, condicionIvaReceptor: condicionWsfe }
-  }
-  return merged
 }
 
 export interface FacturarHttpRequestPreview {
@@ -161,7 +154,8 @@ export function buildFacturarFullPayloadPreview(
   const body = mergeFacturarSaleRequestBody(args.facturarPayload)
   const tipo = body.tipo ?? 6
   const concepto = body.concepto ?? 1
-  const condicion = body.condicionIvaReceptor ?? 5
+  const condicionErp = body.condicionIvaReceptor ?? 5
+  const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
   const requiereIva = facturadorTipoRequiereIva(tipo)
   const fechaComprobante = resolveFechaComprobante(args.fechaCbte)
   const saleDate = normalizeFechaYmd(args.saleDate)
@@ -223,7 +217,7 @@ export function buildFacturarFullPayloadPreview(
     tipo,
     puntoVenta,
     docTipo,
-    condicionIvaReceptor: condicion,
+    condicionIvaReceptor: condicionWsfe,
     concepto,
     importe: requiereIva && ivaArray?.length
       ? facturadorImporteFromIvaArray(ivaArray)

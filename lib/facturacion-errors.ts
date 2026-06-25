@@ -530,10 +530,7 @@ export function buildFacturacionErrorDiagnosis(input: {
   const ctx = input.receptorContext
 
   if (code === "WSFE_PREFLIGHT_VALIDATION") {
-    if (ctx?.condicionIvaReceptor === 6 && ctx?.tipoComprobante === 6) {
-      return "El facturador rechazó Factura B con condición Monotributo (6). Si el padrón ARCA confirma monotributo, el preflight WSFE de MultiCUIT podría estar desactualizado (normativa RG 5616). Revisá el detalle técnico: condiciones permitidas / condición esperada."
-    }
-    return "El facturador rechazó el comprobante en validación previa WSFE. Revisá el detalle técnico (condiciones permitidas y condición esperada para ese CUIT)."
+    return "El facturador rechazó el comprobante en validación previa WSFE. Revisá el detalle técnico (condiciones permitidas y condición esperada para ese CUIT). En Factura B, monotributo del padrón (6) se envía como consumidor final (5)."
   }
 
   if (/condici[oó]n.*iva.*receptor/.test(text)) {
