@@ -2161,7 +2161,13 @@ export default function FacturacionPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <form
+                      className="space-y-4"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        requestEmitConfirmation()
+                      }}
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-medium">Opciones de emisión</p>
                         {getEmitirConDefaultsGuardados() ? (
@@ -2170,6 +2176,22 @@ export default function FacturacionPage() {
                           </Button>
                         ) : null}
                       </div>
+
+                      <Alert
+                        variant="info"
+                        title="Payload que se enviará al confirmar"
+                        description={
+                          <p className="text-sm">
+                            Tipo <strong>{facturarPayloadForEmit.tipo ?? "—"}</strong> (
+                            {getTipoComprobanteLabel(facturarPayloadForEmit.tipo)}), condición IVA receptor{" "}
+                            <strong>{facturarPayloadForEmit.condicionIvaReceptor ?? "—"}</strong>, docTipo{" "}
+                            <strong>{facturarPayloadForEmit.docTipo ?? "—"}</strong>, docNro{" "}
+                            <strong>{facturarPayloadForEmit.docNro ?? 0}</strong>. Cambiá un campo y usá{" "}
+                            <strong>Revisar y confirmar emisión</strong> o <strong>Enter</strong> para abrir la vista
+                            previa completa.
+                          </p>
+                        }
+                      />
 
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2 sm:col-span-2">
@@ -2327,7 +2349,7 @@ export default function FacturacionPage() {
                           <Link href="/configuracion?tab=facturacion">Abrir Configuración ARCA</Link>
                         </Button>
                       </div>
-                    </div>
+                    </form>
                   )}
 
                   <div className="flex flex-wrap gap-2">

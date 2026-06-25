@@ -57,7 +57,7 @@ const FACTURACION_HINTS: Record<number, string> = {
   1: "Cliente inscripto en IVA: suele corresponder Factura A o B según tu condición y el monto.",
   4: "IVA exento: confirmá con tu contador el tipo de comprobante antes de emitir.",
   5: "Consumidor final: en la mayoría de los casos Factura B o ticket fiscal.",
-  6: "Cliente monotributo (condición IVA 6). El tipo B o C lo define el régimen de tu empresa (emisor), no el del cliente.",
+  6: "Cliente monotributo (condición IVA 6). Con emisor Responsable Inscripto corresponde Factura A; con emisor monotributo, Factura C.",
   9: "Cliente del exterior: revisá comprobante de exportación / exento.",
   10: "IVA liberado: validá el tratamiento fiscal con tu asesor.",
 }

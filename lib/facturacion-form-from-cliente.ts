@@ -117,7 +117,7 @@ export function applyWsfeCondicionToFacturarPayload(payload: FacturarSaleRequest
   return { ...payload, tipo, condicionIvaReceptor: condicionWsfe }
 }
 
-/** Evita combinaciones inválidas (ej. Factura A + consumidor final sin CUIT). */
+/** Evita combinaciones inválidas graves; no bloquea pruebas manuales distintas a la sugerencia ARCA. */
 export function validateFacturarPayloadCoherence(payload: FacturarSaleRequest): string | null {
   const docCondicionErr = validateReceptorDocumentoCondicion(payload)
   if (docCondicionErr) return docCondicionErr
@@ -126,15 +126,11 @@ export function validateFacturarPayloadCoherence(payload: FacturarSaleRequest): 
   const condicion = payload.condicionIvaReceptor ?? 5
   const docTipo = payload.docTipo ?? 99
   const docNro = payload.docNro ?? 0
-  const tipoEsperado = resolveTipoComprobanteFromCondicionIvaReceptor(condicion)
-
-  if (tipo !== tipoEsperado) {
-    return `El tipo de comprobante (${tipo}) no coincide con la condición IVA del receptor (${condicion}). Debería ser tipo ${tipoEsperado}. Revisá la configuración o los datos del cliente antes de emitir.`
-  }
 
   if (tipo === 1) {
-    if (condicion !== 1) {
-      return "Factura A solo corresponde a un receptor Responsable Inscripto (condición IVA 1)."
+    const condicionOkFacturaA = condicion === 1 || isCondicionIvaMonotributoErp(condicion)
+    if (!condicionOkFacturaA) {
+      return "Factura A corresponde a receptor Responsable Inscripto (1) o Monotributo (6) con CUIT."
     }
     if (docTipo !== 80 || docNro <= 0) {
       return "Factura A requiere el CUIT del receptor (docTipo 80 con 11 dígitos)."

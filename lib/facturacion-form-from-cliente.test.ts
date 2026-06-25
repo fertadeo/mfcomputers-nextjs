@@ -75,7 +75,7 @@ describe("facturacion-form-from-cliente", () => {
     expect(payload.tipo).toBe(1)
   })
 
-  it("aplica Factura B a receptor monotributo cuando el emisor es RI", () => {
+  it("aplica Factura A a receptor monotributo cuando el emisor es RI", () => {
     const form = applyClienteToFacturarForm(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 11 },
       cliente({
@@ -87,11 +87,11 @@ describe("facturacion-form-from-cliente", () => {
       })
     )
     expect(form.condicionIvaReceptor).toBe(6)
-    expect(form.tipo).toBe(6)
+    expect(form.tipo).toBe(1)
     expect(form.docTipo).toBe(80)
   })
 
-  it("usa tipo sugerido por la API (emisor RI → Factura B para monotributo)", () => {
+  it("usa tipo sugerido por la API (emisor RI → Factura A para monotributo)", () => {
     const form = buildFacturarFormForSale(
       cliente({
         id: 37,
@@ -104,13 +104,13 @@ describe("facturacion-form-from-cliente", () => {
         totalAmount: 2,
         condicionIvaReceptor: 6,
         sugerencia: {
-          tipo: 6,
-          label: "Factura B",
-          motivo: "Emisor RI frente a monotributo: corresponde Factura B.",
+          tipo: 1,
+          label: "Factura A",
+          motivo: "Emisor RI y receptor monotributo: corresponde Factura A.",
         },
       }
     )
-    expect(form.tipo).toBe(6)
+    expect(form.tipo).toBe(1)
     expect(form.condicionIvaReceptor).toBe(6)
   })
 
@@ -136,6 +136,16 @@ describe("facturacion-form-from-cliente", () => {
     expect(form.docNro).toBe(30709212083)
   })
 
+  it("validateFacturarPayloadCoherence permite Factura A a monotributo (6) con CUIT", () => {
+    const err = validateFacturarPayloadCoherence({
+      tipo: 1,
+      condicionIvaReceptor: 6,
+      docTipo: 80,
+      docNro: 20355026656,
+    })
+    expect(err).toBeNull()
+  })
+
   it("validateFacturarPayloadCoherence rechaza Factura A sin CUIT", () => {
     const err = validateFacturarPayloadCoherence({
       tipo: 1,
@@ -143,7 +153,7 @@ describe("facturacion-form-from-cliente", () => {
       docTipo: 99,
       docNro: 0,
     })
-    expect(err).toMatch(/no coincide/)
+    expect(err).toMatch(/Factura A/)
   })
 
   it("buildFacturarPayload mapea monotributo (6) a consumidor final (5) en Factura B para WSFE", () => {
