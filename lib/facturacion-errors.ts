@@ -155,6 +155,7 @@ function extractFromDataBlock(data: Record<string, unknown>): ExtractedFacturaci
   if (data.code != null) out.code = String(data.code).trim()
   if (typeof data.message === "string") out.message = data.message
   if (typeof data.remoteMessage === "string") out.remoteDetail = data.remoteMessage
+  if (typeof data.remoteDetail === "string") out.remoteDetail = data.remoteDetail
   if (typeof data.action === "string") out.action = data.action
   if (typeof data.requestId === "string") out.requestId = data.requestId
   if (Array.isArray(data.suggestions)) {
@@ -167,6 +168,27 @@ function extractFromDataBlock(data: Record<string, unknown>): ExtractedFacturaci
   if (data.docTipo != null) out.docTipo = Number(data.docTipo)
   if (data.docNro != null) out.docNro = data.docNro as number | string
   if (data.tipo != null) out.tipoComprobante = Number(data.tipo)
+  if (data.tipoComprobante != null) out.tipoComprobante = Number(data.tipoComprobante)
+  if (data.details && typeof data.details === "object" && !Array.isArray(data.details)) {
+    const details = data.details as Record<string, unknown>
+    const errores = details.errores
+    if (Array.isArray(errores)) {
+      const joined = errores.filter((x): x is string => typeof x === "string").join(" ")
+      if (joined) out.remoteDetail = out.remoteDetail ? `${out.remoteDetail} ${joined}` : joined
+    }
+    const permitidas = details.condicionesPermitidas ?? details.condicionesValidas
+    if (Array.isArray(permitidas) && permitidas.length > 0) {
+      const hint = `Condiciones permitidas WSFE: ${permitidas.join(", ")}`
+      out.sugerencias = [...(out.sugerencias ?? []), hint]
+    }
+    const esperada = details.condicionEsperada ?? details.condicionSugerida
+    if (esperada != null) {
+      out.sugerencias = [
+        ...(out.sugerencias ?? []),
+        `Condición esperada por ARCA/preflight: ${String(esperada)}`,
+      ]
+    }
+  }
   return out
 }
 
@@ -507,7 +529,14 @@ export function buildFacturacionErrorDiagnosis(input: {
   const text = `${input.rawMessage ?? ""} ${input.remoteDetail ?? ""}`.toLowerCase()
   const ctx = input.receptorContext
 
-  if (code === "WSFE_PREFLIGHT_VALIDATION" || /condici[oó]n.*iva.*receptor/.test(text)) {
+  if (code === "WSFE_PREFLIGHT_VALIDATION") {
+    if (ctx?.condicionIvaReceptor === 6 && ctx?.tipoComprobante === 6) {
+      return "El facturador rechazó Factura B con condición Monotributo (6). Si el padrón ARCA confirma monotributo, el preflight WSFE de MultiCUIT podría estar desactualizado (normativa RG 5616). Revisá el detalle técnico: condiciones permitidas / condición esperada."
+    }
+    return "El facturador rechazó el comprobante en validación previa WSFE. Revisá el detalle técnico (condiciones permitidas y condición esperada para ese CUIT)."
+  }
+
+  if (/condici[oó]n.*iva.*receptor/.test(text)) {
     return "La condición IVA del receptor no coincide con lo registrado en AFIP para ese CUIT. Consultá el padrón ARCA: monotributo=6, consumidor final=5, responsable inscripto=1."
   }
 
