@@ -1,5 +1,6 @@
 import { getApiUrl } from "@/config/api"
 import type { FacturarSaleRequest } from "@/lib/api"
+import { applyWsfeCondicionToFacturarPayload } from "@/lib/facturacion-form-from-cliente"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { facturadorTipoRequiereIva, getTipoComprobanteLabel, resolveCondicionIvaReceptorForWsfe } from "@/lib/facturacion-comprobantes"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
@@ -18,11 +19,11 @@ import {
 export function mergeFacturarSaleRequestBody(body: FacturarSaleRequest): FacturarSaleRequest {
   const storedCuit = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
   const storedPv = typeof window !== "undefined" ? getStoredFacturacionPuntoVenta() : undefined
-  return {
+  return applyWsfeCondicionToFacturarPayload({
     ...body,
     ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
     ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
-  }
+  })
 }
 
 export interface FacturarHttpRequestPreview {

@@ -1,4 +1,5 @@
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
+import { resolveCondicionIvaReceptorForWsfe } from "@/lib/facturacion-comprobantes"
 
 export interface PadronCondicionValidationResult {
   checked: boolean
@@ -22,7 +23,8 @@ export function shouldConsultarPadronCondicionIva(
 
 export function validateCondicionIvaConPadronSugerencia(
   condicionEnviada: number,
-  sugerenciaPadron: number | null | undefined
+  sugerenciaPadron: number | null | undefined,
+  tipoComprobante?: number
 ): PadronCondicionValidationResult {
   const condicion = Number(condicionEnviada)
   if (sugerenciaPadron == null || !Number.isFinite(Number(sugerenciaPadron))) {
@@ -36,7 +38,10 @@ export function validateCondicionIvaConPadronSugerencia(
   }
 
   const sugerida = Number(sugerenciaPadron)
-  const coincide = condicion === sugerida
+  const coincide =
+    condicion === sugerida ||
+    (tipoComprobante != null &&
+      resolveCondicionIvaReceptorForWsfe(tipoComprobante, sugerida) === condicion)
   return {
     checked: true,
     coincide,

@@ -19,6 +19,7 @@ import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
 import type { BillableRow } from "@/lib/facturacion-billables"
 import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
+import { clienteCondicionIvaErp } from "@/lib/facturacion-form-from-cliente"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
@@ -210,18 +211,6 @@ export function FacturacionEmitConfirmDialog({
     esConsumidorFinal
   )
   const padronPending = needsPadron && padronVerifiedDigits !== receptorCuitDigits
-  const condicionPadronValidation = useMemo(() => {
-    if (esConsumidorFinal || padronPending || padronCondicionCodigo == null) return null
-    return validateCondicionIvaConPadronSugerencia(
-      form.condicionIvaReceptor ?? 5,
-      padronCondicionCodigo
-    )
-  }, [esConsumidorFinal, padronPending, padronCondicionCodigo, form.condicionIvaReceptor])
-  const condicionPadronError = formatCondicionPadronMismatchHint(condicionPadronValidation ?? {
-    checked: false,
-    coincide: true,
-    condicionEnviada: form.condicionIvaReceptor ?? 5,
-  })
 
   const facturarSaleId = useMemo(() => {
     if (!billable || !sale) return null
@@ -256,12 +245,39 @@ export function FacturacionEmitConfirmDialog({
     cliente?.city,
   ])
 
+  const condicionPadronValidation = useMemo(() => {
+    if (esConsumidorFinal || padronPending || padronCondicionCodigo == null) return null
+    return validateCondicionIvaConPadronSugerencia(
+      payloadParaEmision.condicionIvaReceptor ?? facturarPayload.condicionIvaReceptor ?? 5,
+      padronCondicionCodigo,
+      payloadParaEmision.tipo ?? facturarPayload.tipo ?? 6
+    )
+  }, [
+    esConsumidorFinal,
+    padronPending,
+    padronCondicionCodigo,
+    facturarPayload.condicionIvaReceptor,
+    facturarPayload.tipo,
+    payloadParaEmision.condicionIvaReceptor,
+    payloadParaEmision.tipo,
+  ])
+  const condicionPadronError = formatCondicionPadronMismatchHint(condicionPadronValidation ?? {
+    checked: false,
+    coincide: true,
+    condicionEnviada: payloadParaEmision.condicionIvaReceptor ?? 5,
+  })
+
   const facturarFullPayloadPreview = useMemo(() => {
     if (facturarSaleId == null || !sale) return null
 
     const docTipo = payloadParaEmision.docTipo ?? 99
     const docNro = payloadParaEmision.docNro ?? 0
-    const condicion = payloadParaEmision.condicionIvaReceptor ?? 5
+    const condicionErp =
+      clienteCondicionIvaErp(cliente) ??
+      form.condicionIvaReceptor ??
+      payloadParaEmision.condicionIvaReceptor ??
+      5
+    const condicionWsfe = payloadParaEmision.condicionIvaReceptor ?? 5
 
     return buildFacturarFullPayloadPreview({
       saleId: facturarSaleId,
@@ -276,8 +292,8 @@ export function FacturacionEmitConfirmDialog({
         razonSocial: comprobanteDestinatarioNombre,
         docTipo,
         docNro,
-        condicionIvaReceptor: condicion,
-        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicion, cliente),
+        condicionIvaReceptor: condicionErp,
+        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicionWsfe, cliente),
         taxConditionEnErp: cliente?.tax_condition ?? null,
         domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null,
       },

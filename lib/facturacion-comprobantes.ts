@@ -135,6 +135,10 @@ const CONDICION_IVA_SOLO_BC = new Set([4, 5, 7, 8, 9, 10, 15])
 /** Condiciones monotributo en ERP/padrón que en Factura B se envían como CF (5) a WSFE. */
 const CONDICION_IVA_MONOTRIBUTO_ERP = new Set([6, 9, 10, 13, 16])
 
+export function isCondicionIvaMonotributoErp(codigo: number): boolean {
+  return CONDICION_IVA_MONOTRIBUTO_ERP.has(Number(codigo))
+}
+
 export function getWsfeComprobanteClase(tipo: number): WsfeComprobanteClase {
   if (TIPOS_CLASE_A.has(tipo)) return "A"
   if (TIPOS_CLASE_B.has(tipo)) return "B"

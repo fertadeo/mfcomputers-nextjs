@@ -24,4 +24,10 @@ describe("facturacion-padron-condicion", () => {
     expect(result.coincide).toBe(true)
     expect(result.message).toBeUndefined()
   })
+
+  it("acepta Factura B con condición WSFE 5 cuando el padrón indica monotributo (6)", () => {
+    const result = validateCondicionIvaConPadronSugerencia(5, 6, 6)
+    expect(result.coincide).toBe(true)
+    expect(result.message).toBeUndefined()
+  })
 })

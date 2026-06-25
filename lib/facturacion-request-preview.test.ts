@@ -153,7 +153,7 @@ describe("facturacion-request-preview", () => {
       iva: [{ id: 3, base: 2, cuota: 0 }],
       omitirPdf: true,
     })
-    expect(preview.httpRequest.body.condicionIvaReceptor).toBe(6)
+    expect(preview.httpRequest.body.condicionIvaReceptor).toBe(5)
     expect(preview.items[0].importe_exento).toBe(2)
     expect(preview.items[0]).not.toHaveProperty("neto_gravado")
     expect(preview.totales).toEqual({
