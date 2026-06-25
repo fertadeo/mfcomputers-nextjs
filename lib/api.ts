@@ -1258,6 +1258,8 @@ export interface FacturarSaleRequest {
   receptorDomicilio?: string
   force?: boolean
   skipPadronCondicionCheck?: boolean
+  /** El usuario ajustó tipo/condición en configuración fiscal manual; el POST es la fuente de verdad. */
+  fiscalManualConfig?: boolean
 }
 
 export interface FacturarSaleResponseData {

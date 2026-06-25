@@ -212,6 +212,50 @@ describe("facturacion-form-from-cliente", () => {
     expect(err).toBeNull()
   })
 
+  it("buildFacturarPayload respeta condición manual sin mapeo WSFE", () => {
+    const payload = buildFacturarPayload(
+      {
+        docTipo: 80,
+        docNro: 20343304073,
+        condicionIvaReceptor: 5,
+        tipo: 1,
+        fiscalManualConfig: true,
+      },
+      cliente({
+        id: 1,
+        name: "MATIAS",
+        code: "M1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20343304073",
+      })
+    )
+    expect(payload.tipo).toBe(1)
+    expect(payload.condicionIvaReceptor).toBe(5)
+    expect(payload.fiscalManualConfig).toBe(true)
+    expect(payload.skipPadronCondicionCheck).toBe(true)
+  })
+
+  it("validateFacturarReceptorFiscal permite override manual Factura A + CF (5)", () => {
+    const err = validateFacturarReceptorFiscal(
+      { client_id: 1, client_name: "MATIAS" },
+      cliente({
+        id: 1,
+        name: "MATIAS DANIEL RONCATTO",
+        code: "M1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20343304073",
+      }),
+      {
+        docTipo: 80,
+        docNro: 20343304073,
+        condicionIvaReceptor: 5,
+        tipo: 1,
+        fiscalManualConfig: true,
+      }
+    )
+    expect(err).toBeNull()
+  })
+
   it("validateFacturarPayloadCoherence rechaza CUIT con CF en Factura A", () => {
     const err = validateFacturarPayloadCoherence({
       tipo: 1,

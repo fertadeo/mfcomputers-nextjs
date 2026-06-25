@@ -6,6 +6,7 @@ import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,7 @@ import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
 import type { BillableRow } from "@/lib/facturacion-billables"
 import { labelCondicionIvaReceptor, labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
-import { clienteCondicionIvaErp } from "@/lib/facturacion-form-from-cliente"
+import { clienteCondicionIvaErp, validateFacturarReceptorFiscal } from "@/lib/facturacion-form-from-cliente"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
@@ -27,7 +28,7 @@ import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { ClienteInfoCard } from "@/components/cliente-picker"
 import { buildArcaInvoicePdfInputFromPreviewLines } from "@/lib/build-arca-invoice-pdf-input"
-import { buildFacturarFullPayloadPreview } from "@/lib/facturacion-request-preview"
+import { buildFacturarFullPayloadPreview, extractFacturarBodyFromPreviewJson } from "@/lib/facturacion-request-preview"
 import {
   applyCondicionVentaToFacturarPayload,
   CONDICION_VENTA_CATALOG,
@@ -95,6 +96,8 @@ export interface FacturacionEmitConfirmDialogProps {
   emitErrorRequestId?: string | null
   /** Body definitivo para POST /sales/:id/facturar (tras buildFacturarPayload). */
   facturarPayload: FacturarSaleRequest
+  /** Tipo/condición ajustados manualmente en configuración fiscal. */
+  manualFiscalConfig?: boolean
   emisorCuitLabel: string
   isSubmitting: boolean
   onConfigure: () => void
@@ -104,6 +107,8 @@ export interface FacturacionEmitConfirmDialogProps {
   onCondicionVentaCodigoChange: (codigo: string) => void
   onCondicionVentaTextoChange: (texto: string) => void
   onConfirm: (payload: FacturarSaleRequest) => void
+  /** Sincroniza el formulario de emisión cuando el usuario aplica un JSON manual. */
+  onManualPayloadApply?: (body: FacturarSaleRequest) => void
   /** Clave de fila seleccionada (reinicia estado al cambiar comprobante). */
   selectedBillableKey?: string | null
 }
@@ -127,6 +132,7 @@ export function FacturacionEmitConfirmDialog({
   emitErrorTitle = null,
   emitErrorRequestId = null,
   facturarPayload,
+  manualFiscalConfig = false,
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
@@ -136,6 +142,7 @@ export function FacturacionEmitConfirmDialog({
   onCondicionVentaCodigoChange,
   onCondicionVentaTextoChange,
   onConfirm,
+  onManualPayloadApply,
   selectedBillableKey = null,
 }: FacturacionEmitConfirmDialogProps) {
   const [receptorCuitInput, setReceptorCuitInput] = useState("")
@@ -144,6 +151,10 @@ export function FacturacionEmitConfirmDialog({
   const [padronCondicionCodigo, setPadronCondicionCodigo] = useState<number | null>(null)
   const [payloadJsonOpen, setPayloadJsonOpen] = useState(false)
   const [payloadCopied, setPayloadCopied] = useState(false)
+  const [payloadJsonText, setPayloadJsonText] = useState("")
+  const [payloadJsonError, setPayloadJsonError] = useState<string | null>(null)
+  const [jsonManuallyApplied, setJsonManuallyApplied] = useState(false)
+  const [appliedManualBody, setAppliedManualBody] = useState<FacturarSaleRequest | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -153,6 +164,10 @@ export function FacturacionEmitConfirmDialog({
     setPadronCondicionCodigo(null)
     setPayloadJsonOpen(false)
     setPayloadCopied(false)
+    setPayloadJsonText("")
+    setPayloadJsonError(null)
+    setJsonManuallyApplied(false)
+    setAppliedManualBody(null)
   }, [open, billable?.key, selectedBillableKey])
 
   useEffect(() => {
@@ -230,12 +245,14 @@ export function FacturacionEmitConfirmDialog({
 
   const payloadParaEmision = useMemo(() => {
     const domicilio = [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null
-    return applyCondicionVentaToFacturarPayload(facturarPayload, {
+    const base = appliedManualBody ?? facturarPayload
+    return applyCondicionVentaToFacturarPayload(base, {
       fechaComprobante: fechaCbte ?? saleDate ?? sale?.sale_date,
       receptorRazonSocial: comprobanteDestinatarioNombre,
       receptorDomicilio: domicilio,
     })
   }, [
+    appliedManualBody,
     facturarPayload,
     fechaCbte,
     saleDate,
@@ -246,7 +263,15 @@ export function FacturacionEmitConfirmDialog({
   ])
 
   const condicionPadronValidation = useMemo(() => {
-    if (esConsumidorFinal || padronPending || padronCondicionCodigo == null) return null
+    if (
+      manualFiscalConfig ||
+      appliedManualBody ||
+      esConsumidorFinal ||
+      padronPending ||
+      padronCondicionCodigo == null
+    ) {
+      return null
+    }
     return validateCondicionIvaConPadronSugerencia(
       payloadParaEmision.condicionIvaReceptor ?? facturarPayload.condicionIvaReceptor ?? 5,
       padronCondicionCodigo,
@@ -260,6 +285,8 @@ export function FacturacionEmitConfirmDialog({
     facturarPayload.tipo,
     payloadParaEmision.condicionIvaReceptor,
     payloadParaEmision.tipo,
+    manualFiscalConfig,
+    appliedManualBody,
   ])
   const condicionPadronError = formatCondicionPadronMismatchHint(condicionPadronValidation ?? {
     checked: false,
@@ -340,10 +367,48 @@ export function FacturacionEmitConfirmDialog({
     ? JSON.stringify(facturarFullPayloadPreview, null, 2)
     : ""
 
+  useEffect(() => {
+    if (!open || jsonManuallyApplied) return
+    setPayloadJsonText(facturarRequestJson)
+  }, [open, facturarRequestJson, jsonManuallyApplied])
+
+  const jsonPendingApply =
+    !jsonManuallyApplied &&
+    payloadJsonText.trim() !== "" &&
+    facturarRequestJson.trim() !== "" &&
+    payloadJsonText.trim() !== facturarRequestJson.trim()
+
+  const effectiveReceptorFiscalError = useMemo(() => {
+    if (!sale) return receptorFiscalError
+    if (appliedManualBody) {
+      return validateFacturarReceptorFiscal(sale, cliente, payloadParaEmision)
+    }
+    return receptorFiscalError
+  }, [sale, cliente, payloadParaEmision, appliedManualBody, receptorFiscalError])
+
+  const applyPayloadJson = () => {
+    const result = extractFacturarBodyFromPreviewJson(payloadJsonText)
+    if (!result.ok) {
+      setPayloadJsonError(result.error)
+      return
+    }
+    setPayloadJsonError(null)
+    setAppliedManualBody(result.body)
+    setJsonManuallyApplied(true)
+    onManualPayloadApply?.(result.body)
+  }
+
+  const resetPayloadJson = () => {
+    setJsonManuallyApplied(false)
+    setAppliedManualBody(null)
+    setPayloadJsonError(null)
+    setPayloadJsonText(facturarRequestJson)
+  }
+
   const copyPayloadJson = async () => {
-    if (!facturarRequestJson) return
+    if (!payloadJsonText) return
     try {
-      await navigator.clipboard.writeText(facturarRequestJson)
+      await navigator.clipboard.writeText(payloadJsonText)
       setPayloadCopied(true)
       window.setTimeout(() => setPayloadCopied(false), 2000)
     } catch {
@@ -779,33 +844,80 @@ export function FacturacionEmitConfirmDialog({
                 {payloadJsonOpen ? (
                   <div className="border-t px-4 pb-4 pt-3 space-y-2">
                     <p className="text-muted-foreground text-xs">
-                      Incluye el POST al backend (<code className="text-[11px]">httpRequest</code>), receptor (razón
-                      social, CUIT, condición IVA), ítems con alícuotas, neto/IVA y totales. Los productos no van en el
-                      body del POST: el servidor los lee de la venta (<code className="text-[11px]">sale_items</code>).
-                      No incluye cabeceras de autenticación.
+                      Podés editar el JSON directamente. Lo que se envía al emitir es{" "}
+                      <code className="text-[11px]">httpRequest.body</code> (o un objeto plano con{" "}
+                      <code className="text-[11px]">tipo</code> /{" "}
+                      <code className="text-[11px]">condicionIvaReceptor</code>). Usá{" "}
+                      <strong>Aplicar cambios</strong> antes de confirmar. Los ítems siguen leyéndose de la venta en el
+                      servidor.
                     </p>
-                    <div className="relative">
-                      <pre className="max-h-[min(28rem,50vh)] overflow-auto rounded-md bg-muted/60 p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
-                        {facturarRequestJson}
-                      </pre>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="absolute right-2 top-2 h-8 bg-background/90"
-                        onClick={() => void copyPayloadJson()}
-                        disabled={!facturarRequestJson}
-                      >
-                        <Copy className="mr-1.5 h-3.5 w-3.5" />
-                        {payloadCopied ? "Copiado" : "Copiar"}
-                      </Button>
+                    {jsonManuallyApplied ? (
+                      <Badge variant="outline" className="text-xs">
+                        Payload manual activo — se enviará httpRequest.body editado
+                      </Badge>
+                    ) : null}
+                    {jsonPendingApply ? (
+                      <Alert
+                        variant="warning"
+                        title="Cambios sin aplicar"
+                        description="Editaste el JSON pero aún no aplicaste los cambios. Usá «Aplicar cambios» o «Restaurar automático»."
+                      />
+                    ) : null}
+                    {payloadJsonError ? (
+                      <Alert variant="error" title="JSON inválido" description={payloadJsonError} />
+                    ) : null}
+                    <div className="relative space-y-2">
+                      <Textarea
+                        value={payloadJsonText}
+                        onChange={(e) => {
+                          setPayloadJsonText(e.target.value)
+                          if (payloadJsonError) setPayloadJsonError(null)
+                        }}
+                        disabled={isSubmitting}
+                        className="min-h-[min(28rem,50vh)] max-h-[min(28rem,50vh)] overflow-auto font-mono text-xs leading-relaxed"
+                        spellCheck={false}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={applyPayloadJson}
+                          disabled={isSubmitting || !payloadJsonText.trim()}
+                        >
+                          Aplicar cambios
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={resetPayloadJson}
+                          disabled={isSubmitting || (!jsonManuallyApplied && !jsonPendingApply)}
+                        >
+                          Restaurar automático
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void copyPayloadJson()}
+                          disabled={!payloadJsonText}
+                        >
+                          <Copy className="mr-1.5 h-3.5 w-3.5" />
+                          {payloadCopied ? "Copiado" : "Copiar"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
               </div>
 
-              {receptorFiscalError ? (
-                <Alert variant="error" title="Receptor fiscal incorrecto" description={receptorFiscalError} />
+              {effectiveReceptorFiscalError ? (
+                <Alert
+                  variant="error"
+                  title="Receptor fiscal incorrecto"
+                  description={effectiveReceptorFiscalError}
+                />
               ) : null}
 
               {itemIvaError ? (
@@ -845,7 +957,9 @@ export function FacturacionEmitConfirmDialog({
                 !!condicionPadronError ||
                 condicionVentaOtroInvalido ||
                 !!itemIvaError ||
-                !!receptorFiscalError
+                !!effectiveReceptorFiscalError ||
+                jsonPendingApply ||
+                !!payloadJsonError
               }
             >
               {isSubmitting ? (

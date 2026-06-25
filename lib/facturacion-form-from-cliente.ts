@@ -233,9 +233,11 @@ export function mergeSugerenciaIntoFacturarForm(
  */
 export function buildFacturarPayload(
   form: FacturarSaleRequest,
-  cliente: Cliente | null
+  cliente: Cliente | null,
+  options?: { manualFiscalConfig?: boolean }
 ): FacturarSaleRequest {
   const defaults = applyClienteToFacturarForm({ concepto: 1 }, cliente)
+  const manualFiscal = options?.manualFiscalConfig === true || form.fiscalManualConfig === true
 
   const docSinIdentificar =
     (form.docTipo == null || form.docTipo === 99) &&
@@ -250,14 +252,36 @@ export function buildFacturarPayload(
     docNro: docSinIdentificar ? defaults.docNro : (form.docNro ?? defaults.docNro),
   }
 
+  if (manualFiscal) {
+    return {
+      ...payload,
+      fiscalManualConfig: true,
+      skipPadronCondicionCheck: true,
+    }
+  }
+
   return applyWsfeCondicionToFacturarPayload(payload)
 }
 
 export function validateFacturarReceptorFiscal(
   sale: { client_id?: number | null; client_name?: string | null },
   cliente: Cliente | null,
-  payload: FacturarSaleRequest
+  payload: FacturarSaleRequest,
+  options?: { manualFiscalConfig?: boolean }
 ): string | null {
+  const manualFiscal =
+    options?.manualFiscalConfig === true || payload.fiscalManualConfig === true
+
+  if (manualFiscal) {
+    if (!sale.client_id) return null
+    const cuit = clienteCuitDigitos(cliente)
+    const esConsumidorFinalAfip = payload.docTipo === 99 && (payload.docNro ?? 0) === 0
+    if (cuit.length === 11 && esConsumidorFinalAfip) {
+      return "La venta tiene un cliente con CUIT/CUIL en el ERP, pero el comprobante se emitiría sin documento (consumidor final). Revisá que el cliente tenga el CUIT cargado o consultá el padrón ARCA antes de emitir."
+    }
+    return null
+  }
+
   const cfErr = validateNoConsumidorFinalSiOtraCondicion(payload, cliente)
   if (cfErr) return cfErr
 

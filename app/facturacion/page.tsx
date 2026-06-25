@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
@@ -327,6 +327,7 @@ export default function FacturacionPage() {
   const [confirmLinesLoading, setConfirmLinesLoading] = useState(false)
   const [confirmLinesError, setConfirmLinesError] = useState<string | null>(null)
   const [fiscalSugerenciaMotivo, setFiscalSugerenciaMotivo] = useState<string | null>(null)
+  const fiscalLoadedBillableKeyRef = useRef<string | null>(null)
 
   const [emisorCuitMostrar, setEmisorCuitMostrar] = useState<string>(() => {
     const stored = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
@@ -355,7 +356,7 @@ export default function FacturacionPage() {
     if ((!isEmitModalOpen && !isConfirmEmitOpen) || invoiceModalMode !== "emit") return
     setShowAdvancedEmitForm(!getEmitirConDefaultsGuardados())
     setDefaultsSavedHint(false)
-  }, [isEmitModalOpen, isConfirmEmitOpen, invoiceModalMode, selectedBillableKey])
+  }, [invoiceModalMode, selectedBillableKey])
 
   const selectedBillable = useMemo(
     () => billables.find((row) => row.key === selectedBillableKey) ?? null,
@@ -688,21 +689,19 @@ export default function FacturacionPage() {
 
   useEffect(() => {
     if (
-      (!isEmitModalOpen && !isConfirmEmitOpen) ||
       selectedBillableKey == null ||
-      invoiceModalMode !== "emit"
+      invoiceModalMode !== "emit" ||
+      !selectedSale ||
+      (!isEmitModalOpen && !isConfirmEmitOpen)
     ) {
-      setModalCliente(null)
-      setModalClienteLoading(false)
+      return
+    }
+
+    if (fiscalLoadedBillableKeyRef.current === selectedBillableKey) {
       return
     }
 
     const sale = selectedSale
-    if (!sale) {
-      setModalClienteLoading(false)
-      return
-    }
-
     let cancelled = false
     setModalClienteLoading(true)
     setModalCliente(null)
@@ -722,6 +721,7 @@ export default function FacturacionPage() {
           if (!cancelled) {
             setModalCliente(null)
             setForm(buildFacturarFormForSale(null, sugerencia))
+            fiscalLoadedBillableKeyRef.current = selectedBillableKey
             setFiscalSugerenciaMotivo(sugerencia?.sugerencia?.motivo ?? null)
             console.log("[FACTURAR UI] Venta sin client_id → consumidor final (docTipo 99 / docNro 0).")
           }
@@ -736,6 +736,7 @@ export default function FacturacionPage() {
         setModalCliente(cliente)
         const nextForm = buildFacturarFormForSale(cliente, sugerencia)
         setForm(nextForm)
+        fiscalLoadedBillableKeyRef.current = selectedBillableKey
         setFiscalSugerenciaMotivo(sugerencia?.sugerencia?.motivo ?? null)
         console.log("[FACTURAR UI] Formulario fiscal desde cliente ERP:", {
           clientId: sale.client_id,
@@ -761,10 +762,22 @@ export default function FacturacionPage() {
     return () => {
       cancelled = true
     }
-    // Nota: no incluir `sales` en dependencias: si se refresca el listado con el modal abierto,
-    // no debe reiniciarse el formulario ni volver a cargar cliente.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar comprobante seleccionado
-  }, [isEmitModalOpen, isConfirmEmitOpen, selectedBillableKey, invoiceModalMode, selectedSale])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recargar al abrir emisión o cambiar fila
+  }, [
+    selectedBillableKey,
+    invoiceModalMode,
+    selectedSale?.id,
+    isEmitModalOpen,
+    isConfirmEmitOpen,
+  ])
+
+  useEffect(() => {
+    if (!isEmitModalOpen && !isConfirmEmitOpen) {
+      fiscalLoadedBillableKeyRef.current = null
+      setModalCliente(null)
+      setModalClienteLoading(false)
+    }
+  }, [isEmitModalOpen, isConfirmEmitOpen])
 
   const requestEmitConfirmation = () => {
     if (!selectedBillable || !selectedSale) {
@@ -2199,7 +2212,11 @@ export default function FacturacionPage() {
                           <Select
                             value={String(form.tipo ?? 6)}
                             onValueChange={(value) =>
-                              setForm((prev) => ({ ...prev, tipo: parseInt(value, 10) || 6 }))
+                              setForm((prev) => ({
+                                ...prev,
+                                tipo: parseInt(value, 10) || 6,
+                                fiscalManualConfig: true,
+                              }))
                             }
                           >
                             <SelectTrigger id="facturar-tipo-comprobante" className="w-full">
@@ -2228,6 +2245,7 @@ export default function FacturacionPage() {
                               setForm((prev) => ({
                                 ...prev,
                                 condicionIvaReceptor: cond,
+                                fiscalManualConfig: true,
                               }))
                             }}
                           >
@@ -2273,6 +2291,7 @@ export default function FacturacionPage() {
                               setForm((prev) => ({
                                 ...prev,
                                 docTipo: e.target.value === "" ? undefined : Number(e.target.value),
+                                fiscalManualConfig: true,
                               }))
                             }
                             placeholder="80 = CUIT, 99 = consumidor final"
@@ -2288,6 +2307,7 @@ export default function FacturacionPage() {
                               setForm((prev) => ({
                                 ...prev,
                                 docNro: e.target.value ? Number(e.target.value) : undefined,
+                                fiscalManualConfig: true,
                               }))
                             }
                             placeholder="Con docTipo 99 suele ser 0"
@@ -2416,7 +2436,12 @@ export default function FacturacionPage() {
             facturarPayload={facturarPayloadForEmit}
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
-            onConfigure={() => setIsEmitModalOpen(true)}
+            onConfigure={() => {
+              setShowAdvancedEmitForm(true)
+              setIsConfirmEmitOpen(false)
+              setIsEmitModalOpen(true)
+            }}
+            manualFiscalConfig={form.fiscalManualConfig === true}
             selectedBillableKey={selectedBillableKey}
             onReceptorCuitChange={(raw: string) =>
               setForm((prev) => applyReceptorCuitToFacturarForm(prev, raw, clienteFiscalSnapshot))
@@ -2442,6 +2467,13 @@ export default function FacturacionPage() {
               setForm((prev) => ({ ...prev, condicionVentaTexto: texto }))
             }
             onConfirm={(payload) => void onSubmitFacturar(payload)}
+            onManualPayloadApply={(body) =>
+              setForm((prev) => ({
+                ...prev,
+                ...body,
+                fiscalManualConfig: true,
+              }))
+            }
           />
 
           <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>

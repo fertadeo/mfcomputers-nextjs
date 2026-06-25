@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildFacturarFullPayloadPreview,
+  extractFacturarBodyFromPreviewJson,
   mergeFacturarSaleRequestBody,
 } from "@/lib/facturacion-request-preview"
 
@@ -168,5 +169,46 @@ describe("facturacion-request-preview", () => {
       iva_10_5: 0,
       importe_total: 2,
     })
+  })
+
+  it("mergeFacturarSaleRequestBody no mapea WSFE con fiscalManualConfig", () => {
+    const merged = mergeFacturarSaleRequestBody({
+      tipo: 1,
+      docTipo: 80,
+      docNro: 20343304073,
+      condicionIvaReceptor: 5,
+      concepto: 1,
+      fiscalManualConfig: true,
+    })
+    expect(merged.condicionIvaReceptor).toBe(5)
+    expect(merged.tipo).toBe(1)
+  })
+
+  it("extractFacturarBodyFromPreviewJson lee httpRequest.body", () => {
+    const result = extractFacturarBodyFromPreviewJson(
+      JSON.stringify({
+        httpRequest: {
+          method: "POST",
+          url: "http://localhost/api/sales/70/facturar",
+          body: { tipo: 1, condicionIvaReceptor: 5, docTipo: 80, docNro: 20343304073 },
+        },
+      })
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.body.tipo).toBe(1)
+      expect(result.body.condicionIvaReceptor).toBe(5)
+      expect(result.body.fiscalManualConfig).toBe(true)
+    }
+  })
+
+  it("extractFacturarBodyFromPreviewJson acepta body plano", () => {
+    const result = extractFacturarBodyFromPreviewJson(
+      JSON.stringify({ tipo: 6, condicionIvaReceptor: 5, docTipo: 80, docNro: 123 })
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.body.tipo).toBe(6)
+    }
   })
 })

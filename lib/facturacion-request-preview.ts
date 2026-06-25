@@ -19,11 +19,68 @@ import {
 export function mergeFacturarSaleRequestBody(body: FacturarSaleRequest): FacturarSaleRequest {
   const storedCuit = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
   const storedPv = typeof window !== "undefined" ? getStoredFacturacionPuntoVenta() : undefined
-  return applyWsfeCondicionToFacturarPayload({
+  const merged: FacturarSaleRequest = {
     ...body,
     ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
     ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
-  })
+  }
+  if (merged.fiscalManualConfig === true) return merged
+  return applyWsfeCondicionToFacturarPayload(merged)
+}
+
+export type ExtractFacturarBodyResult =
+  | { ok: true; body: FacturarSaleRequest }
+  | { ok: false; error: string }
+
+/**
+ * Extrae el body de POST /sales/:id/facturar desde el JSON de vista previa
+ * (objeto completo con `httpRequest.body`) o desde un body plano.
+ */
+export function extractFacturarBodyFromPreviewJson(raw: string): ExtractFacturarBodyResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw.trim())
+  } catch {
+    return { ok: false, error: "JSON inválido. Revisá comas, comillas y llaves." }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, error: "El JSON debe ser un objeto." }
+  }
+
+  const root = parsed as Record<string, unknown>
+  let body: Record<string, unknown> | null = null
+
+  if (root.httpRequest && typeof root.httpRequest === "object") {
+    const httpRequest = root.httpRequest as Record<string, unknown>
+    if (httpRequest.body && typeof httpRequest.body === "object") {
+      body = httpRequest.body as Record<string, unknown>
+    }
+  }
+
+  if (
+    !body &&
+    ("tipo" in root || "condicionIvaReceptor" in root || "docTipo" in root || "concepto" in root)
+  ) {
+    body = root
+  }
+
+  if (!body) {
+    return {
+      ok: false,
+      error:
+        "No se encontró httpRequest.body. Editá esa sección o pegá un objeto con tipo, condicionIvaReceptor y docTipo.",
+    }
+  }
+
+  return {
+    ok: true,
+    body: {
+      ...(body as FacturarSaleRequest),
+      fiscalManualConfig: true,
+      skipPadronCondicionCheck: true,
+    },
+  }
 }
 
 export interface FacturarHttpRequestPreview {
@@ -160,7 +217,10 @@ export function buildFacturarFullPayloadPreview(
   const tipo = body.tipo ?? 6
   const concepto = body.concepto ?? 1
   const condicionErp = body.condicionIvaReceptor ?? 5
-  const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
+  const condicionWsfe =
+    body.fiscalManualConfig === true
+      ? condicionErp
+      : resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
   const requiereIva = facturadorTipoRequiereIva(tipo)
   const fechaComprobante = resolveFechaComprobante(args.fechaCbte)
   const saleDate = normalizeFechaYmd(args.saleDate)
