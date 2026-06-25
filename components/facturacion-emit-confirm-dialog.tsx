@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
 import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
 import type { BillableRow } from "@/lib/facturacion-billables"
-import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
+import { labelCondicionIvaReceptor, labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
 import { clienteCondicionIvaErp } from "@/lib/facturacion-form-from-cliente"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
@@ -273,8 +273,8 @@ export function FacturacionEmitConfirmDialog({
     const docTipo = payloadParaEmision.docTipo ?? 99
     const docNro = payloadParaEmision.docNro ?? 0
     const condicionErp =
-      clienteCondicionIvaErp(cliente) ??
       form.condicionIvaReceptor ??
+      clienteCondicionIvaErp(cliente) ??
       payloadParaEmision.condicionIvaReceptor ??
       5
 
@@ -307,6 +307,8 @@ export function FacturacionEmitConfirmDialog({
     totalComprobante,
     comprobanteDestinatarioNombre,
     cliente,
+    form.condicionIvaReceptor,
+    form.tipo,
   ])
 
   const arcaInvoicePreview = useMemo(() => {
@@ -445,11 +447,11 @@ export function FacturacionEmitConfirmDialog({
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <span className="text-muted-foreground">Comprobante a emitir: </span>
-                    <TipoComprobanteBadge tipo={form.tipo} />
-                    <span className="text-sm">{getTipoComprobanteLabel(form.tipo)}</span>
+                    <TipoComprobanteBadge tipo={facturarPayload.tipo} />
+                    <span className="text-sm">{getTipoComprobanteLabel(facturarPayload.tipo)}</span>
                     <span className="text-muted-foreground text-xs">
-                      · IVA receptor {form.condicionIvaReceptor} (
-                      {labelCondicionIvaReceptorForDisplay(form.condicionIvaReceptor ?? 5, cliente)})
+                      · IVA receptor {facturarPayload.condicionIvaReceptor} (
+                      {labelCondicionIvaReceptor(facturarPayload.condicionIvaReceptor ?? 5)})
                     </span>
                   </div>
                   <div>
@@ -461,7 +463,7 @@ export function FacturacionEmitConfirmDialog({
                     <span className="font-mono text-xs">
                       {esConsumidorFinal
                         ? "tipo 99 · sin número (consumidor final)"
-                        : `tipo ${form.docTipo ?? "—"} · ${form.docNro ?? 0}`}
+                        : `tipo ${facturarPayload.docTipo ?? "—"} · ${facturarPayload.docNro ?? 0}`}
                     </span>
                   </div>
                 </div>

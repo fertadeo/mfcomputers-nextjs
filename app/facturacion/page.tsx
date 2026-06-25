@@ -2100,18 +2100,21 @@ export default function FacturacionPage() {
                       description={
                         <div className="space-y-2 text-sm">
                           <p>
-                            Se emitirá{" "}
+                            Configuración actual:{" "}
                             <TipoComprobanteBadge tipo={form.tipo} className="align-middle" /> (
-                            {getTipoComprobanteLabel(form.tipo)}) según{" "}
-                            {modalCliente?.tax_condition
-                              ? formatTaxConditionLabel(modalCliente.tax_condition)
-                              : labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)}{" "}
-                            del cliente.
+                            {getTipoComprobanteLabel(form.tipo)}), condición IVA receptor{" "}
+                            {form.condicionIvaReceptor} (
+                            {labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)}).
+                            {modalCliente?.tax_condition ? (
+                              <>
+                                {" "}
+                                Cliente en ERP: {formatTaxConditionLabel(modalCliente.tax_condition)}.
+                              </>
+                            ) : null}
                           </p>
                           <p className="text-muted-foreground text-xs">
-                            El padrón indica la condición IVA del <strong>cliente</strong> (receptor). El tipo B o C lo
-                            define el régimen de <strong>tu empresa</strong> en el servidor (
-                            {getEmisorRegimenLabel(getEmisorRegimenFromApi())}).{" "}
+                            Podés cambiar tipo y condición en opciones avanzadas; la vista previa y el POST usan esos
+                            valores. ARCA puede rechazar combinaciones inválidas.{" "}
                             {fiscalSugerenciaMotivo ? `Sugerencia API: ${fiscalSugerenciaMotivo}` : null}
                           </p>
                         </div>
@@ -2180,8 +2183,8 @@ export default function FacturacionPage() {
                             </SelectContent>
                           </Select>
                           <p className="text-muted-foreground text-xs">
-                            El tipo se sugiere automáticamente desde la condición fiscal del cliente; al cambiar la
-                            condición IVA del receptor se actualiza el tipo sugerido.
+                            El valor elegido se envía en el payload y en la vista previa. Podés probar
+                            combinaciones distintas a la sugerida (p. ej. Factura A); ARCA puede rechazarlas.
                           </p>
                         </div>
 
@@ -2191,11 +2194,9 @@ export default function FacturacionPage() {
                             value={String(form.condicionIvaReceptor ?? 5)}
                             onValueChange={(value) => {
                               const cond = parseInt(value, 10) || 5
-                              const tipo = resolveTipoComprobanteFromCondicionIvaReceptor(cond)
                               setForm((prev) => ({
                                 ...prev,
                                 condicionIvaReceptor: cond,
-                                tipo,
                               }))
                             }}
                           >

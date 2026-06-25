@@ -231,40 +231,29 @@ export function mergeSugerenciaIntoFacturarForm(
 }
 
 /**
- * Body definitivo para POST /facturar: prioriza datos fiscales del cliente cargado
- * (no deja consumidor final si hay CUIT en el ERP).
+ * Body definitivo para POST /facturar.
+ * Respeta las opciones del formulario (configuración fiscal manual); solo autocompleta
+ * docTipo/docNro desde el cliente cuando el receptor no está identificado (99 / 0).
  */
 export function buildFacturarPayload(
   form: FacturarSaleRequest,
   cliente: Cliente | null
 ): FacturarSaleRequest {
-  if (cliente) {
-    const fromCliente = applyClienteToFacturarForm(form, cliente)
-    const payload: FacturarSaleRequest = {
-      ...form,
-      ...fromCliente,
-      concepto: form.concepto ?? fromCliente.concepto,
-      force: form.force,
-      fechaServicioDesde: form.fechaServicioDesde,
-      fechaServicioHasta: form.fechaServicioHasta,
-      cuitEmisor: form.cuitEmisor,
-      puntoVenta: form.puntoVenta,
-    }
-    payload.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
-    return applyWsfeCondicionToFacturarPayload(payload)
+  const defaults = applyClienteToFacturarForm({ concepto: 1 }, cliente)
+
+  const docSinIdentificar =
+    (form.docTipo == null || form.docTipo === 99) &&
+    (form.docNro == null || form.docNro === 0)
+
+  const payload: FacturarSaleRequest = {
+    ...form,
+    concepto: form.concepto ?? defaults.concepto ?? 1,
+    tipo: form.tipo ?? defaults.tipo,
+    condicionIvaReceptor: form.condicionIvaReceptor ?? defaults.condicionIvaReceptor,
+    docTipo: docSinIdentificar ? defaults.docTipo : (form.docTipo ?? defaults.docTipo),
+    docNro: docSinIdentificar ? defaults.docNro : (form.docNro ?? defaults.docNro),
   }
 
-  const payload: FacturarSaleRequest = { ...form }
-
-  if (payload.docTipo === 80 && payload.docNro != null && payload.docNro > 0) {
-    return applyWsfeCondicionToFacturarPayload(payload)
-  }
-
-  payload.docTipo = 99
-  payload.docNro = 0
-  payload.condicionIvaReceptor = payload.condicionIvaReceptor ?? 5
-  payload.tipo =
-    payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor)
   return applyWsfeCondicionToFacturarPayload(payload)
 }
 
