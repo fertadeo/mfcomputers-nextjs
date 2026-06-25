@@ -522,9 +522,12 @@ export function FacturacionEmitConfirmDialog({
                   cuitValue={receptorCuitInput}
                   disabled={isSubmitting || clienteLoading}
                   onCuitChange={(formatted) => {
+                    const d = soloDigitosDoc(formatted)
+                    const prevDigits = soloDigitosDoc(receptorCuitInput)
                     setReceptorCuitInput(formatted)
                     onReceptorCuitChange(formatted)
-                    const d = soloDigitosDoc(formatted)
+                    // Tras consulta ARCA el campo se reformatea con los mismos dígitos; no limpiar verificación.
+                    if (d.length > 0 && d === prevDigits) return
                     if (d !== padronVerifiedDigits) {
                       setPadronVerifiedDigits(null)
                       setPadronDisplayName(null)
