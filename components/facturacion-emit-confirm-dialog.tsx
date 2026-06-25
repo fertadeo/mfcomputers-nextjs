@@ -277,7 +277,6 @@ export function FacturacionEmitConfirmDialog({
       form.condicionIvaReceptor ??
       payloadParaEmision.condicionIvaReceptor ??
       5
-    const condicionWsfe = payloadParaEmision.condicionIvaReceptor ?? 5
 
     return buildFacturarFullPayloadPreview({
       saleId: facturarSaleId,
@@ -293,7 +292,7 @@ export function FacturacionEmitConfirmDialog({
         docTipo,
         docNro,
         condicionIvaReceptor: condicionErp,
-        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicionWsfe, cliente),
+        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicionErp, cliente),
         taxConditionEnErp: cliente?.tax_condition ?? null,
         domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null,
       },

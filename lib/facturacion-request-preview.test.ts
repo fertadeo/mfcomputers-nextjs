@@ -154,6 +154,10 @@ describe("facturacion-request-preview", () => {
       omitirPdf: true,
     })
     expect(preview.httpRequest.body.condicionIvaReceptor).toBe(5)
+    expect(preview.receptor.condicionIvaReceptor).toBe(5)
+    expect(preview.receptor.condicionIvaLabel).toBe("Consumidor final")
+    expect(preview.receptor.condicionIvaReceptorErp).toBe(6)
+    expect(preview.receptor.condicionIvaErpLabel).toBe("Responsable Monotributo")
     expect(preview.items[0].importe_exento).toBe(2)
     expect(preview.items[0]).not.toHaveProperty("neto_gravado")
     expect(preview.totales).toEqual({

@@ -74,8 +74,12 @@ export interface FacturarFullPayloadPreviewReceptor {
   razonSocial: string
   docTipo: number
   docNro: number
+  /** Condición enviada a WSFE (httpRequest / facturador). */
   condicionIvaReceptor: number
   condicionIvaLabel: string
+  /** Condición fiscal en ERP/padrón cuando difiere del código WSFE (ej. monotributo 6 → WSFE 5). */
+  condicionIvaReceptorErp?: number
+  condicionIvaErpLabel?: string
   taxConditionEnErp?: string | null
   domicilio?: string | null
 }
@@ -289,7 +293,9 @@ export function buildFacturarFullPayloadPreview(
     nota:
       "httpRequest.body es lo que envía el navegador en POST /sales/:id/facturar. " +
       "facturadorPayload es lo que el backend envía a POST /api/facturas (MultiFacturador). " +
-      "receptor, items y totales son solo ERP; importe = suma(iva[].base + iva[].cuota). " +
+      "receptor.condicionIvaReceptor es el código WSFE (igual que httpRequest.body). " +
+      "condicionIvaReceptorErp, si aparece, es la condición del padrón/ERP. " +
+      "items y totales son del ERP; importe = suma(iva[].base + iva[].cuota). " +
       "Ítems exentos (0%): importe_exento en ERP, base en iva id 3 — no neto_gravado.",
     httpRequest: {
       method: "POST",
@@ -311,7 +317,20 @@ export function buildFacturarFullPayloadPreview(
       cuitEmisor: body.cuitEmisor ?? getStoredFacturacionCuitEmisor(),
       puntoVenta: body.puntoVenta ?? getStoredFacturacionPuntoVenta() ?? null,
     },
-    receptor: args.receptor,
+    receptor: (() => {
+      const condicionWsfe = body.condicionIvaReceptor ?? 5
+      const condicionErp = args.receptor.condicionIvaReceptor
+      const receptor: FacturarFullPayloadPreviewReceptor = {
+        ...args.receptor,
+        condicionIvaReceptor: condicionWsfe,
+        condicionIvaLabel: labelCondicionIvaReceptor(condicionWsfe),
+      }
+      if (condicionErp !== condicionWsfe) {
+        receptor.condicionIvaReceptorErp = condicionErp
+        receptor.condicionIvaErpLabel = labelCondicionIvaReceptor(condicionErp)
+      }
+      return receptor
+    })(),
     comprobante,
     items,
     totales,
