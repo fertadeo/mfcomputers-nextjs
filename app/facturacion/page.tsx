@@ -1788,11 +1788,17 @@ export default function FacturacionPage() {
             <DialogContent
               className={
                 invoiceModalMode === "view"
-                  ? "flex max-h-[92vh] max-w-4xl flex-col gap-0 p-0"
-                  : "max-w-2xl"
+                  ? "flex max-h-[92vh] max-w-4xl flex-col gap-0 overflow-hidden p-0"
+                  : "flex max-h-[92vh] max-w-2xl flex-col gap-0 overflow-hidden p-0"
               }
             >
-              <DialogHeader className={invoiceModalMode === "view" ? "shrink-0 border-b px-6 py-4" : undefined}>
+              <DialogHeader
+                className={
+                  invoiceModalMode === "view" || invoiceModalMode === "emit"
+                    ? "shrink-0 border-b px-6 py-4"
+                    : undefined
+                }
+              >
                 <DialogTitle>{invoiceModalMode === "view" ? "Comprobante emitido" : "Emitir comprobante"}</DialogTitle>
                 <DialogDescription>
                   {invoiceModalMode === "view"
@@ -1804,11 +1810,13 @@ export default function FacturacionPage() {
               </DialogHeader>
 
               {!selectedSale ? (
-                <Alert
-                  variant="warning"
-                  title="Sin comprobante seleccionado"
-                  description="Seleccioná una venta u orden de reparación para habilitar la facturación."
-                />
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                  <Alert
+                    variant="warning"
+                    title="Sin comprobante seleccionado"
+                    description="Seleccioná una venta u orden de reparación para habilitar la facturación."
+                  />
+                </div>
               ) : invoiceModalMode === "view" ? (
                 <>
                   {selectedSale && isImportedSale(selectedSale) ? (
@@ -2003,6 +2011,7 @@ export default function FacturacionPage() {
                   </DialogFooter>
                 </>
               ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3 text-sm space-y-1">
                     <div className="font-medium">{selectedSale.sale_number}</div>
@@ -2336,8 +2345,9 @@ export default function FacturacionPage() {
                     Usá reintento forzado solo si la venta ya tuvo facturación previa y operaciones lo confirma.
                   </p>
                 </div>
+                </div>
               )}
-              <DialogFooter>
+              <DialogFooter className="shrink-0 border-t px-6 py-4">
                 {invoiceModalMode === "view" ? (
                   <Button variant="outline" onClick={() => setIsEmitModalOpen(false)}>
                     Cerrar
