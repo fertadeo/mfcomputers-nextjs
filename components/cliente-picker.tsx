@@ -17,6 +17,109 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
+function ClienteAvatar({ cliente, size = "md" }: { cliente: Cliente; size?: "sm" | "md" }) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-primary/12 font-semibold text-primary ring-1 ring-primary/15",
+        size === "sm" ? "h-9 w-9 text-xs" : "h-10 w-10 text-sm"
+      )}
+      aria-hidden
+    >
+      {getClienteInitials(cliente.name)}
+    </div>
+  )
+}
+
+function ClienteBadgesRow({ cliente }: { cliente: Cliente }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {cliente.code?.trim() ? (
+        <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px] font-medium tracking-wide">
+          {cliente.code.trim()}
+        </Badge>
+      ) : null}
+      {cliente.tax_condition ? (
+        <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
+          {formatTaxConditionLabel(cliente.tax_condition)}
+        </Badge>
+      ) : null}
+    </div>
+  )
+}
+
+function ClienteContactDetails({ cliente }: { cliente: Cliente }) {
+  const cuit = formatClienteCuitDisplay(cliente)
+  const phone = cliente.phone?.trim()
+  const email = cliente.email?.trim()
+
+  if (!cuit && !phone && !email) return null
+
+  return (
+    <div className="space-y-1">
+      {cuit || phone ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          {cuit ? (
+            <span className="inline-flex items-center gap-1.5 font-mono tabular-nums">
+              <Hash className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              {cuit}
+            </span>
+          ) : null}
+          {phone ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              {phone}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {email ? (
+        <p className="inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
+          <Mail className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+          <span className="truncate">{email}</span>
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function ClienteSummaryContent({ cliente }: { cliente: Cliente }) {
+  const ubicacionParts = getClienteUbicacionParts(cliente)
+  const hasUbicacion = Boolean(ubicacionParts.address || ubicacionParts.city)
+
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <ClienteAvatar cliente={cliente} size="sm" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="space-y-1.5">
+          <p className="text-sm font-semibold leading-snug tracking-tight text-foreground line-clamp-2">
+            {getClienteDisplayName(cliente)}
+          </p>
+          <ClienteBadgesRow cliente={cliente} />
+        </div>
+        {hasUbicacion ? <ClienteUbicacion cliente={cliente} variant="compact" /> : null}
+        <ClienteContactDetails cliente={cliente} />
+        {!hasUbicacion ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">{getClienteDistinguishingSubtitle(cliente)}</p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ClienteSelectedCard({ cliente, className }: { cliente: Cliente; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border/70 bg-muted/20 p-3.5 shadow-sm ring-1 ring-inset ring-primary/8",
+        className
+      )}
+    >
+      <ClienteSummaryContent cliente={cliente} />
+    </div>
+  )
+}
+
 function ClienteOptionRow({
   cliente,
   onSelect,
@@ -26,10 +129,6 @@ function ClienteOptionRow({
   onSelect: (cliente: Cliente) => void
   highlighted?: boolean
 }) {
-  const cuit = formatClienteCuitDisplay(cliente)
-  const ubicacionParts = getClienteUbicacionParts(cliente)
-  const hasUbicacion = Boolean(ubicacionParts.address || ubicacionParts.city)
-
   return (
     <button
       type="button"
@@ -39,52 +138,7 @@ function ClienteOptionRow({
       )}
       onClick={() => onSelect(cliente)}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-          {getClienteInitials(cliente.name)}
-        </div>
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-sm leading-tight">{getClienteDisplayName(cliente)}</span>
-            {cliente.code?.trim() ? (
-              <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
-                {cliente.code.trim()}
-              </Badge>
-            ) : null}
-            {cliente.tax_condition ? (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                {formatTaxConditionLabel(cliente.tax_condition)}
-              </Badge>
-            ) : null}
-          </div>
-          {hasUbicacion ? (
-            <ClienteUbicacion cliente={cliente} variant="compact" className="mt-0.5" />
-          ) : null}
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-            {cuit ? (
-              <span className="inline-flex items-center gap-1 font-mono">
-                <Hash className="h-3 w-3" />
-                {cuit}
-              </span>
-            ) : null}
-            {cliente.phone?.trim() ? (
-              <span className="inline-flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                {cliente.phone.trim()}
-              </span>
-            ) : null}
-            {cliente.email?.trim() ? (
-              <span className="inline-flex items-center gap-1 truncate max-w-[220px]">
-                <Mail className="h-3 w-3 shrink-0" />
-                {cliente.email.trim()}
-              </span>
-            ) : null}
-          </div>
-          {!hasUbicacion ? (
-            <p className="text-[11px] text-muted-foreground/80">{getClienteDistinguishingSubtitle(cliente)}</p>
-          ) : null}
-        </div>
-      </div>
+      <ClienteSummaryContent cliente={cliente} />
     </button>
   )
 }
@@ -116,8 +170,14 @@ export function ClientePicker({
   showSelectedCard = true,
   emptyResultsMessage = "No se encontraron clientes activos",
 }: ClientePickerProps) {
-  const showDropdown = searchValue.trim().length >= 2 && (results.length > 0 || !selectedCliente)
-  const showEmpty = searchValue.trim().length >= 2 && results.length === 0
+  const selectedSearchMatches =
+    selectedCliente != null &&
+    searchValue.trim() === getClienteDisplayName(selectedCliente).trim()
+
+  const showDropdown =
+    searchValue.trim().length >= 2 && results.length > 0 && !selectedSearchMatches
+  const showEmpty =
+    searchValue.trim().length >= 2 && results.length === 0 && !selectedSearchMatches
 
   const handleSelect = (cliente: Cliente) => {
     onSelect(cliente)
@@ -171,9 +231,7 @@ export function ClientePicker({
         </div>
       ) : null}
 
-      {showSelectedCard && selectedCliente ? (
-        <ClienteInfoCard cliente={selectedCliente} onClear={onClear} clearLabel={clearLabel} />
-      ) : null}
+      {showSelectedCard && selectedCliente ? <ClienteSelectedCard cliente={selectedCliente} /> : null}
 
       {showSelectedCard && !selectedCliente ? (
         <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-4 text-center">
