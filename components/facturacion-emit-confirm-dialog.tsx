@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
-import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
+import type { Cliente, FacturarSaleRequest, FacturarSugerenciaData, Sale } from "@/lib/api"
 import type { BillableRow } from "@/lib/facturacion-billables"
 import { labelCondicionIvaReceptor, labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
 import { clienteCondicionIvaErp, validateFacturarReceptorFiscal } from "@/lib/facturacion-form-from-cliente"
@@ -25,7 +25,7 @@ import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
-import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
+import { FacturacionFiscalConfigDialog } from "@/components/facturacion-fiscal-config-dialog"
 import { ClienteInfoCard } from "@/components/cliente-picker"
 import { buildArcaInvoicePdfInputFromPreviewLines } from "@/lib/build-arca-invoice-pdf-input"
 import { buildFacturarFullPayloadPreview, extractFacturarBodyFromPreviewJson } from "@/lib/facturacion-request-preview"
@@ -98,9 +98,11 @@ export interface FacturacionEmitConfirmDialogProps {
   facturarPayload: FacturarSaleRequest
   /** Tipo/condición ajustados manualmente en configuración fiscal. */
   manualFiscalConfig?: boolean
+  facturarSugerencia?: FacturarSugerenciaData | null
   emisorCuitLabel: string
   isSubmitting: boolean
-  onConfigure: () => void
+  onConfigure?: () => void
+  onFiscalFormApply?: (form: FacturarSaleRequest, options: { saveAsDefault: boolean }) => void
   onReceptorCuitChange: (rawInput: string) => void
   onPadronApply: (data: ArcaPadronResult) => void
   onPadronReset: () => void
@@ -133,9 +135,11 @@ export function FacturacionEmitConfirmDialog({
   emitErrorRequestId = null,
   facturarPayload,
   manualFiscalConfig = false,
+  facturarSugerencia = null,
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
+  onFiscalFormApply,
   onReceptorCuitChange,
   onPadronApply,
   onPadronReset,
@@ -155,6 +159,7 @@ export function FacturacionEmitConfirmDialog({
   const [payloadJsonError, setPayloadJsonError] = useState<string | null>(null)
   const [jsonManuallyApplied, setJsonManuallyApplied] = useState(false)
   const [appliedManualBody, setAppliedManualBody] = useState<FacturarSaleRequest | null>(null)
+  const [fiscalConfigOpen, setFiscalConfigOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -518,6 +523,11 @@ export function FacturacionEmitConfirmDialog({
                       · IVA receptor {facturarPayload.condicionIvaReceptor} (
                       {labelCondicionIvaReceptor(facturarPayload.condicionIvaReceptor ?? 5)})
                     </span>
+                    {manualFiscalConfig ? (
+                      <Badge variant="secondary" className="text-xs">
+                        Configuración manual
+                      </Badge>
+                    ) : null}
                   </div>
                   <div>
                     <span className="text-muted-foreground">Concepto: </span>
@@ -924,6 +934,14 @@ export function FacturacionEmitConfirmDialog({
                 <Alert variant="error" title="No se puede emitir" description={itemIvaError} />
               ) : null}
 
+              {manualFiscalConfig ? (
+                <Alert
+                  variant="info"
+                  title="Configuración fiscal personalizada"
+                  description="Tipo de comprobante y condición IVA fueron elegidos manualmente para esta emisión. Podés cambiarlos con el botón «Configuración fiscal» del pie del modal."
+                />
+              ) : null}
+
               {form.force ? (
                 <Alert
                   variant="warning"
@@ -936,7 +954,18 @@ export function FacturacionEmitConfirmDialog({
         </div>
 
         <DialogFooter className="shrink-0 flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:justify-between">
-          <Button type="button" variant="outline" onClick={onConfigure} disabled={isSubmitting}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (onFiscalFormApply) {
+                setFiscalConfigOpen(true)
+              } else {
+                onConfigure?.()
+              }
+            }}
+            disabled={isSubmitting}
+          >
             Configuración fiscal
           </Button>
           <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
@@ -974,6 +1003,17 @@ export function FacturacionEmitConfirmDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {onFiscalFormApply ? (
+        <FacturacionFiscalConfigDialog
+          open={fiscalConfigOpen}
+          onOpenChange={setFiscalConfigOpen}
+          form={form}
+          cliente={cliente}
+          sugerencia={facturarSugerencia}
+          onApply={onFiscalFormApply}
+        />
+      ) : null}
     </Dialog>
   )
 }

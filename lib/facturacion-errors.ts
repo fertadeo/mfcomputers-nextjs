@@ -363,6 +363,15 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     severity: "error",
     canRetry: true,
   },
+  IVA_PAYLOAD_INVALID: {
+    title: "Desglose IVA inválido",
+    message:
+      "El importe fiscal no coincide con el array iva[] (bases + cuotas) según centavos WSFE, o falta el desglose.",
+    actionHint:
+      "Precios con IVA incluido: neto = round(total / (1 + alícuota/100)); cuota = total − neto. importe = suma(iva[].base + iva[].cuota). Revisá alícuota por ítem en la venta.",
+    severity: "error",
+    canRetry: false,
+  },
   RECEPTOR_CONDICION_PADRON_MISMATCH: {
     title: "Condición IVA distinta al padrón ARCA",
     message: "La condición IVA del comprobante no coincide con la registrada en ARCA para ese CUIT.",
@@ -531,6 +540,10 @@ export function buildFacturacionErrorDiagnosis(input: {
 
   if (code === "WSFE_PREFLIGHT_VALIDATION") {
     return "El facturador rechazó el comprobante en validación previa WSFE. Revisá el detalle técnico (condiciones permitidas y condición esperada para ese CUIT). En Factura B, monotributo del padrón (6) se envía como consumidor final (5)."
+  }
+
+  if (code === "IVA_PAYLOAD_INVALID") {
+    return "El desglose IVA no cuadra con el importe total (centavos WSFE). Revisá alícuota por ítem y que el total de la venta sea la suma de las líneas con IVA incluido."
   }
 
   if (/condici[oó]n.*iva.*receptor/.test(text)) {
