@@ -301,25 +301,11 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const resetPadron = useCallback(() => {
     setPadronLocked(false)
     setPadronSuggestedTax(undefined)
-    if (!cliente) {
-      setFormData((prev) => ({
-        ...prev,
-        cuil_cuit: "",
-        name: "",
-        personeria: "consumidor_final",
-        tax_condition: "consumidor_final",
-      }))
-      return
-    }
     setFormData((prev) => ({
-      ...buildEditFormFromUi(cliente),
-      // Conservar ediciones parciales del usuario en otros campos si ya estaba editando
-      email: prev.email || cliente.email,
-      phone: prev.phone || cliente.telefono,
-      address: prev.address || cliente.direccion || "",
-      city: prev.city || cliente.ciudad,
+      ...prev,
+      cuil_cuit: "",
     }))
-  }, [cliente])
+  }, [])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -525,8 +511,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   onChange={(e) => handleInputChange("name", e.target.value)}
                   placeholder="Nombre o razón social"
                   className={`w-full ${errors.name ? "border-red-500" : ""}`}
-                  disabled={isLoading || padronLocked}
-                  readOnly={padronLocked}
+                  disabled={isLoading}
                 />
                 {errors.name && (
                   <p className="text-sm text-red-500 flex items-center gap-1">
@@ -589,7 +574,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   <Select
                     value={formData.personeria}
                     onValueChange={(value: ClientPersoneria) => handleInputChange("personeria", value)}
-                    disabled={isLoading || padronLocked}
+                    disabled={isLoading}
                   >
                     <SelectTrigger className={errors.personeria ? "border-red-500" : ""}>
                       <SelectValue placeholder="Seleccionar personería" />
@@ -636,7 +621,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     onChange={(tax_condition) =>
                       setFormData((prev) => ({ ...prev, tax_condition }))
                     }
-                    disabled={isLoading || padronLocked}
+                    disabled={isLoading}
                     padronSuggested={padronSuggestedTax}
                     error={errors.tax_condition}
                   />

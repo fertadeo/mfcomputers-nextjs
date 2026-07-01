@@ -1182,15 +1182,12 @@ export default function FacturacionPage() {
     setRetryAfterHint(null)
     try {
       let saleId = selectedSale.id
-      let saleForArca = selectedSale
 
       if (selectedBillable.kind === "repair_order") {
         saleId = await resolveSaleIdForRepairOrderFacturacion(
           selectedBillable.id,
           selectedBillable.linkedSaleId
         )
-        const saleRes = await getSale(saleId)
-        saleForArca = { ...(saleRes.data as Sale), client_name: selectedSale.client_name }
       }
 
       const payload = payloadOverride ?? buildFacturarPayload(form, modalCliente)
@@ -1221,15 +1218,6 @@ export default function FacturacionPage() {
         cacheFacturacionEmision(saleId, emision, payload)
       }
       setSuccessMsg(partes.join(" "))
-      if (emision) {
-        try {
-          await downloadArcaPdfForSale(saleForArca, emision, payload, { reportErrorOnPage: false })
-          setSuccessMsg((prev) => `${prev ?? ""} PDF ARCA descargado.`.trim())
-        } catch (pdfErr) {
-          const pdfMsg = pdfErr instanceof Error ? pdfErr.message : "Error al generar PDF"
-          setSuccessMsg((prev) => `${prev ?? ""} (PDF no descargado: ${pdfMsg})`.trim())
-        }
-      }
       setIsConfirmEmitOpen(false)
       setInvoiceModalMode("view")
       setIsEmitModalOpen(true)

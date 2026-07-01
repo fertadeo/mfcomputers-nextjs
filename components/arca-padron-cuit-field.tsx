@@ -19,14 +19,12 @@ import { ArcaPadronResultSummary } from "@/components/arca-padron-result-summary
 import { Loader2, Search, UserRoundSearch } from "lucide-react"
 import { toast } from "sonner"
 
-const DEBOUNCE_MS = 500
-
 export interface ArcaPadronCuitFieldProps {
   entityType: ArcaPadronEntity
   cuitValue: string
   onCuitChange: (formatted: string) => void
   onApplyPadron: (data: ArcaPadronResult) => void
-  /** true cuando ARCA autocompletó: bloquea CUIT y campos vinculados en el formulario padre */
+  /** true cuando ARCA autocompletó campos vinculados en el formulario padre */
   onPadronLockChange?: (locked: boolean) => void
   /** Limpia datos de ARCA en el formulario padre para consultar otro CUIT */
   onPadronReset?: () => void
@@ -54,19 +52,18 @@ export function ArcaPadronCuitField({
   const [padronLocked, setPadronLocked] = useState(false)
   const lastSearchedRef = useRef<string>("")
   const searchingRef = useRef(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const clearDebounce = () => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current)
-      debounceRef.current = null
-    }
-  }
+  const unlockPadron = useCallback(() => {
+    lastSearchedRef.current = ""
+    setLastResult(null)
+    setPadronLocked(false)
+    onPadronLockChange?.(false)
+  }, [onPadronLockChange])
 
   const runSearch = useCallback(
-    async (digits: string, source: "manual" | "debounce") => {
+    async (digits: string) => {
       if (digits.length !== 11 || searchingRef.current) return
-      if (source === "debounce" && lastSearchedRef.current === digits) return
+      if (lastSearchedRef.current === digits) return
 
       searchingRef.current = true
       setLoading(true)
@@ -82,14 +79,12 @@ export function ArcaPadronCuitField({
         onPadronLockChange?.(true)
         const displayName = getArcaPadronDisplayName(data)
         const summary = buildArcaPadronBusinessSummary(data)
-        if (source === "manual") {
-          toast.success("Datos de ARCA aplicados", {
-            description:
-              summary.condicionFiscal?.shortLabel != null
-                ? `${displayName || summary.cuitFormatted} · ${summary.condicionFiscal.shortLabel}`
-                : displayName || `CUIT ${formatCuitDisplay(digits)}`,
-          })
-        }
+        toast.success("Datos de ARCA aplicados", {
+          description:
+            summary.condicionFiscal?.shortLabel != null
+              ? `${displayName || summary.cuitFormatted} · ${summary.condicionFiscal.shortLabel}`
+              : displayName || `CUIT ${formatCuitDisplay(digits)}`,
+        })
       } catch (e) {
         lastSearchedRef.current = ""
         setLastResult(null)
@@ -97,7 +92,7 @@ export function ArcaPadronCuitField({
         onPadronLockChange?.(false)
         const msg = e instanceof Error ? e.message : "Error al consultar ARCA"
         setError(msg)
-        if (source === "manual") toast.error(msg)
+        toast.error(msg)
       } finally {
         searchingRef.current = false
         setLoading(false)
@@ -105,19 +100,6 @@ export function ArcaPadronCuitField({
     },
     [entityType, onApplyPadron, onCuitChange, onPadronLockChange]
   )
-
-  useEffect(() => {
-    clearDebounce()
-    const digits = normalizeCuitDigits(cuitValue)
-    if (!isValidCuitDigits(cuitValue)) {
-      if (digits.length < 11) setError(null)
-      return
-    }
-    debounceRef.current = setTimeout(() => {
-      void runSearch(digits, "debounce")
-    }, DEBOUNCE_MS)
-    return clearDebounce
-  }, [cuitValue, runSearch])
 
   useEffect(() => {
     if (!cuitValue.trim()) {
@@ -130,26 +112,25 @@ export function ArcaPadronCuitField({
   }, [cuitValue, onPadronLockChange])
 
   const handleCuitInput = (raw: string) => {
-    if (padronLocked) return
     const digits = normalizeCuitDigits(raw)
     const formatted = digits.length <= 2 ? digits : formatCuitDisplay(raw)
+    const prevDigits = normalizeCuitDigits(cuitValue)
+    if (padronLocked && digits !== prevDigits) {
+      unlockPadron()
+    }
     onCuitChange(formatted)
     if (error) setError(null)
   }
 
   const handleSearchAnother = () => {
-    clearDebounce()
-    lastSearchedRef.current = ""
-    setLastResult(null)
     setError(null)
-    setPadronLocked(false)
-    onPadronLockChange?.(false)
-    onCuitChange("")
+    unlockPadron()
     onPadronReset?.()
+    onCuitChange("")
   }
 
-  const canSearch = isValidCuitDigits(cuitValue) && !loading && !disabled && !padronLocked
-  const inputDisabled = disabled || loading || padronLocked
+  const canSearch = isValidCuitDigits(cuitValue) && !loading && !disabled
+  const inputDisabled = disabled || loading
 
   return (
     <div className={className}>
@@ -161,7 +142,6 @@ export function ArcaPadronCuitField({
           onChange={(e) => handleCuitInput(e.target.value)}
           placeholder="11 dígitos (ej. 20-12345678-9)"
           disabled={inputDisabled}
-          readOnly={padronLocked}
           maxLength={13}
           className="flex-1"
         />
@@ -182,7 +162,7 @@ export function ArcaPadronCuitField({
             variant="secondary"
             className="shrink-0 gap-1.5"
             disabled={!canSearch}
-            onClick={() => void runSearch(normalizeCuitDigits(cuitValue), "manual")}
+            onClick={() => void runSearch(normalizeCuitDigits(cuitValue))}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Buscar en ARCA
@@ -191,8 +171,8 @@ export function ArcaPadronCuitField({
       </div>
       <p className="text-xs text-muted-foreground mt-1.5">
         {padronLocked
-          ? "Los datos de ARCA quedaron aplicados. Si necesitás otro CUIT, usá «Buscar otro contribuyente»."
-          : "Con 11 dígitos se consulta ARCA automáticamente (esperá medio segundo) o usá el botón."}
+          ? "Los datos de ARCA quedaron aplicados. Podés editar el documento o usar «Buscar otro contribuyente»."
+          : "Ingresá el CUIL/CUIT/DNI (11 dígitos) y presioná «Buscar en ARCA» para autocompletar."}
       </p>
 
       {error && (
