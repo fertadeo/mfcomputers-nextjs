@@ -1,6 +1,11 @@
 import type { FacturarSaleRequest, Sale } from "@/lib/api"
 import type { ArcaPadronResult } from "@/lib/arca-padron"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
+import {
+  classifyClientTaxId,
+  formatClientTaxIdDisplay,
+  isValidClientTaxId,
+} from "@/lib/client-tax-id"
 import { resolveTipoComprobanteFromCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { clienteCuitDigitos } from "@/lib/facturacion-form-from-cliente"
 
@@ -8,12 +13,9 @@ export function soloDigitosDoc(s?: string | null): string {
   return (s ?? "").replace(/\D/g, "")
 }
 
-/** Formato visual XX-XXXXXXXX-X (hasta 11 dígitos). */
+/** Formato visual: DNI plano o CUIL/CUIT con guiones. */
 export function formatCuitInputDisplay(value: string): string {
-  const d = soloDigitosDoc(value).slice(0, 11)
-  if (d.length <= 2) return d
-  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
-  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
+  return formatClientTaxIdDisplay(value)
 }
 
 export function receptorCuitInputFromForm(
@@ -22,11 +24,11 @@ export function receptorCuitInputFromForm(
   clientePrimaryTaxId?: string | null
 ): string {
   if (form.docTipo === 99) return ""
-  if (form.docTipo === 80 && form.docNro != null && form.docNro > 0) {
+  if ((form.docTipo === 80 || form.docTipo === 96) && form.docNro != null && form.docNro > 0) {
     return formatCuitInputDisplay(String(form.docNro))
   }
   const d = soloDigitosDoc(clienteCuil) || soloDigitosDoc(clientePrimaryTaxId)
-  if (d.length === 11) return formatCuitInputDisplay(d)
+  if (classifyClientTaxId(d)) return formatCuitInputDisplay(d)
   return ""
 }
 
@@ -100,8 +102,12 @@ export function resolveReceptorDocForInvoicePdf(
   }
 
   const cuit = clienteCuitDigitos(cliente as Parameters<typeof clienteCuitDigitos>[0])
-  if (cuit.length === 11) {
+  const kind = classifyClientTaxId(cuit)
+  if (kind === "cuil_cuit") {
     return { docTipo: 80, docNro: parseInt(cuit, 10) }
+  }
+  if (kind === "dni") {
+    return { docTipo: 96, docNro: parseInt(cuit, 10) }
   }
 
   return { docTipo: payload.docTipo ?? 99, docNro: payloadNro }
@@ -109,7 +115,7 @@ export function resolveReceptorDocForInvoicePdf(
 
 export function isReceptorCuitInputInvalid(rawInput: string): boolean {
   const d = soloDigitosDoc(rawInput)
-  return d.length > 0 && d.length !== 11
+  return d.length > 0 && !isValidClientTaxId(d)
 }
 
 export interface ClienteFiscalSnapshot {
@@ -138,13 +144,14 @@ export function applyReceptorCuitToFacturarForm(
     }
   }
 
-  if (digits.length !== 11) {
+  const kind = classifyClientTaxId(digits)
+  if (!kind) {
     return prev
   }
 
   const next: FacturarSaleRequest = {
     ...prev,
-    docTipo: 80,
+    docTipo: kind === "cuil_cuit" ? 80 : 96,
     docNro: parseInt(digits, 10),
   }
 
@@ -201,7 +208,7 @@ export function buildVentaDestinatarioSnapshot(
   return {
     name,
     cuitDigits,
-    cuitFormatted: cuitDigits.length === 11 ? formatCuitInputDisplay(cuitDigits) : null,
+    cuitFormatted: classifyClientTaxId(cuitDigits) ? formatCuitInputDisplay(cuitDigits) : null,
     condicionLabel: formatTaxConditionLabel(taxCondition, "Sin datos fiscales en ERP"),
   }
 }
@@ -215,9 +222,9 @@ export function isFacturacionDestinatarioChanged(
   }
 ): boolean {
   if (opts.esConsumidorFinal) {
-    return venta.cuitDigits.length === 11 || venta.name.toLowerCase() !== "consumidor final"
+    return classifyClientTaxId(venta.cuitDigits) != null || venta.name.toLowerCase() !== "consumidor final"
   }
-  if (opts.receptorCuitDigits.length === 11 && opts.receptorCuitDigits !== venta.cuitDigits) {
+  if (opts.receptorCuitDigits.length > 0 && opts.receptorCuitDigits !== venta.cuitDigits) {
     return true
   }
   if (opts.padronDisplayName) {
@@ -232,5 +239,5 @@ export function requiresPadronForReceptorCuit(
   esConsumidorFinal: boolean
 ): boolean {
   if (esConsumidorFinal) return false
-  return receptorCuitDigits.length === 11
+  return classifyClientTaxId(receptorCuitDigits) === "cuil_cuit"
 }

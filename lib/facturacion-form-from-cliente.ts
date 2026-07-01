@@ -16,11 +16,15 @@ import {
 } from "@/lib/facturacion-comprobantes"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
+import {
+  classifyClientTaxId,
+  normalizeClientTaxIdDigits,
+} from "@/lib/client-tax-id"
 
 /** Cliente con datos fiscales confiables en el ERP (no pisar con sugerencia API). */
 export function clienteTieneDatosFiscalesErp(cliente?: Cliente | null): boolean {
   if (!cliente) return false
-  if (clienteCuitDigitos(cliente).length === 11) return true
+  if (classifyClientTaxId(clienteCuitDigitos(cliente))) return true
   if (normalizeTaxConditionFromApi(cliente.tax_condition)) return true
   if (cliente.personeria === "persona_juridica") return true
   if (cliente.condicion_iva_receptor != null && cliente.condicion_iva_receptor > 0) return true
@@ -168,11 +172,22 @@ export function applyClienteToFacturarForm(
 
   const fiscal = resolveFacturacionDesdeCliente(cliente)
   const cuit = clienteCuitDigitos(cliente)
+  const docKind = classifyClientTaxId(cuit)
 
-  if (cuit.length === 11) {
+  if (docKind === "cuil_cuit") {
     return {
       ...base,
       docTipo: 80,
+      docNro: parseInt(cuit, 10),
+      condicionIvaReceptor: fiscal.condicionIvaReceptor,
+      tipo: fiscal.tipoComprobante,
+    }
+  }
+
+  if (docKind === "dni") {
+    return {
+      ...base,
+      docTipo: 96,
       docNro: parseInt(cuit, 10),
       condicionIvaReceptor: fiscal.condicionIvaReceptor,
       tipo: fiscal.tipoComprobante,

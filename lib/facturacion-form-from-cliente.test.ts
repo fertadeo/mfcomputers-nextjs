@@ -39,6 +39,22 @@ describe("facturacion-form-from-cliente", () => {
     ).toBe("30123456789")
   })
 
+  it("aplica docTipo 96 para cliente con DNI", () => {
+    const form = applyClienteToFacturarForm(
+      { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
+      cliente({
+        id: 2,
+        name: "Juan Pérez",
+        code: "J1",
+        personeria: "persona_fisica",
+        tax_condition: "consumidor_final",
+        cuil_cuit: "12345678",
+      })
+    )
+    expect(form.docTipo).toBe(96)
+    expect(form.docNro).toBe(12345678)
+  })
+
   it("aplica docTipo 80 y condición RI para cliente jurídico con CUIT", () => {
     const form = applyClienteToFacturarForm(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },

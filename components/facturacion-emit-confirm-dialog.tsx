@@ -23,6 +23,7 @@ import { labelCondicionIvaReceptor, labelCondicionIvaReceptorForDisplay } from "
 import { clienteCondicionIvaErp, validateFacturarReceptorFiscal } from "@/lib/facturacion-form-from-cliente"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
+import { clientTaxIdValidationMessage } from "@/lib/client-tax-id"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
@@ -650,7 +651,7 @@ export function FacturacionEmitConfirmDialog({
                   <p className="text-muted-foreground text-xs">Cargando datos del cliente de la venta…</p>
                 ) : null}
                 {cuitInvalid ? (
-                  <p className="text-destructive text-xs">El CUIT debe tener 11 dígitos o dejá el campo vacío.</p>
+                  <p className="text-destructive text-xs">{clientTaxIdValidationMessage()} o dejá el campo vacío.</p>
                 ) : null}
                 {padronPending ? (
                   <Alert

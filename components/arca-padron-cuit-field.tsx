@@ -7,14 +7,13 @@ import { Label } from "@/components/ui/label"
 import { Alert } from "@/components/ui/alert"
 import { getClientArcaPadron, getSupplierArcaPadron } from "@/lib/api"
 import {
-  formatCuitDisplay,
-  getArcaPadronDisplayName,
-  buildArcaPadronBusinessSummary,
-  isValidCuitDigits,
-  normalizeCuitDigits,
-  type ArcaPadronEntity,
-  type ArcaPadronResult,
-} from "@/lib/arca-padron"
+  normalizeClientTaxIdDigits,
+  isValidCuitForArcaPadron,
+  formatClientTaxIdDisplay,
+  clientTaxIdFieldLabel,
+  clientTaxIdValidationMessage,
+} from "@/lib/client-tax-id"
+import { getArcaPadronDisplayName, buildArcaPadronBusinessSummary, type ArcaPadronEntity, type ArcaPadronResult } from "@/lib/arca-padron"
 import { ArcaPadronResultSummary } from "@/components/arca-padron-result-summary"
 import { Loader2, Search, UserRoundSearch } from "lucide-react"
 import { toast } from "sonner"
@@ -43,7 +42,7 @@ export function ArcaPadronCuitField({
   onPadronReset,
   disabled = false,
   inputId = "arca-padron-cuit",
-  label = "CUIL / CUIT",
+  label = clientTaxIdFieldLabel(),
   className,
 }: ArcaPadronCuitFieldProps) {
   const [loading, setLoading] = useState(false)
@@ -74,7 +73,7 @@ export function ArcaPadronCuitField({
         lastSearchedRef.current = digits
         setLastResult(data)
         onApplyPadron(data)
-        onCuitChange(formatCuitDisplay(data.cuit || digits))
+        onCuitChange(formatClientTaxIdDisplay(data.cuit || digits))
         setPadronLocked(true)
         onPadronLockChange?.(true)
         const displayName = getArcaPadronDisplayName(data)
@@ -83,7 +82,7 @@ export function ArcaPadronCuitField({
           description:
             summary.condicionFiscal?.shortLabel != null
               ? `${displayName || summary.cuitFormatted} · ${summary.condicionFiscal.shortLabel}`
-              : displayName || `CUIT ${formatCuitDisplay(digits)}`,
+              : displayName || `CUIT ${formatClientTaxIdDisplay(digits)}`,
         })
       } catch (e) {
         lastSearchedRef.current = ""
@@ -112,9 +111,9 @@ export function ArcaPadronCuitField({
   }, [cuitValue, onPadronLockChange])
 
   const handleCuitInput = (raw: string) => {
-    const digits = normalizeCuitDigits(raw)
-    const formatted = digits.length <= 2 ? digits : formatCuitDisplay(raw)
-    const prevDigits = normalizeCuitDigits(cuitValue)
+    const formatted = formatClientTaxIdDisplay(raw)
+    const prevDigits = normalizeClientTaxIdDigits(cuitValue)
+    const digits = normalizeClientTaxIdDigits(formatted)
     if (padronLocked && digits !== prevDigits) {
       unlockPadron()
     }
@@ -129,7 +128,7 @@ export function ArcaPadronCuitField({
     onCuitChange("")
   }
 
-  const canSearch = isValidCuitDigits(cuitValue) && !loading && !disabled
+  const canSearch = isValidCuitForArcaPadron(cuitValue) && !loading && !disabled
   const inputDisabled = disabled || loading
 
   return (
@@ -140,7 +139,7 @@ export function ArcaPadronCuitField({
           id={inputId}
           value={cuitValue}
           onChange={(e) => handleCuitInput(e.target.value)}
-          placeholder="11 dígitos (ej. 20-12345678-9)"
+          placeholder="DNI (7-8) o CUIL/CUIT (11 dígitos)"
           disabled={inputDisabled}
           maxLength={13}
           className="flex-1"
@@ -162,7 +161,7 @@ export function ArcaPadronCuitField({
             variant="secondary"
             className="shrink-0 gap-1.5"
             disabled={!canSearch}
-            onClick={() => void runSearch(normalizeCuitDigits(cuitValue))}
+            onClick={() => void runSearch(normalizeClientTaxIdDigits(cuitValue))}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Buscar en ARCA
@@ -172,7 +171,7 @@ export function ArcaPadronCuitField({
       <p className="text-xs text-muted-foreground mt-1.5">
         {padronLocked
           ? "Los datos de ARCA quedaron aplicados. Podés editar el documento o usar «Buscar otro contribuyente»."
-          : "Ingresá el CUIL/CUIT/DNI (11 dígitos) y presioná «Buscar en ARCA» para autocompletar."}
+          : `${clientTaxIdValidationMessage()}. Presioná «Buscar en ARCA» solo para CUIL/CUIT.`}
       </p>
 
       {error && (

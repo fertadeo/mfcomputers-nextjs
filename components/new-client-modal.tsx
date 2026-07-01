@@ -21,6 +21,11 @@ import {
   inferPersoneriaFromArcaPadron,
 } from "@/lib/client-tax-condition"
 import { SALES_CHANNEL_CONFIG } from "@/lib/utils"
+import {
+  normalizeClientTaxIdDigits,
+  isValidClientTaxId,
+  clientTaxIdValidationMessage,
+} from "@/lib/client-tax-id"
 
 interface NewClientModalProps {
   isOpen: boolean
@@ -43,20 +48,9 @@ interface NewClientData {
   country: string
 }
 
-// Solo dígitos del CUIL/CUIT (máx 11)
+// Solo dígitos del documento fiscal (máx 11)
 function onlyDigits(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 11)
-}
-
-function cuilCuitDigitCount(value: string): number {
-  return onlyDigits(value).length
-}
-
-function formatCuilCuit(value: string): string {
-  const d = onlyDigits(value)
-  if (d.length <= 2) return d
-  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
-  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
+  return normalizeClientTaxIdDigits(value)
 }
 
 export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalProps) {
@@ -145,9 +139,8 @@ export function NewClientModal({ isOpen, onClose, onSuccess }: NewClientModalPro
       setError("Solo se pueden crear clientes con canal de venta «Manual». Seleccione Manual para completar el formulario.")
       return false
     }
-    // Si ingresaron CUIL/CUIT, validar que tenga 11 dígitos
-    if (formData.cuil_cuit.trim() && cuilCuitDigitCount(formData.cuil_cuit) !== 11) {
-      setError("El CUIL/CUIT debe tener exactamente 11 dígitos")
+    if (formData.cuil_cuit.trim() && !isValidClientTaxId(formData.cuil_cuit)) {
+      setError(clientTaxIdValidationMessage())
       return false
     }
     // Si ingresaron email, validar formato
