@@ -133,10 +133,11 @@ async function handleApiError(response: Response, url: string): Promise<never> {
 /**
  * Helper para realizar GET autenticado
  * @param path Ruta de la API
+ * @param init Opciones adicionales de fetch (p. ej. cache: 'no-store' para datos en tiempo real)
  * @returns Promise<Response>
  */
-export async function apiGet(path: string): Promise<Response> {
-  return apiFetch(path, { method: 'GET' })
+export async function apiGet(path: string, init?: RequestInit): Promise<Response> {
+  return apiFetch(path, { method: 'GET', ...init })
 }
 
 /**

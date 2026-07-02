@@ -106,7 +106,10 @@ export async function getPricingCategories(): Promise<PricingCategoryRow[]> {
 }
 
 export async function getDollarRate(): Promise<DollarRateData> {
-  const res = await apiGet("products/pricing/dollar-rate")
+  const res = await apiGet("products/pricing/dollar-rate", {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  })
   return parsePricingResponse<DollarRateData>(res)
 }
 

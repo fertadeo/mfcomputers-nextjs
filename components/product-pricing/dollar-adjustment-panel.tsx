@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -24,29 +24,50 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
   const { showToast } = useToast()
   const [info, setInfo] = useState<DollarRateData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [applying, setApplying] = useState(false)
   const [syncWoo, setSyncWoo] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const infoRef = useRef<DollarRateData | null>(null)
+  infoRef.current = info
 
   const allSampleIds = useMemo(
     () => new Set(info?.sample_preview.map((p) => p.id) ?? []),
     [info?.sample_preview]
   )
 
-  const loadRate = useCallback(async () => {
-    setLoading(true)
+  const loadRate = useCallback(async (options?: { silent?: boolean }) => {
+    const hasData = infoRef.current != null
+    if (hasData) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
     try {
       const data = await getDollarRate()
       setInfo(data)
+      if (options?.silent !== true && hasData) {
+        showToast({
+          message: `Cotización actualizada: ${formatArs(data.current_rate)}`,
+          type: "success",
+          duration: 3000,
+        })
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error al cargar cotización"
       setError(msg)
-      setInfo(null)
+      if (!hasData) {
+        setInfo(null)
+      }
+      if (hasData) {
+        showToast({ message: msg, type: "error" })
+      }
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [])
+  }, [showToast])
 
   useEffect(() => {
     void loadRate()
@@ -89,7 +110,7 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
         }
       }
       showToast({ message: detail, type: "success", duration: 6000 })
-      await loadRate()
+      await loadRate({ silent: true })
       onApplied?.()
     } catch (e) {
       showToast({
@@ -125,9 +146,9 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
             size="sm"
             className="w-full sm:w-auto"
             onClick={() => void loadRate()}
-            disabled={loading}
+            disabled={loading || refreshing}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading || refreshing ? "animate-spin" : ""}`} />
             Actualizar cotización
           </Button>
           <Button
@@ -155,7 +176,21 @@ export function DollarAdjustmentPanel({ onApplied }: DollarAdjustmentPanelProps)
             Obteniendo cotización…
           </div>
         ) : info ? (
-          <div className={cn("space-y-4 sm:space-y-6", info && "pb-20 sm:pb-0")}>
+          <div
+            className={cn(
+              "relative space-y-4 sm:space-y-6",
+              info && "pb-20 sm:pb-0",
+              refreshing && "opacity-60 pointer-events-none"
+            )}
+          >
+            {refreshing && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center">
+                <div className="flex items-center gap-2 rounded-md border bg-background/90 px-3 py-2 text-sm shadow-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Actualizando cotización…
+                </div>
+              </div>
+            )}
             {info.is_first_adjustment && (
               <p className="text-sm rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
                 La primera vez que confirmes solo se guardará la cotización de referencia; los
