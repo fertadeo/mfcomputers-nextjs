@@ -106,9 +106,9 @@ export async function getPricingCategories(): Promise<PricingCategoryRow[]> {
 }
 
 export async function getDollarRate(): Promise<DollarRateData> {
-  const res = await apiGet("products/pricing/dollar-rate", {
+  // Sin headers Cache-Control/Pragma: disparan preflight CORS no permitido por la API.
+  const res = await apiGet(`products/pricing/dollar-rate?_=${Date.now()}`, {
     cache: "no-store",
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
   })
   return parsePricingResponse<DollarRateData>(res)
 }

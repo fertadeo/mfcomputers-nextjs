@@ -61,6 +61,9 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
       url: fullUrl,
       error: error instanceof Error ? error.message : 'Error desconocido'
     })
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error('No se pudo conectar con el servidor. Verificá tu conexión e intentá de nuevo.')
+    }
     throw error
   }
 }
