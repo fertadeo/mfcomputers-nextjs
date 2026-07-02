@@ -89,8 +89,8 @@ export default function NuevoPresupuestoPage() {
   useEffect(() => {
     let cancelled = false
     void getDollarRate()
-      .then((quote) => {
-        if (!cancelled) setExchangeRate(quote.sell ?? quote.buy ?? null)
+      .then((data) => {
+        if (!cancelled) setExchangeRate(data.current_rate > 0 ? data.current_rate : null)
       })
       .catch(() => {
         if (!cancelled) setExchangeRate(null)

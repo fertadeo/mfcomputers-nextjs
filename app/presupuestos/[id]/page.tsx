@@ -162,7 +162,7 @@ export default function PresupuestoDetallePage() {
       setExchangeRate(d.exchange_rate != null ? Number(d.exchange_rate) : null)
       if (d.exchange_rate == null) {
         void getDollarRate()
-          .then((quote) => setExchangeRate(quote.sell ?? quote.buy ?? null))
+          .then((data) => setExchangeRate(data.current_rate > 0 ? data.current_rate : null))
           .catch(() => setExchangeRate(null))
       }
       if (d.client_id) {
