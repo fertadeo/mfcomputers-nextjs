@@ -168,29 +168,44 @@ function formatDateAr(iso: string): string {
   }
 }
 
-/** Ancho máximo de la columna descripción (evita pisar P. unit.) */
-const PRODUCT_NAME_MAX_CHARS = 46
+const LINE_ITEM_LINE_H = 11
+const LINE_ITEM_PAD_TOP = 14
 
-function ellipsizeToWidth(
+interface BudgetTableColumns {
+  colDesc: number
+  colUnit: number
+  colQty: number
+  colTot: number
+  descMaxW: number
+}
+
+function getBudgetTableColumns(mx: number, contentW: number, pageW: number): BudgetTableColumns {
+  const colDesc = mx + 10
+  const colUnit = mx + contentW * 0.54
+  const colQty = mx + contentW * 0.74
+  const colTot = pageW - mx - 10
+  const descMaxW = colUnit - colDesc - 16
+  return { colDesc, colUnit, colQty, colTot, descMaxW }
+}
+
+function drawBudgetItemsTableHeader(
   doc: jsPDF,
-  text: string,
-  maxWidth: number,
-  fontStyle: "normal" | "bold" = "normal"
-): string {
-  const trimmed = text.trim() || "—"
-  if (trimmed.length > PRODUCT_NAME_MAX_CHARS) {
-    text = `${trimmed.slice(0, PRODUCT_NAME_MAX_CHARS - 1).trimEnd()}…`
-  } else {
-    text = trimmed
-  }
-  doc.setFont("helvetica", fontStyle)
-  if (doc.getTextWidth(text) <= maxWidth) return text
-  const ellipsis = "…"
-  let end = text.length
-  while (end > 1 && doc.getTextWidth(text.slice(0, end - 1).trimEnd() + ellipsis) > maxWidth) {
-    end -= 1
-  }
-  return end < text.length ? text.slice(0, end - 1).trimEnd() + ellipsis : text
+  y: number,
+  mx: number,
+  contentW: number,
+  cols: BudgetTableColumns
+): number {
+  const headH = 22
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(10)
+  doc.setTextColor(255, 255, 255)
+  doc.setFillColor(...BRAND_BLUE)
+  doc.rect(mx, y, contentW, headH, "F")
+  doc.text("Descripción", cols.colDesc, y + 14)
+  doc.text("P. unit.", cols.colUnit, y + 14, { align: "right" })
+  doc.text("Cant.", cols.colQty, y + 14, { align: "right" })
+  doc.text("Importe", cols.colTot, y + 14, { align: "right" })
+  return y + headH + 4
 }
 
 function drawWrapped(
@@ -338,22 +353,21 @@ function renderCommercialBudgetPdf(
       y = 48
     }
 
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(10)
-    doc.setTextColor(255, 255, 255)
-    doc.setFillColor(...BRAND_BLUE)
-    const headH = 22
-    doc.rect(mx, y, contentW, headH, "F")
-    const colDesc = mx + 8
-    const colUnit = mx + contentW * 0.5
-    const colQty = mx + contentW * 0.72
-    const colTot = pageW - mx - 8
-    doc.text("Descripción", colDesc, y + 14)
-    doc.text("P. unit.", colUnit, y + 14, { align: "right" })
-    doc.text("Cant.", colQty, y + 14, { align: "right" })
-    doc.text("Importe", colTot, y + 14, { align: "right" })
+    const tableCols = getBudgetTableColumns(mx, contentW, pageW)
+    const { colDesc, colUnit, colQty, colTot, descMaxW } = tableCols
+    const tableBottomMargin = 160
 
-    y += headH + 4
+    const ensureTableRowSpace = (rowH: number) => {
+      if (y + rowH <= pageH - tableBottomMargin) return
+      doc.addPage()
+      y = 48
+      y = drawBudgetItemsTableHeader(doc, y, mx, contentW, tableCols)
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.setTextColor(...TEXT_BODY)
+    }
+
+    y = drawBudgetItemsTableHeader(doc, y, mx, contentW, tableCols)
     doc.setFont("helvetica", "normal")
     doc.setFontSize(9)
     doc.setTextColor(...TEXT_BODY)
@@ -365,36 +379,45 @@ function renderCommercialBudgetPdf(
     } else {
       params.lineItems.forEach((item) => {
         const lineTotal = item.quantity * item.unit_price
+        const productName = (item.product_name || "—").trim() || "—"
+
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(9)
+        const nameLines = doc.splitTextToSize(productName, descMaxW) as string[]
+        const subtitle = item.product_code ? `Código: ${item.product_code.trim()}` : ""
+        doc.setFont("helvetica", "normal")
+        const subtitleLines = subtitle
+          ? (doc.splitTextToSize(subtitle, descMaxW) as string[])
+          : []
+        const descLineCount = nameLines.length + subtitleLines.length
+        const rowH = Math.max(26, LINE_ITEM_PAD_TOP + descLineCount * LINE_ITEM_LINE_H + 4)
+
+        ensureTableRowSpace(rowH + 6)
 
         doc.setDrawColor(...GRAY_LINE)
         doc.setLineWidth(0.3)
         doc.line(mx, y, pageW - mx, y)
         y += 6
 
-        const descMaxW = colUnit - colDesc - 14
-        doc.setFontSize(9)
-        const title = ellipsizeToWidth(doc, item.product_name || "—", descMaxW, "bold")
-        const subtitle = item.product_code ? `Código: ${item.product_code.trim()}` : ""
-        doc.setFont("helvetica", "normal")
-        const subtitleLines = subtitle
-          ? (doc.splitTextToSize(subtitle, descMaxW) as string[])
-          : []
-        const nameLineCount = 1 + subtitleLines.length
-        const rowH = Math.max(22, 10 + nameLineCount * 11)
-
         doc.setFont("helvetica", "bold")
+        doc.setFontSize(9)
         doc.setTextColor(...TEXT_BODY)
-        doc.text(title, colDesc, y + 12)
+        nameLines.forEach((line, i) => {
+          doc.text(line, colDesc, y + LINE_ITEM_PAD_TOP + i * LINE_ITEM_LINE_H)
+        })
+
         doc.setFont("helvetica", "normal")
         doc.setTextColor(...TEXT_MUTED)
+        const subtitleStartY = y + LINE_ITEM_PAD_TOP + nameLines.length * LINE_ITEM_LINE_H
         subtitleLines.forEach((line, i) => {
-          doc.text(line, colDesc, y + 12 + 11 + i * 11)
+          doc.text(line, colDesc, subtitleStartY + i * LINE_ITEM_LINE_H)
         })
+
+        const valueY = y + Math.min(LINE_ITEM_PAD_TOP, (rowH - 10) / 2 + 8)
         doc.setTextColor(...TEXT_BODY)
-        doc.text(formatMoneyAr(item.unit_price), colUnit, y + 12, { align: "right" })
-        doc.setTextColor(...TEXT_BODY)
-        doc.text(String(item.quantity), colQty, y + 12, { align: "right" })
-        doc.text(formatMoneyAr(lineTotal), colTot, y + 12, { align: "right" })
+        doc.text(formatMoneyAr(item.unit_price), colUnit, valueY, { align: "right" })
+        doc.text(String(item.quantity), colQty, valueY, { align: "right" })
+        doc.text(formatMoneyAr(lineTotal), colTot, valueY, { align: "right" })
 
         y += rowH
       })
@@ -404,8 +427,13 @@ function renderCommercialBudgetPdf(
     doc.line(mx, y, pageW - mx, y)
     y += 18
 
-    const summaryValueX = pageW - mx - 8
-    const summaryLabelX = pageW - mx - 108
+    if (y > pageH - 120) {
+      doc.addPage()
+      y = 48
+    }
+
+    const summaryValueX = pageW - mx - 10
+    const summaryLabelX = pageW - mx - 132
     const summaryLineH = 13
 
     function drawSummaryRow(label: string, value: string, bold = false) {
@@ -426,16 +454,17 @@ function renderCommercialBudgetPdf(
       drawSummaryRow("IVA 10,5%", formatMoneyAr(params.vat105))
     }
 
-    const totalBoxH = 24
-    const totalBoxLeft = summaryLabelX - 14
-    const totalBoxW = pageW - mx - totalBoxLeft
+    const totalBoxH = 28
+    const totalBoxPadX = 14
+    const totalBoxW = 188
+    const totalBoxLeft = summaryValueX - totalBoxW + 8
     doc.setFillColor(...BRAND_BLUE)
     doc.rect(totalBoxLeft, y, totalBoxW, totalBoxH, "F")
-    const totalTextY = y + totalBoxH / 2 + 3.5
+    const totalTextY = y + totalBoxH / 2 + 4
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
     doc.setTextColor(255, 255, 255)
-    doc.text("Total", summaryLabelX, totalTextY, { align: "right" })
+    doc.text("Total", totalBoxLeft + totalBoxPadX, totalTextY)
     doc.text(formatMoneyAr(params.total), summaryValueX, totalTextY, { align: "right" })
 
     y += totalBoxH + 22
