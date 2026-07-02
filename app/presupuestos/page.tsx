@@ -7,7 +7,8 @@ import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
 import { useRole } from "@/app/hooks/useRole"
 import type { Role } from "@/app/config/menu"
-import { getCommercialBudgets, getCommercialBudgetStats, type CommercialBudgetSummary } from "@/lib/api"
+import { getCommercialBudgets, getCommercialBudgetStats, ensureCommercialBudgetApproved, type CommercialBudgetDetail, type CommercialBudgetSummary } from "@/lib/api"
+import { BudgetConvertSaleDialog } from "@/components/budget-convert-sale-dialog"
 import { saleClientUbicacion } from "@/lib/sale-cliente"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Pagination } from "@/components/ui/pagination"
-import { Calculator, Eye, Loader2, Plus, RefreshCw } from "lucide-react"
+import { Calculator, CheckCircle2, Eye, Loader2, Plus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLES_VER: Role[] = [
@@ -59,6 +60,10 @@ function formatDate(iso: string | null) {
   }
 }
 
+function canConvertBudget(status: CommercialBudgetSummary["status"]) {
+  return status !== "rejected" && status !== "expired"
+}
+
 export default function PresupuestosPage() {
   const router = useRouter()
   const { hasAnyOfRoles } = useRole()
@@ -78,6 +83,9 @@ export default function PresupuestosPage() {
     total_amount_draft: number
     total_amount_sent: number
   } | null>(null)
+  const [convertOpen, setConvertOpen] = useState(false)
+  const [convertBudget, setConvertBudget] = useState<CommercialBudgetDetail | null>(null)
+  const [convertingId, setConvertingId] = useState<number | null>(null)
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -154,6 +162,19 @@ export default function PresupuestosPage() {
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const montoCotizado =
     (stats?.total_amount_draft ?? 0) + (stats?.total_amount_sent ?? 0)
+
+  async function handleConvertClick(budget: CommercialBudgetSummary) {
+    setConvertingId(budget.id)
+    try {
+      const approved = await ensureCommercialBudgetApproved(budget.id)
+      setConvertBudget(approved)
+      setConvertOpen(true)
+    } catch (e: unknown) {
+      toast.error((e as Error)?.message ?? "No se pudo preparar la venta")
+    } finally {
+      setConvertingId(null)
+    }
+  }
 
   return (
     <Protected requiredRoles={ROLES_VER}>
@@ -258,7 +279,7 @@ export default function PresupuestosPage() {
                       <TableHead className="text-center">Ítems</TableHead>
                       <TableHead>Vigencia</TableHead>
                       <TableHead>Creado</TableHead>
-                      <TableHead className="text-right w-[100px]">Acciones</TableHead>
+                      <TableHead className="text-right w-[220px]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -296,12 +317,30 @@ export default function PresupuestosPage() {
                           <TableCell className="text-sm whitespace-nowrap">{formatDate(b.valid_until)}</TableCell>
                           <TableCell className="text-sm whitespace-nowrap">{formatDate(b.created_at)}</TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" asChild className="gap-1">
-                              <Link href={`/presupuestos/${b.id}`}>
-                                <Eye className="h-4 w-4" />
-                                Ver
-                              </Link>
-                            </Button>
+                            <div className="flex justify-end gap-1 flex-wrap">
+                              <Button variant="ghost" size="sm" asChild className="gap-1">
+                                <Link href={`/presupuestos/${b.id}`}>
+                                  <Eye className="h-4 w-4" />
+                                  Ver
+                                </Link>
+                              </Button>
+                              {puedeCrear && canConvertBudget(b.status) && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="gap-1"
+                                  disabled={convertingId === b.id}
+                                  onClick={() => void handleConvertClick(b)}
+                                >
+                                  {convertingId === b.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  )}
+                                  Convertir
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                         )
@@ -319,6 +358,20 @@ export default function PresupuestosPage() {
             </CardContent>
           </Card>
         </div>
+
+        <BudgetConvertSaleDialog
+          open={convertOpen}
+          onOpenChange={(open) => {
+            setConvertOpen(open)
+            if (!open) setConvertBudget(null)
+          }}
+          budget={convertBudget}
+          onSuccess={({ saleId, saleNumber }) => {
+            toast.success("Venta registrada", { description: `${saleNumber} (id ${saleId})` })
+            loadStats()
+            loadList()
+          }}
+        />
       </ERPLayout>
     </Protected>
   )

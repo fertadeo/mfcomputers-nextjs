@@ -1,4 +1,5 @@
-import type { CommercialBudgetDetail } from "@/lib/api"
+import type { CommercialBudgetDetail, SaleCurrency } from "@/lib/api"
+import { resolveBudgetLineCurrency } from "@/lib/budget-currency"
 import type { BudgetPdfModalData } from "@/components/budget-pdf-modal"
 import { documentClientePdfFromSnapshot } from "@/lib/document-cliente-pdf"
 
@@ -23,6 +24,7 @@ export function commercialBudgetDetailToPdfData(detail: CommercialBudgetDetail):
       quantity: line.quantity,
       vat: 0,
       unitPrice: line.unit_price,
+      currency: resolveBudgetLineCurrency(line.currency),
       subtotal: line.total_price,
     }
   })

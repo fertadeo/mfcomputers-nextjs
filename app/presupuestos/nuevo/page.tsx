@@ -16,6 +16,16 @@ import {
   newCustomLineKey,
   type BudgetDraftLine,
 } from "@/lib/budget-lines"
+import {
+  budgetHasUsdLines,
+  computeBudgetHeaderTotal,
+  formatBudgetMoney,
+  formatBudgetTotalsSummary,
+  formatExchangeRate,
+} from "@/lib/budget-currency"
+import { withBudgetCurrencyChange, withBudgetUnitPriceEdit } from "@/lib/budget-line-handlers"
+import type { SaleCurrency } from "@/lib/pos-usd"
+import { getDollarRate } from "@/lib/product-pricing"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +63,7 @@ export default function NuevoPresupuestoPage() {
   const [validUntil, setValidUntil] = useState("")
   const [notes, setNotes] = useState("")
   const [allowInactive, setAllowInactive] = useState(false)
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null)
 
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -76,6 +87,20 @@ export default function NuevoPresupuestoPage() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    void getDollarRate()
+      .then((quote) => {
+        if (!cancelled) setExchangeRate(quote.sell ?? quote.buy ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setExchangeRate(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (clientSearch.trim().length < 2) {
       setClients([])
       return
@@ -88,7 +113,8 @@ export default function NuevoPresupuestoPage() {
     return () => clearTimeout(t)
   }, [clientSearch])
 
-  const total = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0)
+  const total = computeBudgetHeaderTotal(lines, exchangeRate)
+  const totalSummary = formatBudgetTotalsSummary(lines, exchangeRate)
   const lineProductIds = lines
     .filter((l): l is Extract<BudgetDraftLine, { kind: "catalog" }> => l.kind === "catalog")
     .map((l) => l.product.id)
@@ -108,7 +134,14 @@ export default function NuevoPresupuestoPage() {
     }
     setLines((prev) => [
       ...prev,
-      { kind: "catalog", key: p.id, product: p, quantity: 1, unit_price: Number(p.price) || 0 },
+      {
+        kind: "catalog",
+        key: p.id,
+        product: p,
+        quantity: 1,
+        unit_price: Number(p.price) || 0,
+        currency: "ARS",
+      },
     ])
   }
 
@@ -121,13 +154,48 @@ export default function NuevoPresupuestoPage() {
         description: payload.description,
         quantity: payload.quantity,
         unit_price: payload.unit_price,
+        currency: "ARS",
       },
     ])
     toast.message("Ítem agregado", { description: payload.description })
   }
 
-  function updateLine(key: number | string, patch: Partial<Pick<BudgetDraftLine, "quantity" | "unit_price">>) {
-    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
+  function updateLine(
+    key: number | string,
+    patch: Partial<Pick<BudgetDraftLine, "quantity" | "unit_price" | "currency" | "ars_unit_price">>
+  ) {
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l
+        return { ...l, ...patch } as BudgetDraftLine
+      })
+    )
+  }
+
+  function updateLineUnitPrice(key: number | string, unitPrice: number) {
+    if (!exchangeRate || exchangeRate <= 0) {
+      updateLine(key, { unit_price: unitPrice })
+      return
+    }
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l
+        return withBudgetUnitPriceEdit(l, unitPrice, exchangeRate)
+      })
+    )
+  }
+
+  function updateLineCurrency(key: number | string, currency: SaleCurrency) {
+    if (!exchangeRate || exchangeRate <= 0) {
+      toast.error("No hay cotización del dólar disponible")
+      return
+    }
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l
+        return withBudgetCurrencyChange(l, currency, exchangeRate)
+      })
+    )
   }
 
   function updateCustomDescription(key: number | string, description: string) {
@@ -154,11 +222,16 @@ export default function NuevoPresupuestoPage() {
       toast.error("Hay un ítem escrito sin descripción")
       return
     }
+    if (budgetHasUsdLines(lines) && (!exchangeRate || exchangeRate <= 0)) {
+      toast.error("No hay cotización del dólar para guardar ítems en USD")
+      return
+    }
     setSubmitting(true)
     try {
       const created = await createCommercialBudget({
         client_id: clientId,
         items: budgetDraftLinesToApiItems(lines),
+        exchange_rate: budgetHasUsdLines(lines) ? exchangeRate : undefined,
         valid_until: validUntil.trim() || undefined,
         notes: notes.trim() || undefined,
         allow_inactive: allowInactive,
@@ -272,12 +345,20 @@ export default function NuevoPresupuestoPage() {
                 <BudgetLinesPanel
                   lines={budgetLineItems}
                   total={total}
-                  formatMoney={formatMoney}
+                  totalLabel={budgetHasUsdLines(lines) ? "Total estimado (ARS)" : "Total estimado"}
+                  exchangeRate={exchangeRate}
+                  formatMoney={(n) => formatBudgetMoney(n, "ARS")}
                   onUpdateQuantity={(key, q) => updateLine(key, { quantity: q })}
-                  onUpdateUnitPrice={(key, p) => updateLine(key, { unit_price: p })}
+                  onUpdateUnitPrice={updateLineUnitPrice}
+                  onUpdateCurrency={updateLineCurrency}
                   onUpdateName={updateCustomDescription}
                   onRemove={removeLine}
                 />
+                {exchangeRate ? (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Cotización USD: {formatExchangeRate(exchangeRate)} · {totalSummary}
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
           </div>

@@ -40,14 +40,11 @@ const PAYMENT_LABELS: Record<SalePaymentMethod, string> = {
   mixto: "Mixto",
 }
 
-function formatMoney(n: number) {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n)
-}
+import {
+  budgetTotalsByCurrency,
+  formatBudgetMoney,
+  resolveBudgetLineCurrency,
+} from "@/lib/budget-currency"
 
 interface BudgetConvertSaleDialogProps {
   open: boolean
@@ -63,6 +60,20 @@ export function BudgetConvertSaleDialog({
   onSuccess,
 }: BudgetConvertSaleDialogProps) {
   const total = budget?.total_amount ?? 0
+  const saleCurrency = useMemo(() => {
+    const items = budget?.items ?? []
+    if (!items.length) return "ARS" as const
+    const currencies = new Set(items.map((item) => resolveBudgetLineCurrency(item.currency)))
+    return currencies.size === 1 && currencies.has("USD") ? ("USD" as const) : ("ARS" as const)
+  }, [budget?.items])
+  const saleTotal = useMemo(() => {
+    if (!budget?.items?.length) return total
+    if (saleCurrency === "USD") {
+      return budgetTotalsByCurrency(budget.items).usd
+    }
+    return total
+  }, [budget?.items, saleCurrency, total])
+  const formatMoney = (n: number) => formatBudgetMoney(n, saleCurrency)
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("efectivo")
   const [efectivo, setEfectivo] = useState(0)
   const [tarjeta, setTarjeta] = useState(0)
@@ -77,7 +88,7 @@ export function BudgetConvertSaleDialog({
   useEffect(() => {
     if (!open || !budget) return
     setPaymentMethod("efectivo")
-    setEfectivo(Math.round(total))
+    setEfectivo(Math.round(saleTotal))
     setTarjeta(0)
     setTransferencia(0)
     setNotes("")
@@ -90,17 +101,17 @@ export function BudgetConvertSaleDialog({
         .then(setOverrideCliente)
         .catch(() => setOverrideCliente(null))
     }
-  }, [open, budget, total])
+  }, [open, budget, saleTotal])
 
   const mixtoSum = useMemo(() => efectivo + tarjeta + transferencia, [efectivo, tarjeta, transferencia])
 
   async function submit() {
     if (!budget) return
     if (paymentMethod === "mixto") {
-      const diff = Math.abs(mixtoSum - total)
+      const diff = Math.abs(mixtoSum - saleTotal)
       if (diff > 0.01) {
         toast.error("En pago mixto, la suma debe coincidir con el total del presupuesto", {
-          description: `${formatMoney(mixtoSum)} ≠ ${formatMoney(total)}`,
+          description: `${formatMoney(mixtoSum)} ≠ ${formatMoney(saleTotal)}`,
         })
         return
       }
@@ -137,7 +148,12 @@ export function BudgetConvertSaleDialog({
           <DialogTitle>Convertir a venta</DialogTitle>
           <DialogDescription>
             Se aplican las mismas reglas que en el POS: validación de stock, caja y cobro. Total:{" "}
-            <strong className="text-foreground">{formatMoney(total)}</strong>
+            <strong className="text-foreground">{formatMoney(saleTotal)}</strong>
+            {saleCurrency === "USD" && budget?.exchange_rate ? (
+              <span className="block text-xs mt-1">
+                Moneda USD · cotización {Number(budget.exchange_rate).toLocaleString("es-AR")}
+              </span>
+            ) : null}
           </DialogDescription>
         </DialogHeader>
 
@@ -200,7 +216,7 @@ export function BudgetConvertSaleDialog({
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Suma: {formatMoney(mixtoSum)} — debe ser {formatMoney(total)}
+                  Suma: {formatMoney(mixtoSum)} — debe ser {formatMoney(saleTotal)}
                 </p>
               </div>
             )}

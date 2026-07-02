@@ -23,9 +23,22 @@ import {
 import { commercialBudgetDetailToPdfData } from "@/lib/commercial-budget-pdf-mapper"
 import {
   budgetDetailDraftLinesToApiItems,
+  budgetDetailDraftToLineItems,
   linesFromBudgetDetail,
   type BudgetDetailDraftLine,
 } from "@/lib/budget-lines"
+import {
+  budgetHasUsdLines,
+  computeBudgetHeaderTotal,
+  formatBudgetMoney,
+  formatBudgetTotalsSummary,
+  formatExchangeRate,
+  resolveBudgetLineCurrency,
+} from "@/lib/budget-currency"
+import { withBudgetCurrencyChange, withBudgetUnitPriceEdit } from "@/lib/budget-line-handlers"
+import type { SaleCurrency } from "@/lib/pos-usd"
+import { getDollarRate } from "@/lib/product-pricing"
+import { BudgetLinesPanel } from "@/components/budget-lines-panel"
 import { BudgetProductCatalog } from "@/components/budget-product-catalog"
 import { PosManualItemCard } from "@/components/pos-manual-item-card"
 import { BudgetPdfModal } from "@/components/budget-pdf-modal"
@@ -118,6 +131,7 @@ export default function PresupuestoDetallePage() {
   const [clients, setClients] = useState<Cliente[]>([])
   const [draftLines, setDraftLines] = useState<BudgetDetailDraftLine[]>([])
   const [allowInactiveDraft, setAllowInactiveDraft] = useState(false)
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null)
 
   const [products, setProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
@@ -145,6 +159,12 @@ export default function PresupuestoDetallePage() {
       setSelectedCliente(null)
       setClientSearch("")
       setDraftLines(linesFromBudgetDetail(d.items || []))
+      setExchangeRate(d.exchange_rate != null ? Number(d.exchange_rate) : null)
+      if (d.exchange_rate == null) {
+        void getDollarRate()
+          .then((quote) => setExchangeRate(quote.sell ?? quote.buy ?? null))
+          .catch(() => setExchangeRate(null))
+      }
       if (d.client_id) {
         void getClienteById(d.client_id)
           .then((cliente) => {
@@ -208,6 +228,23 @@ export default function PresupuestoDetallePage() {
   }, [clientSearch])
 
   const pdfPayload = useMemo(() => (detail ? commercialBudgetDetailToPdfData(detail) : null), [detail])
+  const productsById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  )
+  const draftLineItems = useMemo(
+    () => budgetDetailDraftToLineItems(draftLines, productsById),
+    [draftLines, productsById]
+  )
+  const draftTotal = useMemo(
+    () => computeBudgetHeaderTotal(draftLines, exchangeRate ?? detail?.exchange_rate),
+    [draftLines, exchangeRate, detail?.exchange_rate]
+  )
+  const draftTotalSummary = useMemo(
+    () => formatBudgetTotalsSummary(draftLines, exchangeRate ?? detail?.exchange_rate),
+    [draftLines, exchangeRate, detail?.exchange_rate]
+  )
+
   const lineProductIds = useMemo(
     () => draftLines.filter((l) => l.product_id != null).map((l) => l.product_id as number),
     [draftLines]
@@ -230,6 +267,11 @@ export default function PresupuestoDetallePage() {
         toast.error("El presupuesto debe tener al menos un ítem")
         return
       }
+      const effectiveRate = exchangeRate ?? detail.exchange_rate ?? null
+      if (budgetHasUsdLines(draftLines) && (!effectiveRate || effectiveRate <= 0)) {
+        toast.error("No hay cotización del dólar para guardar ítems en USD")
+        return
+      }
     }
     setSaving(true)
     try {
@@ -241,6 +283,9 @@ export default function PresupuestoDetallePage() {
       if (isDraft) {
         body.items = budgetDetailDraftLinesToApiItems(draftLines)
         body.allow_inactive = allowInactiveDraft
+        if (budgetHasUsdLines(draftLines)) {
+          body.exchange_rate = exchangeRate ?? detail.exchange_rate ?? null
+        }
       }
       const updated = await updateCommercialBudget(detail.id, body)
       setDetail(updated)
@@ -275,6 +320,7 @@ export default function PresupuestoDetallePage() {
         is_custom: false,
         quantity: 1,
         unit_price: Number(p.price) || 0,
+        currency: "ARS",
       },
     ])
     toast.message("Producto agregado", { description: p.name })
@@ -293,6 +339,7 @@ export default function PresupuestoDetallePage() {
         is_custom: true,
         quantity: payload.quantity,
         unit_price: payload.unit_price,
+        currency: "ARS",
       },
     ])
     toast.message("Ítem agregado", { description: payload.description })
@@ -300,6 +347,40 @@ export default function PresupuestoDetallePage() {
 
   function updateDraftLine(id: number, patch: Partial<BudgetDetailDraftLine>) {
     setDraftLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+  }
+
+  function updateDraftLineUnitPrice(id: number, unitPrice: number) {
+    const rate = exchangeRate ?? detail?.exchange_rate ?? null
+    if (!rate || rate <= 0) {
+      updateDraftLine(id, { unit_price: unitPrice })
+      return
+    }
+    setDraftLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== id) return line
+        const product = line.product_id != null ? productsById.get(line.product_id) : undefined
+        return withBudgetUnitPriceEdit({ ...line, product }, unitPrice, rate)
+      })
+    )
+  }
+
+  function updateDraftLineCurrency(id: number, currency: SaleCurrency) {
+    const rate = exchangeRate ?? detail?.exchange_rate ?? null
+    if (!rate || rate <= 0) {
+      toast.error("No hay cotización del dólar disponible")
+      return
+    }
+    setDraftLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== id) return line
+        const product = line.product_id != null ? productsById.get(line.product_id) : undefined
+        return withBudgetCurrencyChange({ ...line, product }, currency, rate)
+      })
+    )
+  }
+
+  function updateDraftLineDescription(id: number, name: string) {
+    updateDraftLine(id, { description: name, product_name: name })
   }
 
   function removeDraftLine(id: number) {
@@ -420,8 +501,15 @@ export default function PresupuestoDetallePage() {
             <CardContent className="pt-6 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Total cotizado</p>
-                <p className="text-3xl font-bold tabular-nums">{formatMoney(detail.total_amount)}</p>
+                <p className="text-3xl font-bold tabular-nums">
+                  {formatBudgetMoney(editableDraft ? draftTotal : detail.total_amount, "ARS")}
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
+                  {editableDraft
+                    ? draftTotalSummary
+                    : formatBudgetTotalsSummary(detail.items || [], detail.exchange_rate)}
+                </p>
+                <p className="text-xs text-muted-foreground">
                   {detail.item_count ?? detail.items?.length ?? 0} ítem(s) · sin movimiento de stock
                 </p>
               </div>
@@ -552,100 +640,58 @@ export default function PresupuestoDetallePage() {
                   inputIdPrefix="budget-detail-manual"
                 />
               )}
+              {editableDraft ? (
+                <BudgetLinesPanel
+                  lines={draftLineItems}
+                  total={draftTotal}
+                  totalLabel={budgetHasUsdLines(draftLines) ? "Total estimado (ARS)" : "Total estimado"}
+                  exchangeRate={exchangeRate ?? detail.exchange_rate}
+                  formatMoney={(n) => formatBudgetMoney(n, "ARS")}
+                  onUpdateQuantity={(key, quantity) => updateDraftLine(Number(key), { quantity })}
+                  onUpdateUnitPrice={(key, unitPrice) => updateDraftLineUnitPrice(Number(key), unitPrice)}
+                  onUpdateCurrency={(key, currency) => updateDraftLineCurrency(Number(key), currency)}
+                  onUpdateName={(key, name) => updateDraftLineDescription(Number(key), name)}
+                  onRemove={(key) => removeDraftLine(Number(key))}
+                />
+              ) : (
               <div className="rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Descripción</TableHead>
+                      <TableHead className="w-20">Mon.</TableHead>
                       <TableHead className="w-28">Cant.</TableHead>
                       <TableHead className="text-right w-32">P. unit.</TableHead>
                       <TableHead className="text-right w-36">Subtotal</TableHead>
-                      {editableDraft && <TableHead className="w-12" />}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(itemsReadonly ? linesFromBudgetDetail(detail.items || []) : draftLines).map((row) => (
+                    {linesFromBudgetDetail(detail.items || []).map((row) => {
+                      const currency = resolveBudgetLineCurrency(row.currency)
+                      return (
                       <TableRow key={row.id}>
                         <TableCell>
-                          {editableDraft && row.is_custom ? (
-                            <Input
-                              className="h-8 font-medium"
-                              value={row.description || row.product_name}
-                              placeholder="Descripción del ítem"
-                              onChange={(e) =>
-                                updateDraftLine(row.id, {
-                                  description: e.target.value,
-                                  product_name: e.target.value,
-                                })
-                              }
-                            />
-                          ) : (
-                            <>
-                              <div className="font-medium text-sm">
-                                {row.is_custom ? row.description || row.product_name : row.product_name}
-                              </div>
-                              {!row.is_custom && row.product_code && (
-                                <div className="text-xs font-mono text-muted-foreground">{row.product_code}</div>
-                              )}
-                              {row.is_custom && (
-                                <div className="text-xs text-muted-foreground">Ítem escrito</div>
-                              )}
-                            </>
+                          <div className="font-medium text-sm">
+                            {row.is_custom ? row.description || row.product_name : row.product_name}
+                          </div>
+                          {!row.is_custom && row.product_code && (
+                            <div className="text-xs font-mono text-muted-foreground">{row.product_code}</div>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {editableDraft ? (
-                            <Input
-                              type="number"
-                              min={1}
-                              className="h-8"
-                              value={row.quantity}
-                              onChange={(e) => {
-                                const q = Math.max(1, parseInt(e.target.value, 10) || 1)
-                                updateDraftLine(row.id, { quantity: q })
-                              }}
-                            />
-                          ) : (
-                            row.quantity
-                          )}
-                        </TableCell>
+                        <TableCell>{currency}</TableCell>
+                        <TableCell>{row.quantity}</TableCell>
                         <TableCell className="text-right">
-                          {editableDraft ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              step={0.01}
-                              className="h-8 text-right"
-                              value={row.unit_price}
-                              onChange={(e) => {
-                                const v = Math.max(0, parseFloat(e.target.value) || 0)
-                                updateDraftLine(row.id, { unit_price: v })
-                              }}
-                            />
-                          ) : (
-                            formatMoney(row.unit_price)
-                          )}
+                          {formatBudgetMoney(row.unit_price, currency)}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
-                          {formatMoney(row.quantity * row.unit_price)}
+                          {formatBudgetMoney(row.quantity * row.unit_price, currency)}
                         </TableCell>
-                        {editableDraft && (
-                          <TableCell>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeDraftLine(row.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        )}
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               </div>
+              )}
             </CardContent>
           </Card>
 

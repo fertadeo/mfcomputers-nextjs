@@ -14,6 +14,27 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { FileText, LayoutGrid, LayoutList, Maximize2, Minus, Plus, Trash2 } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import type { SaleCurrency } from "@/lib/budget-currency"
+import {
+  budgetLineTotal,
+  formatBudgetMoney,
+  formatExchangeRate,
+  resolveBudgetLineCurrency,
+} from "@/lib/budget-currency"
+import {
+  currencyPricePrefix,
+  formatArsPriceInput,
+  formatUsdPriceInput,
+  parseArsPriceInput,
+  parseUsdPriceInput,
+} from "@/lib/pos-usd"
 
 export interface BudgetLineItem {
   key: number | string
@@ -21,6 +42,8 @@ export interface BudgetLineItem {
   code: string
   quantity: number
   unit_price: number
+  currency?: SaleCurrency
+  ars_unit_price?: number
   product?: Product
   isCustom?: boolean
 }
@@ -28,13 +51,20 @@ export interface BudgetLineItem {
 interface BudgetLinesPanelProps {
   lines: BudgetLineItem[]
   total: number
-  formatMoney: (n: number) => string
+  totalLabel?: string
+  exchangeRate?: number | null
+  formatMoney?: (n: number) => string
   onUpdateQuantity: (key: number | string, quantity: number) => void
   onUpdateUnitPrice: (key: number | string, unitPrice: number) => void
+  onUpdateCurrency?: (key: number | string, currency: SaleCurrency) => void
   onUpdateName?: (key: number | string, name: string) => void
   onRemove: (key: number | string) => void
   emptyMessage?: string
   className?: string
+}
+
+function lineMoney(line: BudgetLineItem, value: number): string {
+  return formatBudgetMoney(value, resolveBudgetLineCurrency(line.currency))
 }
 
 function ViewModeToggle({
@@ -98,16 +128,33 @@ function LineImage({ product, name }: { product?: Product; name: string }) {
 
 function LinesListBody({
   lines,
-  formatMoney,
+  exchangeRate,
   onUpdateQuantity,
   onUpdateUnitPrice,
+  onUpdateCurrency,
   onUpdateName,
   onRemove,
   compact,
-}: Omit<BudgetLinesPanelProps, "total" | "emptyMessage" | "className"> & { compact?: boolean }) {
+}: Omit<BudgetLinesPanelProps, "total" | "totalLabel" | "emptyMessage" | "className" | "formatMoney"> & {
+  compact?: boolean
+}) {
   return (
     <div className={cn("space-y-2", compact ? "max-h-[280px] overflow-y-auto pr-1" : "")}>
-      {lines.map((line) => (
+      {lines.map((line) => {
+        const currency = resolveBudgetLineCurrency(line.currency)
+        const pricePrefix = currencyPricePrefix(currency)
+        const arsRef =
+          currency === "USD" ? line.ars_unit_price ?? line.product?.price : undefined
+        const formatPriceInput =
+          currency === "USD"
+            ? (n: number) => formatUsdPriceInput(n)
+            : (n: number) => formatArsPriceInput(n)
+        const parsePriceInput =
+          currency === "USD"
+            ? (value: string) => parseUsdPriceInput(value)
+            : (value: string) => parseArsPriceInput(value)
+
+        return (
         <div
           key={line.key}
           className="flex items-start justify-between gap-2 rounded-lg border bg-card p-2.5 hover:bg-muted/30 transition-colors"
@@ -154,25 +201,44 @@ function LinesListBody({
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
+                {onUpdateCurrency ? (
+                  <Select
+                    value={currency}
+                    onValueChange={(value) => onUpdateCurrency(line.key, value as SaleCurrency)}
+                  >
+                    <SelectTrigger className="h-7 w-[78px] text-xs px-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ARS">ARS</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : null}
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground">$</span>
+                  <span className="text-xs text-muted-foreground">{pricePrefix}</span>
                   <Input
-                    type="number"
-                    min={0}
-                    step={0.01}
+                    type="text"
+                    inputMode={currency === "USD" ? "decimal" : "numeric"}
                     className="h-7 w-24 text-right text-sm"
-                    value={line.unit_price}
+                    value={formatPriceInput(line.unit_price)}
                     onChange={(e) =>
-                      onUpdateUnitPrice(line.key, Math.max(0, parseFloat(e.target.value) || 0))
+                      onUpdateUnitPrice(line.key, parsePriceInput(e.target.value))
                     }
                   />
                 </div>
+                {currency === "USD" && arsRef != null ? (
+                  <p className="text-[10px] text-muted-foreground w-full">
+                    Ref. catálogo: {formatBudgetMoney(arsRef, "ARS")}
+                    {exchangeRate ? ` · TC ${formatExchangeRate(exchangeRate)}` : ""}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="text-sm font-semibold tabular-nums whitespace-nowrap">
-              {formatMoney(line.quantity * line.unit_price)}
+              {lineMoney(line, budgetLineTotal(line.quantity, line.unit_price))}
             </span>
             <Button
               type="button"
@@ -185,22 +251,35 @@ function LinesListBody({
             </Button>
           </div>
         </div>
-      ))}
+      )})}
     </div>
   )
 }
 
 function LinesGridBody({
   lines,
-  formatMoney,
+  exchangeRate,
   onUpdateQuantity,
   onUpdateUnitPrice,
+  onUpdateCurrency,
   onUpdateName,
   onRemove,
-}: Omit<BudgetLinesPanelProps, "total" | "emptyMessage" | "className">) {
+}: Omit<BudgetLinesPanelProps, "total" | "totalLabel" | "emptyMessage" | "className" | "formatMoney">) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[320px] overflow-y-auto pr-1">
-      {lines.map((line) => (
+      {lines.map((line) => {
+        const currency = resolveBudgetLineCurrency(line.currency)
+        const pricePrefix = currencyPricePrefix(currency)
+        const formatPriceInput =
+          currency === "USD"
+            ? (n: number) => formatUsdPriceInput(n)
+            : (n: number) => formatArsPriceInput(n)
+        const parsePriceInput =
+          currency === "USD"
+            ? (value: string) => parseUsdPriceInput(value)
+            : (value: string) => parseArsPriceInput(value)
+
+        return (
         <div
           key={line.key}
           className="rounded-lg border bg-card p-2.5 flex flex-col gap-2"
@@ -235,7 +314,7 @@ function LinesGridBody({
               <p className="text-[10px] font-mono text-muted-foreground truncate">{line.code}</p>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center justify-between gap-1 flex-wrap">
             <Button
               type="button"
               variant="outline"
@@ -255,17 +334,35 @@ function LinesGridBody({
             >
               <Plus className="h-2.5 w-2.5" />
             </Button>
-            <Input
-              type="number"
-              min={0}
-              step={0.01}
-              className="h-6 flex-1 text-right text-xs px-1"
-              value={line.unit_price}
-              onChange={(e) => onUpdateUnitPrice(line.key, Math.max(0, parseFloat(e.target.value) || 0))}
-            />
+            {onUpdateCurrency ? (
+              <Select
+                value={currency}
+                onValueChange={(value) => onUpdateCurrency(line.key, value as SaleCurrency)}
+              >
+                <SelectTrigger className="h-6 w-[72px] text-[10px] px-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ARS">ARS</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
+            <div className="flex items-center gap-1 flex-1 min-w-[90px]">
+              <span className="text-[10px] text-muted-foreground">{pricePrefix}</span>
+              <Input
+                type="text"
+                inputMode={currency === "USD" ? "decimal" : "numeric"}
+                className="h-6 flex-1 text-right text-xs px-1"
+                value={formatPriceInput(line.unit_price)}
+                onChange={(e) => onUpdateUnitPrice(line.key, parsePriceInput(e.target.value))}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between border-t pt-1.5">
-            <span className="text-xs font-semibold tabular-nums">{formatMoney(line.quantity * line.unit_price)}</span>
+            <span className="text-xs font-semibold tabular-nums">
+              {lineMoney(line, budgetLineTotal(line.quantity, line.unit_price))}
+            </span>
             <Button
               type="button"
               variant="ghost"
@@ -277,7 +374,7 @@ function LinesGridBody({
             </Button>
           </div>
         </div>
-      ))}
+      )})}
     </div>
   )
 }
@@ -285,9 +382,12 @@ function LinesGridBody({
 export function BudgetLinesPanel({
   lines,
   total,
+  totalLabel = "Total estimado",
+  exchangeRate,
   formatMoney,
   onUpdateQuantity,
   onUpdateUnitPrice,
+  onUpdateCurrency,
   onUpdateName,
   onRemove,
   emptyMessage = "Agregá productos del catálogo o ítems escritos.",
@@ -296,10 +396,13 @@ export function BudgetLinesPanel({
   const [viewMode, setViewMode] = useState<"list" | "grid">("list")
   const [expandedOpen, setExpandedOpen] = useState(false)
 
+  const formatTotal =
+    formatMoney ?? ((n: number) => formatBudgetMoney(n, "ARS"))
+
   const countLabel =
     lines.length === 0
       ? "Sin líneas"
-      : `${lines.length} ítem${lines.length !== 1 ? "s" : ""} · ${formatMoney(total)}`
+      : `${lines.length} ítem${lines.length !== 1 ? "s" : ""} · ${formatTotal(total)}`
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -320,9 +423,10 @@ export function BudgetLinesPanel({
       ) : viewMode === "list" ? (
         <LinesListBody
           lines={lines}
-          formatMoney={formatMoney}
+          exchangeRate={exchangeRate}
           onUpdateQuantity={onUpdateQuantity}
           onUpdateUnitPrice={onUpdateUnitPrice}
+          onUpdateCurrency={onUpdateCurrency}
           onUpdateName={onUpdateName}
           onRemove={onRemove}
           compact
@@ -330,9 +434,10 @@ export function BudgetLinesPanel({
       ) : (
         <LinesGridBody
           lines={lines}
-          formatMoney={formatMoney}
+          exchangeRate={exchangeRate}
           onUpdateQuantity={onUpdateQuantity}
           onUpdateUnitPrice={onUpdateUnitPrice}
+          onUpdateCurrency={onUpdateCurrency}
           onUpdateName={onUpdateName}
           onRemove={onRemove}
         />
@@ -341,8 +446,8 @@ export function BudgetLinesPanel({
       {lines.length > 0 && (
         <div className="flex justify-end border-t pt-3">
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Total estimado</p>
-            <p className="text-xl font-bold tabular-nums">{formatMoney(total)}</p>
+            <p className="text-xs text-muted-foreground">{totalLabel}</p>
+            <p className="text-xl font-bold tabular-nums">{formatTotal(total)}</p>
           </div>
         </div>
       )}
@@ -363,6 +468,7 @@ export function BudgetLinesPanel({
                   <th className="text-left p-2 w-14">Img.</th>
                   <th className="text-left p-2">Producto</th>
                   <th className="text-left p-2 w-28">Código</th>
+                  <th className="text-center p-2 w-20">Mon.</th>
                   <th className="text-center p-2 w-24">Cant.</th>
                   <th className="text-right p-2 w-32">P. unit.</th>
                   <th className="text-right p-2 w-32">Subtotal</th>
@@ -370,7 +476,18 @@ export function BudgetLinesPanel({
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line) => (
+                {lines.map((line) => {
+                  const currency = resolveBudgetLineCurrency(line.currency)
+                  const formatPriceInput =
+                    currency === "USD"
+                      ? (n: number) => formatUsdPriceInput(n)
+                      : (n: number) => formatArsPriceInput(n)
+                  const parsePriceInput =
+                    currency === "USD"
+                      ? (value: string) => parseUsdPriceInput(value)
+                      : (value: string) => parseArsPriceInput(value)
+
+                  return (
                   <tr key={line.key} className="border-t hover:bg-muted/30">
                     <td className="p-2">
                       <LineImage product={line.product} name={line.name} />
@@ -389,6 +506,24 @@ export function BudgetLinesPanel({
                     </td>
                     <td className="p-2 font-mono text-xs text-muted-foreground">{line.code}</td>
                     <td className="p-2">
+                      {onUpdateCurrency ? (
+                        <Select
+                          value={currency}
+                          onValueChange={(value) => onUpdateCurrency(line.key, value as SaleCurrency)}
+                        >
+                          <SelectTrigger className="h-8 w-[76px] mx-auto text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        currency
+                      )}
+                    </td>
+                    <td className="p-2">
                       <Input
                         type="number"
                         min={1}
@@ -401,18 +536,17 @@ export function BudgetLinesPanel({
                     </td>
                     <td className="p-2">
                       <Input
-                        type="number"
-                        min={0}
-                        step={0.01}
+                        type="text"
+                        inputMode={currency === "USD" ? "decimal" : "numeric"}
                         className="h-8 w-28 ml-auto text-right"
-                        value={line.unit_price}
+                        value={formatPriceInput(line.unit_price)}
                         onChange={(e) =>
-                          onUpdateUnitPrice(line.key, Math.max(0, parseFloat(e.target.value) || 0))
+                          onUpdateUnitPrice(line.key, parsePriceInput(e.target.value))
                         }
                       />
                     </td>
                     <td className="p-2 text-right font-medium tabular-nums">
-                      {formatMoney(line.quantity * line.unit_price)}
+                      {lineMoney(line, budgetLineTotal(line.quantity, line.unit_price))}
                     </td>
                     <td className="p-2">
                       <Button
@@ -426,14 +560,14 @@ export function BudgetLinesPanel({
                       </Button>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
               <tfoot>
                 <tr className="border-t bg-muted/40 font-semibold">
-                  <td colSpan={5} className="p-3 text-right text-muted-foreground">
+                  <td colSpan={6} className="p-3 text-right text-muted-foreground">
                     Total
                   </td>
-                  <td className="p-3 text-right tabular-nums">{formatMoney(total)}</td>
+                  <td className="p-3 text-right tabular-nums">{formatTotal(total)}</td>
                   <td />
                 </tr>
               </tfoot>

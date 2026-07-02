@@ -3,6 +3,8 @@
  */
 import jsPDF from "jspdf"
 import type { CommercialBudgetDetail } from "@/lib/api"
+import type { SaleCurrency } from "@/lib/pos-usd"
+import { formatBudgetMoney, resolveBudgetLineCurrency } from "@/lib/budget-currency"
 import {
   documentClientePdfFromSnapshot,
   drawDocumentClientePdfDetails,
@@ -33,6 +35,7 @@ export interface CommercialBudgetPdfLineItem {
   product_code?: string
   quantity: number
   unit_price: number
+  currency?: SaleCurrency
 }
 
 export interface GenerateCommercialBudgetPdfParams {
@@ -51,6 +54,7 @@ export interface GenerateCommercialBudgetPdfParams {
   vat21: number
   vat105: number
   total: number
+  exchange_rate?: number | null
   observaciones?: string
 }
 
@@ -73,6 +77,7 @@ export interface CommercialPdfFromModalInput {
     equipmentModel?: string
     quantity: number
     unitPrice: number
+    currency?: SaleCurrency
   }>
   subtotal: number
   vat21: number
@@ -95,6 +100,7 @@ export function commercialPdfParamsFromModalInput(data: CommercialPdfFromModalIn
     product_code: commercialPdfLineProductCode(it),
     quantity: it.quantity,
     unit_price: it.unitPrice,
+    currency: it.currency,
   }))
 
   return {
@@ -127,8 +133,15 @@ export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail)
       product_code: isCustom ? undefined : i.product_code?.trim() || undefined,
       quantity: i.quantity,
       unit_price: i.unit_price,
+      currency: resolveBudgetLineCurrency(i.currency),
     }
   })
+
+  const exchangeNote =
+    detail.exchange_rate != null && Number(detail.exchange_rate) > 0
+      ? `Cotización de referencia: $${Number(detail.exchange_rate).toLocaleString("es-AR", { maximumFractionDigits: 2 })} por USD.`
+      : ""
+  const notes = [detail.notes?.trim(), exchangeNote].filter(Boolean).join("\n\n")
 
   return {
     budget_number: detail.budget_number,
@@ -146,11 +159,15 @@ export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail)
     vat21: 0,
     vat105: 0,
     total: detail.total_amount,
-    observaciones: detail.notes ?? undefined,
+    exchange_rate: detail.exchange_rate ?? null,
+    observaciones: notes || undefined,
   }
 }
 
-function formatMoneyAr(n: number): string {
+function formatPdfMoney(n: number, currency: SaleCurrency = "ARS"): string {
+  if (currency === "USD") {
+    return formatBudgetMoney(n, "USD")
+  }
   return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
@@ -459,9 +476,10 @@ function renderCommercialBudgetPdf(
 
         const valueY = y + Math.min(LINE_ITEM_PAD_TOP, (rowH - 10) / 2 + 8)
         doc.setTextColor(...TEXT_BODY)
-        doc.text(formatMoneyAr(item.unit_price), colUnit, valueY, { align: "right" })
+        const lineCurrency = resolveBudgetLineCurrency(item.currency)
+        doc.text(formatPdfMoney(item.unit_price, lineCurrency), colUnit, valueY, { align: "right" })
         doc.text(String(item.quantity), colQty, valueY, { align: "right" })
-        doc.text(formatMoneyAr(lineTotal), colTot, valueY, { align: "right" })
+        doc.text(formatPdfMoney(lineTotal, lineCurrency), colTot, valueY, { align: "right" })
 
         y += rowH
       })
@@ -489,13 +507,13 @@ function renderCommercialBudgetPdf(
       y += summaryLineH
     }
 
-    drawSummaryRow("Subtotal", formatMoneyAr(params.subtotal))
+    drawSummaryRow("Subtotal", formatPdfMoney(params.subtotal, "ARS"))
 
     if (params.vat21 > 0) {
-      drawSummaryRow("IVA 21%", formatMoneyAr(params.vat21))
+      drawSummaryRow("IVA 21%", formatPdfMoney(params.vat21, "ARS"))
     }
     if (params.vat105 > 0) {
-      drawSummaryRow("IVA 10,5%", formatMoneyAr(params.vat105))
+      drawSummaryRow("IVA 10,5%", formatPdfMoney(params.vat105, "ARS"))
     }
 
     const totalBoxH = 28
@@ -509,7 +527,7 @@ function renderCommercialBudgetPdf(
     doc.setFontSize(11)
     doc.setTextColor(255, 255, 255)
     doc.text("Total", totalBoxLeft + totalBoxPadX, totalTextY)
-    doc.text(formatMoneyAr(params.total), summaryValueX, totalTextY, { align: "right" })
+    doc.text(formatPdfMoney(params.total, "ARS"), summaryValueX, totalTextY, { align: "right" })
 
     y += totalBoxH + 22
 

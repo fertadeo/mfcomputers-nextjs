@@ -6975,6 +6975,7 @@ export interface CommercialBudgetLine {
   description?: string | null
   quantity: number
   unit_price: number
+  currency?: SaleCurrency
   total_price: number
   created_at: string
 }
@@ -6986,6 +6987,7 @@ export interface CommercialBudgetSummary {
   client_id: number
   status: CommercialBudgetStatus
   total_amount: number
+  exchange_rate?: number | null
   valid_until: string | null
   notes: string | null
   created_at: string
@@ -7027,6 +7029,7 @@ export interface CommercialBudgetCatalogItemInput {
   product_id: number
   quantity: number
   unit_price: number
+  currency?: SaleCurrency
 }
 
 /** Línea libre: descripción escrita, sin producto en catálogo. */
@@ -7034,6 +7037,7 @@ export interface CommercialBudgetCustomItemInput {
   description: string
   quantity: number
   unit_price: number
+  currency?: SaleCurrency
 }
 
 export type CommercialBudgetItemInput = CommercialBudgetCatalogItemInput | CommercialBudgetCustomItemInput
@@ -7053,6 +7057,7 @@ export interface CreateCommercialBudgetBody {
   items: CommercialBudgetItemInput[]
   valid_until?: string | null
   notes?: string | null
+  exchange_rate?: number | null
   allow_inactive?: boolean
 }
 
@@ -7061,6 +7066,7 @@ export interface UpdateCommercialBudgetBody {
   valid_until?: string | null
   notes?: string | null
   items?: CommercialBudgetItemInput[]
+  exchange_rate?: number | null
   allow_inactive?: boolean
 }
 

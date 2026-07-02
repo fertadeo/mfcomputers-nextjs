@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Download, FileText, Loader2, Printer } from "lucide-react"
 import jsPDF from "jspdf"
+import type { SaleCurrency } from "@/lib/pos-usd"
 import autoTable from "jspdf-autotable"
 import {
   generateCommercialBudgetPdf,
@@ -30,6 +31,7 @@ export interface BudgetPdfModalLine {
   quantity: number
   vat: number
   unitPrice: number
+  currency?: SaleCurrency
   subtotal: number
 }
 
