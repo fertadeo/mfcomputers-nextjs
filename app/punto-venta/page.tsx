@@ -231,13 +231,20 @@ export default function PuntoVentaPage() {
       setClients([])
       return
     }
+    if (
+      selectedCliente &&
+      clientSearch.trim() === getClienteDisplayName(selectedCliente).trim()
+    ) {
+      setClients([])
+      return
+    }
     const t = setTimeout(() => {
       getClientes(1, 20, clientSearch.trim(), "active")
         .then((r) => setClients(r.clients || []))
         .catch(() => setClients([]))
     }, 300)
     return () => clearTimeout(t)
-  }, [clientSearch])
+  }, [clientSearch, selectedCliente])
 
   async function loadProducts() {
     try {

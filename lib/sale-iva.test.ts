@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   arcaIvaDiscriminadoRows,
   buildArcaIvaDiscriminado,
+  buildFacturadorIvaArrayFromLines,
   computeSaleIvaBreakdown,
+  facturadorImporteFromIvaArray,
   ivaFromInclusiveAmount,
   normalizeSaleIvaRate,
 } from "@/lib/sale-iva"
@@ -66,5 +68,23 @@ describe("sale-iva", () => {
     })
     expect(rows).toHaveLength(2)
     expect(rows.map((r) => r.label)).toEqual(["IVA 21%: $", "IVA 10.5%: $"])
+  })
+
+  it("arma iva[] como MultiFacturador — multi alícuota (importe 1,16)", () => {
+    const iva = buildFacturadorIvaArrayFromLines([
+      { subtotal: 0.55, iva_rate: 10.5 },
+      { subtotal: 0.61, iva_rate: 21 },
+    ])
+    expect(iva).toEqual([
+      { id: 4, base: 0.5, cuota: 0.05 },
+      { id: 5, base: 0.5, cuota: 0.11 },
+    ])
+    expect(facturadorImporteFromIvaArray(iva)).toBe(1.16)
+  })
+
+  it("arma iva[] como MultiFacturador — un ítem 21% (importe 1,21)", () => {
+    const iva = buildFacturadorIvaArrayFromLines([{ subtotal: 1.21, iva_rate: 21 }])
+    expect(iva).toEqual([{ id: 5, base: 1, cuota: 0.21 }])
+    expect(facturadorImporteFromIvaArray(iva)).toBe(1.21)
   })
 })

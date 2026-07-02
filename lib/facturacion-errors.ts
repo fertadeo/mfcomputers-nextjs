@@ -155,6 +155,7 @@ function extractFromDataBlock(data: Record<string, unknown>): ExtractedFacturaci
   if (data.code != null) out.code = String(data.code).trim()
   if (typeof data.message === "string") out.message = data.message
   if (typeof data.remoteMessage === "string") out.remoteDetail = data.remoteMessage
+  if (typeof data.remoteDetail === "string") out.remoteDetail = data.remoteDetail
   if (typeof data.action === "string") out.action = data.action
   if (typeof data.requestId === "string") out.requestId = data.requestId
   if (Array.isArray(data.suggestions)) {
@@ -167,6 +168,27 @@ function extractFromDataBlock(data: Record<string, unknown>): ExtractedFacturaci
   if (data.docTipo != null) out.docTipo = Number(data.docTipo)
   if (data.docNro != null) out.docNro = data.docNro as number | string
   if (data.tipo != null) out.tipoComprobante = Number(data.tipo)
+  if (data.tipoComprobante != null) out.tipoComprobante = Number(data.tipoComprobante)
+  if (data.details && typeof data.details === "object" && !Array.isArray(data.details)) {
+    const details = data.details as Record<string, unknown>
+    const errores = details.errores
+    if (Array.isArray(errores)) {
+      const joined = errores.filter((x): x is string => typeof x === "string").join(" ")
+      if (joined) out.remoteDetail = out.remoteDetail ? `${out.remoteDetail} ${joined}` : joined
+    }
+    const permitidas = details.condicionesPermitidas ?? details.condicionesValidas
+    if (Array.isArray(permitidas) && permitidas.length > 0) {
+      const hint = `Condiciones permitidas WSFE: ${permitidas.join(", ")}`
+      out.sugerencias = [...(out.sugerencias ?? []), hint]
+    }
+    const esperada = details.condicionEsperada ?? details.condicionSugerida
+    if (esperada != null) {
+      out.sugerencias = [
+        ...(out.sugerencias ?? []),
+        `Condición esperada por ARCA/preflight: ${String(esperada)}`,
+      ]
+    }
+  }
   return out
 }
 
@@ -321,7 +343,7 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     message:
       "Con CUIT/CUIL (docTipo 80) la condición Consumidor final (5) solo es válida en Factura B para un consumidor final real.",
     actionHint:
-      "No emitas como consumidor final si el cliente tiene otra condición fiscal. Monotributo en Factura B se envía como condición 7.",
+      "No emitas como consumidor final si el cliente tiene otra condición fiscal. Monotributo en Factura B se envía como condición 6.",
     severity: "error",
     canRetry: true,
   },
@@ -337,8 +359,33 @@ const KNOWN_ERRORS: Record<string, Omit<FacturacionErrorInfo, "code">> = {
     message:
       "Los datos del comprobante no coinciden con las tablas habilitadas en AFIP/WSFE para este CUIT y tipo de factura.",
     actionHint:
-      "Revisá condición IVA del receptor según clase del comprobante: Factura B no admite monotributo (6); monotributo con CUIT en Factura B debe ir como condición 7.",
+      "Revisá condición IVA del receptor según el padrón ARCA: monotributo=6, consumidor final=5, responsable inscripto=1. El tipo de comprobante (A/B/C) es independiente de la condición IVA.",
     severity: "error",
+    canRetry: true,
+  },
+  IVA_PAYLOAD_INVALID: {
+    title: "Desglose IVA inválido",
+    message:
+      "El importe fiscal no coincide con el array iva[] (bases + cuotas) según centavos WSFE, o falta el desglose.",
+    actionHint:
+      "Precios con IVA incluido: neto = round(total / (1 + alícuota/100)); cuota = total − neto. importe = suma(iva[].base + iva[].cuota). Revisá alícuota por ítem en la venta.",
+    severity: "error",
+    canRetry: false,
+  },
+  RECEPTOR_CONDICION_PADRON_MISMATCH: {
+    title: "Condición IVA distinta al padrón ARCA",
+    message: "La condición IVA del comprobante no coincide con la registrada en ARCA para ese CUIT.",
+    actionHint:
+      "Consultá el padrón ARCA y corregí condicionIvaReceptor antes de emitir (monotributo=6, consumidor final=5, responsable inscripto=1).",
+    severity: "error",
+    canRetry: true,
+  },
+  PADRON_CONDICION_UNAVAILABLE: {
+    title: "Padrón ARCA no disponible",
+    message: "No se pudo consultar el padrón ARCA para validar la condición IVA del receptor.",
+    actionHint:
+      "Reintentá en unos minutos o usá «Buscar en ARCA» en el modal de emisión. Solo en casos excepcionales el backend acepta skipPadronCondicionCheck=true.",
+    severity: "warning",
     canRetry: true,
   },
   SALE_ALREADY_INVOICED: {
@@ -491,8 +538,16 @@ export function buildFacturacionErrorDiagnosis(input: {
   const text = `${input.rawMessage ?? ""} ${input.remoteDetail ?? ""}`.toLowerCase()
   const ctx = input.receptorContext
 
-  if (code === "WSFE_PREFLIGHT_VALIDATION" || /condici[oó]n.*iva.*receptor.*6.*clase b|lista: 4, 5, 7/.test(text)) {
-    return "AFIP no admite condición Monotributo (6) en Factura B. Para monotributo con CUIT en Factura B se envía condición 7 (Sujeto no categorizado), nunca consumidor final (5)."
+  if (code === "WSFE_PREFLIGHT_VALIDATION") {
+    return "El facturador rechazó el comprobante en validación previa WSFE. Revisá el detalle técnico (condiciones permitidas y condición esperada para ese CUIT). En Factura B, monotributo del padrón (6) se envía como consumidor final (5)."
+  }
+
+  if (code === "IVA_PAYLOAD_INVALID") {
+    return "El desglose IVA no cuadra con el importe total (centavos WSFE). Revisá alícuota por ítem y que el total de la venta sea la suma de las líneas con IVA incluido."
+  }
+
+  if (/condici[oó]n.*iva.*receptor/.test(text)) {
+    return "La condición IVA del receptor no coincide con lo registrado en AFIP para ese CUIT. Consultá el padrón ARCA: monotributo=6, consumidor final=5, responsable inscripto=1."
   }
 
   if (
@@ -518,8 +573,16 @@ export function buildFacturacionErrorDiagnosis(input: {
     return "El tipo de comprobante no corresponde al régimen del emisor o a la condición IVA del receptor."
   }
 
-  if (ctx?.docTipo === 80 && ctx.condicionIvaReceptor === 6 && ctx.tipoComprobante === 6) {
-    return "El payload llevaba monotributo (6) en Factura B; debe normalizarse a condición 7 (Sujeto no categorizado) antes de enviar a AFIP, nunca consumidor final (5)."
+  if (code === "RECEPTOR_CONDICION_PADRON_MISMATCH") {
+    return "La condición IVA enviada no coincide con el padrón ARCA del receptor. Corregí condicionIvaReceptor según la sugerencia del padrón antes de emitir."
+  }
+
+  if (code === "PADRON_CONDICION_UNAVAILABLE") {
+    return "No se pudo validar la condición IVA contra ARCA. Consultá el padrón manualmente o reintentá cuando el servicio esté disponible."
+  }
+
+  if (ctx?.docTipo === 80 && ctx.condicionIvaReceptor === 7 && ctx.tipoComprobante === 6) {
+    return "El payload llevaba condición 7 (No categorizado) en Factura B; si el cliente es monotributista debe ir condición 6 según el padrón ARCA."
   }
 
   return null

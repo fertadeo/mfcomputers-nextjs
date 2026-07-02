@@ -37,6 +37,12 @@ import {
 import type { ClienteUI } from "@/lib/cliente-ui-map"
 import type { SalesChannel } from "@/lib/utils"
 import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
+import {
+  normalizeClientTaxIdDigits,
+  isValidClientTaxId,
+  formatClientTaxIdDisplay,
+  clientTaxIdValidationMessage,
+} from "@/lib/client-tax-id"
 
 interface EditClientData {
   client_type: "minorista" | "mayorista" | "personalizado"
@@ -52,23 +58,8 @@ interface EditClientData {
   cuil_cuit: string
 }
 
-function onlyDigitsCuil(value: string | null | undefined): string {
-  return (value ?? "").replace(/\D/g, "").slice(0, 11)
-}
-
 function coerceFormText(value: string | null | undefined): string {
   return (value ?? "").trim()
-}
-
-function cuilCuitDigitCount(value: string): number {
-  return onlyDigitsCuil(value).length
-}
-
-function formatCuilCuitDisplay(value: string): string {
-  const d = onlyDigitsCuil(value)
-  if (d.length <= 2) return d
-  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
-  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
 }
 
 interface EditClientModalProps {
@@ -104,7 +95,7 @@ function taxConditionFromUi(cliente: ClienteUI, personeria: ClientPersoneria): C
 function buildEditFormFromUi(cliente: ClienteUI): EditClientData {
   const personeria = personeriaFromUi(cliente)
   const cuilRaw = cliente.cuit ?? ""
-  const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+  const cuilDisplay = formatClientTaxIdDisplay(cuilRaw)
   return {
     client_type: cliente.tipo.toLowerCase() as "minorista" | "mayorista" | "personalizado",
     sales_channel: cliente.salesChannel ?? "manual",
@@ -129,7 +120,7 @@ function normalizeEditFormForCompare(data: EditClientData): EditClientData {
     address: coerceFormText(data.address),
     city: coerceFormText(data.city),
     country: coerceFormText(data.country),
-    cuil_cuit: onlyDigitsCuil(data.cuil_cuit),
+    cuil_cuit: normalizeClientTaxIdDigits(data.cuil_cuit),
   }
 }
 
@@ -152,7 +143,7 @@ function buildEditFormFromApi(cliente: Cliente): EditClientData {
           ? "persona_fisica"
           : "consumidor_final"
   const cuilRaw = cliente.cuil_cuit ?? cliente.primary_tax_id ?? ""
-  const cuilDisplay = cuilRaw.length <= 2 ? cuilRaw : formatCuilCuitDisplay(cuilRaw)
+  const cuilDisplay = formatClientTaxIdDisplay(cuilRaw)
   const tax_condition =
     normalizeTaxConditionFromApi(cliente.tax_condition) ?? defaultTaxConditionForPersoneria(personeria)
   return {
@@ -301,25 +292,11 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
   const resetPadron = useCallback(() => {
     setPadronLocked(false)
     setPadronSuggestedTax(undefined)
-    if (!cliente) {
-      setFormData((prev) => ({
-        ...prev,
-        cuil_cuit: "",
-        name: "",
-        personeria: "consumidor_final",
-        tax_condition: "consumidor_final",
-      }))
-      return
-    }
     setFormData((prev) => ({
-      ...buildEditFormFromUi(cliente),
-      // Conservar ediciones parciales del usuario en otros campos si ya estaba editando
-      email: prev.email || cliente.email,
-      phone: prev.phone || cliente.telefono,
-      address: prev.address || cliente.direccion || "",
-      city: prev.city || cliente.ciudad,
+      ...prev,
+      cuil_cuit: "",
     }))
-  }, [cliente])
+  }, [])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -341,8 +318,8 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
     }
 
     const cuil = coerceFormText(formData.cuil_cuit)
-    if (cuil && cuilCuitDigitCount(cuil) !== 11) {
-      newErrors.cuil_cuit = "El CUIL/CUIT debe tener exactamente 11 dígitos"
+    if (cuil && !isValidClientTaxId(cuil)) {
+      newErrors.cuil_cuit = clientTaxIdValidationMessage()
     }
 
     setErrors(newErrors)
@@ -380,7 +357,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
         personeria: formData.personeria,
         tax_condition: formData.tax_condition,
         cuil_cuit: coerceFormText(formData.cuil_cuit)
-          ? onlyDigitsCuil(formData.cuil_cuit)
+          ? normalizeClientTaxIdDigits(formData.cuil_cuit)
           : null
       }
       console.log('📝 [EDIT] Enviando datos de actualización:', { clienteId: cliente.dbId, payload })
@@ -525,8 +502,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   onChange={(e) => handleInputChange("name", e.target.value)}
                   placeholder="Nombre o razón social"
                   className={`w-full ${errors.name ? "border-red-500" : ""}`}
-                  disabled={isLoading || padronLocked}
-                  readOnly={padronLocked}
+                  disabled={isLoading}
                 />
                 {errors.name && (
                   <p className="text-sm text-red-500 flex items-center gap-1">
@@ -589,7 +565,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                   <Select
                     value={formData.personeria}
                     onValueChange={(value: ClientPersoneria) => handleInputChange("personeria", value)}
-                    disabled={isLoading || padronLocked}
+                    disabled={isLoading}
                   >
                     <SelectTrigger className={errors.personeria ? "border-red-500" : ""}>
                       <SelectValue placeholder="Seleccionar personería" />
@@ -618,7 +594,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     onPadronReset={resetPadron}
                     disabled={isLoading}
                     inputId="cuil_cuit"
-                    label="CUIL / CUIT"
+                    label="CUIL / CUIT / DNI"
                   />
                   {errors.cuil_cuit && (
                     <p className="text-sm text-red-500 flex items-center gap-1 mt-1">
@@ -636,7 +612,7 @@ export function EditClientModal({ cliente, isOpen, onClose, onSuccess }: EditCli
                     onChange={(tax_condition) =>
                       setFormData((prev) => ({ ...prev, tax_condition }))
                     }
-                    disabled={isLoading || padronLocked}
+                    disabled={isLoading}
                     padronSuggested={padronSuggestedTax}
                     error={errors.tax_condition}
                   />

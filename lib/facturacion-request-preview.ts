@@ -1,5 +1,6 @@
 import { getApiUrl } from "@/config/api"
 import type { FacturarSaleRequest } from "@/lib/api"
+import { applyWsfeCondicionToFacturarPayload } from "@/lib/facturacion-form-from-cliente"
 import { labelCondicionIvaReceptor } from "@/lib/facturacion-cliente-fiscal"
 import { facturadorTipoRequiereIva, getTipoComprobanteLabel, resolveCondicionIvaReceptorForWsfe } from "@/lib/facturacion-comprobantes"
 import type { FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
@@ -23,13 +24,63 @@ export function mergeFacturarSaleRequestBody(body: FacturarSaleRequest): Factura
     ...(body.cuitEmisor == null && storedCuit ? { cuitEmisor: storedCuit } : {}),
     ...(body.puntoVenta == null && storedPv != null ? { puntoVenta: storedPv } : {}),
   }
-  const tipo = merged.tipo ?? 6
-  const condicionErp = merged.condicionIvaReceptor ?? 5
-  const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
-  if (condicionWsfe !== condicionErp) {
-    return { ...merged, condicionIvaReceptor: condicionWsfe }
+  if (merged.fiscalManualConfig === true) return merged
+  return applyWsfeCondicionToFacturarPayload(merged)
+}
+
+export type ExtractFacturarBodyResult =
+  | { ok: true; body: FacturarSaleRequest }
+  | { ok: false; error: string }
+
+/**
+ * Extrae el body de POST /sales/:id/facturar desde el JSON de vista previa
+ * (objeto completo con `httpRequest.body`) o desde un body plano.
+ */
+export function extractFacturarBodyFromPreviewJson(raw: string): ExtractFacturarBodyResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw.trim())
+  } catch {
+    return { ok: false, error: "JSON inválido. Revisá comas, comillas y llaves." }
   }
-  return merged
+
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, error: "El JSON debe ser un objeto." }
+  }
+
+  const root = parsed as Record<string, unknown>
+  let body: Record<string, unknown> | null = null
+
+  if (root.httpRequest && typeof root.httpRequest === "object") {
+    const httpRequest = root.httpRequest as Record<string, unknown>
+    if (httpRequest.body && typeof httpRequest.body === "object") {
+      body = httpRequest.body as Record<string, unknown>
+    }
+  }
+
+  if (
+    !body &&
+    ("tipo" in root || "condicionIvaReceptor" in root || "docTipo" in root || "concepto" in root)
+  ) {
+    body = root
+  }
+
+  if (!body) {
+    return {
+      ok: false,
+      error:
+        "No se encontró httpRequest.body. Editá esa sección o pegá un objeto con tipo, condicionIvaReceptor y docTipo.",
+    }
+  }
+
+  return {
+    ok: true,
+    body: {
+      ...(body as FacturarSaleRequest),
+      fiscalManualConfig: true,
+      skipPadronCondicionCheck: true,
+    },
+  }
 }
 
 export interface FacturarHttpRequestPreview {
@@ -80,8 +131,12 @@ export interface FacturarFullPayloadPreviewReceptor {
   razonSocial: string
   docTipo: number
   docNro: number
+  /** Condición enviada a WSFE (httpRequest / facturador). */
   condicionIvaReceptor: number
   condicionIvaLabel: string
+  /** Condición fiscal en ERP/padrón cuando difiere del código WSFE (ej. monotributo 6 → WSFE 5). */
+  condicionIvaReceptorErp?: number
+  condicionIvaErpLabel?: string
   taxConditionEnErp?: string | null
   domicilio?: string | null
 }
@@ -161,7 +216,11 @@ export function buildFacturarFullPayloadPreview(
   const body = mergeFacturarSaleRequestBody(args.facturarPayload)
   const tipo = body.tipo ?? 6
   const concepto = body.concepto ?? 1
-  const condicion = body.condicionIvaReceptor ?? 5
+  const condicionErp = body.condicionIvaReceptor ?? 5
+  const condicionWsfe =
+    body.fiscalManualConfig === true
+      ? condicionErp
+      : resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
   const requiereIva = facturadorTipoRequiereIva(tipo)
   const fechaComprobante = resolveFechaComprobante(args.fechaCbte)
   const saleDate = normalizeFechaYmd(args.saleDate)
@@ -223,7 +282,7 @@ export function buildFacturarFullPayloadPreview(
     tipo,
     puntoVenta,
     docTipo,
-    condicionIvaReceptor: condicion,
+    condicionIvaReceptor: condicionWsfe,
     concepto,
     importe: requiereIva && ivaArray?.length
       ? facturadorImporteFromIvaArray(ivaArray)
@@ -294,7 +353,9 @@ export function buildFacturarFullPayloadPreview(
     nota:
       "httpRequest.body es lo que envía el navegador en POST /sales/:id/facturar. " +
       "facturadorPayload es lo que el backend envía a POST /api/facturas (MultiFacturador). " +
-      "receptor, items y totales son solo ERP; importe = suma(iva[].base + iva[].cuota). " +
+      "receptor.condicionIvaReceptor es el código WSFE (igual que httpRequest.body). " +
+      "condicionIvaReceptorErp, si aparece, es la condición del padrón/ERP. " +
+      "items y totales son del ERP; importe = suma(iva[].base + iva[].cuota). " +
       "Ítems exentos (0%): importe_exento en ERP, base en iva id 3 — no neto_gravado.",
     httpRequest: {
       method: "POST",
@@ -316,7 +377,20 @@ export function buildFacturarFullPayloadPreview(
       cuitEmisor: body.cuitEmisor ?? getStoredFacturacionCuitEmisor(),
       puntoVenta: body.puntoVenta ?? getStoredFacturacionPuntoVenta() ?? null,
     },
-    receptor: args.receptor,
+    receptor: (() => {
+      const condicionWsfe = body.condicionIvaReceptor ?? 5
+      const condicionErp = args.receptor.condicionIvaReceptor
+      const receptor: FacturarFullPayloadPreviewReceptor = {
+        ...args.receptor,
+        condicionIvaReceptor: condicionWsfe,
+        condicionIvaLabel: labelCondicionIvaReceptor(condicionWsfe),
+      }
+      if (condicionErp !== condicionWsfe) {
+        receptor.condicionIvaReceptorErp = condicionErp
+        receptor.condicionIvaErpLabel = labelCondicionIvaReceptor(condicionErp)
+      }
+      return receptor
+    })(),
     comprobante,
     items,
     totales,

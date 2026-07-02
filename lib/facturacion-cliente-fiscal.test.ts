@@ -24,8 +24,8 @@ function cliente(partial: Partial<Cliente> & Pick<Cliente, "id" | "name" | "code
 }
 
 describe("facturacion-cliente-fiscal — tipo comprobante", () => {
-  it("emisor RI: monotributo receptor usa Factura B, no Factura C", () => {
-    expect(resolveTipoComprobanteFromCondicionIvaReceptor(6, "responsable_inscripto")).toBe(6)
+  it("emisor RI: monotributo receptor usa Factura A; consumidor final Factura B", () => {
+    expect(resolveTipoComprobanteFromCondicionIvaReceptor(6, "responsable_inscripto")).toBe(1)
     expect(resolveTipoComprobanteFromCondicionIvaReceptor(5, "responsable_inscripto")).toBe(6)
     expect(resolveTipoComprobanteFromCondicionIvaReceptor(1, "responsable_inscripto")).toBe(1)
   })

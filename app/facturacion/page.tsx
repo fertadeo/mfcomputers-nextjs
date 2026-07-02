@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { ERPLayout } from "@/components/erp-layout"
 import { Protected } from "@/components/protected"
@@ -57,6 +57,7 @@ import {
   type EmitirNotaCreditoError,
   type FacturarSaleRequest,
   type FacturarSaleError,
+  type FacturarSugerenciaData,
   type NotaCreditoEmisionData,
   type RepairOrder,
   type Sale,
@@ -83,15 +84,14 @@ import {
   getStoredFacturacionCuitEmisor,
   getStoredFacturacionPuntoVenta,
   saveFacturacionFormDefaults,
+  setEmitirConDefaultsGuardados,
 } from "@/lib/facturacion-settings"
 import { canEmitNotaCredito, canFacturarSaleViaApi, canReemitirComprobante, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
 import { externalInvoiceBadgeLabel, IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale, isLinkedPosExternalSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
 import {
-  CONDICIONES_IVA_RECEPTOR,
   formatComprobanteAfipReferencia,
   getNotaCreditoTipoForFactura,
   getTipoComprobanteLabel,
-  TIPOS_COMPROBANTE_AFIP,
 } from "@/lib/facturacion-comprobantes"
 import {
   extractFacturacionEmisionFromResponse,
@@ -107,6 +107,7 @@ import { ResizableTableHead } from "@/components/resizable-table-head"
 import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-preview"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
+import { FacturacionFiscalConfigPanel } from "@/components/facturacion-fiscal-config-panel"
 import { SaleCurrencyBadge } from "@/components/sale-currency-badge"
 import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
 import { ClienteInfoCard } from "@/components/cliente-picker"
@@ -293,6 +294,7 @@ export default function FacturacionPage() {
   const [form, setForm] = useState<FacturarSaleRequest>(() => buildDefaultFacturarFormRequest())
   const [showAdvancedEmitForm, setShowAdvancedEmitForm] = useState(() => !getEmitirConDefaultsGuardados())
   const [defaultsSavedHint, setDefaultsSavedHint] = useState(false)
+  const [rememberFiscalDefaults, setRememberFiscalDefaults] = useState(false)
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
   const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
   const [creditNoteArcaResolved, setCreditNoteArcaResolved] = useState<ResolvedSaleArcaEmision | null>(null)
@@ -327,6 +329,8 @@ export default function FacturacionPage() {
   const [confirmLinesLoading, setConfirmLinesLoading] = useState(false)
   const [confirmLinesError, setConfirmLinesError] = useState<string | null>(null)
   const [fiscalSugerenciaMotivo, setFiscalSugerenciaMotivo] = useState<string | null>(null)
+  const [facturarSugerencia, setFacturarSugerencia] = useState<FacturarSugerenciaData | null>(null)
+  const fiscalLoadedBillableKeyRef = useRef<string | null>(null)
 
   const [emisorCuitMostrar, setEmisorCuitMostrar] = useState<string>(() => {
     const stored = typeof window !== "undefined" ? getStoredFacturacionCuitEmisor() : null
@@ -355,7 +359,7 @@ export default function FacturacionPage() {
     if ((!isEmitModalOpen && !isConfirmEmitOpen) || invoiceModalMode !== "emit") return
     setShowAdvancedEmitForm(!getEmitirConDefaultsGuardados())
     setDefaultsSavedHint(false)
-  }, [isEmitModalOpen, isConfirmEmitOpen, invoiceModalMode, selectedBillableKey])
+  }, [invoiceModalMode, selectedBillableKey])
 
   const selectedBillable = useMemo(
     () => billables.find((row) => row.key === selectedBillableKey) ?? null,
@@ -688,21 +692,19 @@ export default function FacturacionPage() {
 
   useEffect(() => {
     if (
-      (!isEmitModalOpen && !isConfirmEmitOpen) ||
       selectedBillableKey == null ||
-      invoiceModalMode !== "emit"
+      invoiceModalMode !== "emit" ||
+      !selectedSale ||
+      (!isEmitModalOpen && !isConfirmEmitOpen)
     ) {
-      setModalCliente(null)
-      setModalClienteLoading(false)
+      return
+    }
+
+    if (fiscalLoadedBillableKeyRef.current === selectedBillableKey) {
       return
     }
 
     const sale = selectedSale
-    if (!sale) {
-      setModalClienteLoading(false)
-      return
-    }
-
     let cancelled = false
     setModalClienteLoading(true)
     setModalCliente(null)
@@ -722,6 +724,8 @@ export default function FacturacionPage() {
           if (!cancelled) {
             setModalCliente(null)
             setForm(buildFacturarFormForSale(null, sugerencia))
+            setFacturarSugerencia(sugerencia)
+            fiscalLoadedBillableKeyRef.current = selectedBillableKey
             setFiscalSugerenciaMotivo(sugerencia?.sugerencia?.motivo ?? null)
             console.log("[FACTURAR UI] Venta sin client_id → consumidor final (docTipo 99 / docNro 0).")
           }
@@ -736,6 +740,8 @@ export default function FacturacionPage() {
         setModalCliente(cliente)
         const nextForm = buildFacturarFormForSale(cliente, sugerencia)
         setForm(nextForm)
+        setFacturarSugerencia(sugerencia)
+        fiscalLoadedBillableKeyRef.current = selectedBillableKey
         setFiscalSugerenciaMotivo(sugerencia?.sugerencia?.motivo ?? null)
         console.log("[FACTURAR UI] Formulario fiscal desde cliente ERP:", {
           clientId: sale.client_id,
@@ -751,6 +757,8 @@ export default function FacturacionPage() {
         if (!cancelled) {
           setModalCliente(null)
           setForm(buildFacturarFormForSale(null, null))
+          setFacturarSugerencia(null)
+          setFiscalSugerenciaMotivo(null)
         }
       } finally {
         if (!cancelled) setModalClienteLoading(false)
@@ -761,10 +769,22 @@ export default function FacturacionPage() {
     return () => {
       cancelled = true
     }
-    // Nota: no incluir `sales` en dependencias: si se refresca el listado con el modal abierto,
-    // no debe reiniciarse el formulario ni volver a cargar cliente.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir modal o cambiar comprobante seleccionado
-  }, [isEmitModalOpen, isConfirmEmitOpen, selectedBillableKey, invoiceModalMode, selectedSale])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recargar al abrir emisión o cambiar fila
+  }, [
+    selectedBillableKey,
+    invoiceModalMode,
+    selectedSale?.id,
+    isEmitModalOpen,
+    isConfirmEmitOpen,
+  ])
+
+  useEffect(() => {
+    if (!isEmitModalOpen && !isConfirmEmitOpen) {
+      fiscalLoadedBillableKeyRef.current = null
+      setModalCliente(null)
+      setModalClienteLoading(false)
+    }
+  }, [isEmitModalOpen, isConfirmEmitOpen])
 
   const requestEmitConfirmation = () => {
     if (!selectedBillable || !selectedSale) {
@@ -782,6 +802,7 @@ export default function FacturacionPage() {
     setErrorMsg(null)
     setErrorTitle(null)
     setErrorDetail(null)
+    setIsEmitModalOpen(false)
     setIsConfirmEmitOpen(true)
   }
 
@@ -1161,15 +1182,12 @@ export default function FacturacionPage() {
     setRetryAfterHint(null)
     try {
       let saleId = selectedSale.id
-      let saleForArca = selectedSale
 
       if (selectedBillable.kind === "repair_order") {
         saleId = await resolveSaleIdForRepairOrderFacturacion(
           selectedBillable.id,
           selectedBillable.linkedSaleId
         )
-        const saleRes = await getSale(saleId)
-        saleForArca = { ...(saleRes.data as Sale), client_name: selectedSale.client_name }
       }
 
       const payload = payloadOverride ?? buildFacturarPayload(form, modalCliente)
@@ -1200,15 +1218,6 @@ export default function FacturacionPage() {
         cacheFacturacionEmision(saleId, emision, payload)
       }
       setSuccessMsg(partes.join(" "))
-      if (emision) {
-        try {
-          await downloadArcaPdfForSale(saleForArca, emision, payload, { reportErrorOnPage: false })
-          setSuccessMsg((prev) => `${prev ?? ""} PDF ARCA descargado.`.trim())
-        } catch (pdfErr) {
-          const pdfMsg = pdfErr instanceof Error ? pdfErr.message : "Error al generar PDF"
-          setSuccessMsg((prev) => `${prev ?? ""} (PDF no descargado: ${pdfMsg})`.trim())
-        }
-      }
       setIsConfirmEmitOpen(false)
       setInvoiceModalMode("view")
       setIsEmitModalOpen(true)
@@ -1788,11 +1797,17 @@ export default function FacturacionPage() {
             <DialogContent
               className={
                 invoiceModalMode === "view"
-                  ? "flex max-h-[92vh] max-w-4xl flex-col gap-0 p-0"
-                  : "max-w-2xl"
+                  ? "flex max-h-[92vh] max-w-4xl flex-col gap-0 overflow-hidden p-0"
+                  : "flex max-h-[92vh] max-w-2xl flex-col gap-0 overflow-hidden p-0"
               }
             >
-              <DialogHeader className={invoiceModalMode === "view" ? "shrink-0 border-b px-6 py-4" : undefined}>
+              <DialogHeader
+                className={
+                  invoiceModalMode === "view" || invoiceModalMode === "emit"
+                    ? "shrink-0 border-b px-6 py-4"
+                    : undefined
+                }
+              >
                 <DialogTitle>{invoiceModalMode === "view" ? "Comprobante emitido" : "Emitir comprobante"}</DialogTitle>
                 <DialogDescription>
                   {invoiceModalMode === "view"
@@ -1804,11 +1819,13 @@ export default function FacturacionPage() {
               </DialogHeader>
 
               {!selectedSale ? (
-                <Alert
-                  variant="warning"
-                  title="Sin comprobante seleccionado"
-                  description="Seleccioná una venta u orden de reparación para habilitar la facturación."
-                />
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                  <Alert
+                    variant="warning"
+                    title="Sin comprobante seleccionado"
+                    description="Seleccioná una venta u orden de reparación para habilitar la facturación."
+                  />
+                </div>
               ) : invoiceModalMode === "view" ? (
                 <>
                   {selectedSale && isImportedSale(selectedSale) ? (
@@ -2003,6 +2020,7 @@ export default function FacturacionPage() {
                   </DialogFooter>
                 </>
               ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                 <div className="space-y-4">
                   <div className="rounded-lg border p-3 text-sm space-y-1">
                     <div className="font-medium">{selectedSale.sale_number}</div>
@@ -2100,18 +2118,21 @@ export default function FacturacionPage() {
                       description={
                         <div className="space-y-2 text-sm">
                           <p>
-                            Se emitirá{" "}
+                            Configuración actual:{" "}
                             <TipoComprobanteBadge tipo={form.tipo} className="align-middle" /> (
-                            {getTipoComprobanteLabel(form.tipo)}) según{" "}
-                            {modalCliente?.tax_condition
-                              ? formatTaxConditionLabel(modalCliente.tax_condition)
-                              : labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)}{" "}
-                            del cliente.
+                            {getTipoComprobanteLabel(form.tipo)}), condición IVA receptor{" "}
+                            {form.condicionIvaReceptor} (
+                            {labelCondicionIvaReceptor(form.condicionIvaReceptor ?? 5)}).
+                            {modalCliente?.tax_condition ? (
+                              <>
+                                {" "}
+                                Cliente en ERP: {formatTaxConditionLabel(modalCliente.tax_condition)}.
+                              </>
+                            ) : null}
                           </p>
                           <p className="text-muted-foreground text-xs">
-                            El padrón indica la condición IVA del <strong>cliente</strong> (receptor). El tipo B o C lo
-                            define el régimen de <strong>tu empresa</strong> en el servidor (
-                            {getEmisorRegimenLabel(getEmisorRegimenFromApi())}).{" "}
+                            Podés cambiar tipo y condición en opciones avanzadas; la vista previa y el POST usan esos
+                            valores. ARCA puede rechazar combinaciones inválidas.{" "}
                             {fiscalSugerenciaMotivo ? `Sugerencia API: ${fiscalSugerenciaMotivo}` : null}
                           </p>
                         </div>
@@ -2149,9 +2170,15 @@ export default function FacturacionPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <form
+                      className="space-y-4"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        requestEmitConfirmation()
+                      }}
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-medium">Opciones de emisión</p>
+                        <p className="text-sm font-medium">Configuración fiscal</p>
                         {getEmitirConDefaultsGuardados() ? (
                           <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdvancedEmitForm(false)}>
                             Volver a emisión rápida
@@ -2159,165 +2186,38 @@ export default function FacturacionPage() {
                         ) : null}
                       </div>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2 sm:col-span-2">
-                          <Label htmlFor="facturar-tipo-comprobante">Tipo de comprobante</Label>
-                          <Select
-                            value={String(form.tipo ?? 6)}
-                            onValueChange={(value) =>
-                              setForm((prev) => ({ ...prev, tipo: parseInt(value, 10) || 6 }))
-                            }
-                          >
-                            <SelectTrigger id="facturar-tipo-comprobante" className="w-full">
-                              <SelectValue placeholder="Elegí tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TIPOS_COMPROBANTE_AFIP.map((t) => (
-                                <SelectItem key={t.value} value={String(t.value)}>
-                                  {t.label} — código {t.value}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-muted-foreground text-xs">
-                            El tipo se sugiere automáticamente desde la condición fiscal del cliente; al cambiar la
-                            condición IVA del receptor se actualiza el tipo sugerido.
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="facturar-condicion-iva">Condición IVA receptor</Label>
-                          <Select
-                            value={String(form.condicionIvaReceptor ?? 5)}
-                            onValueChange={(value) => {
-                              const cond = parseInt(value, 10) || 5
-                              const tipo = resolveTipoComprobanteFromCondicionIvaReceptor(cond)
-                              setForm((prev) => ({
-                                ...prev,
-                                condicionIvaReceptor: cond,
-                                tipo,
-                              }))
-                            }}
-                          >
-                            <SelectTrigger id="facturar-condicion-iva" className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {CONDICIONES_IVA_RECEPTOR.map((c) => (
-                                <SelectItem key={c.value} value={String(c.value)}>
-                                  {c.label} ({c.value})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2 sm:col-span-2">
-                          <Label htmlFor="facturar-concepto">Concepto</Label>
-                          <Select
-                            value={String(form.concepto ?? 1)}
-                            onValueChange={(value) =>
-                              setForm((prev) => ({ ...prev, concepto: Number(value) as 1 | 2 | 3 }))
-                            }
-                          >
-                            <SelectTrigger id="facturar-concepto" className="w-full">
-                              <SelectValue placeholder="Elegí concepto" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1 - Productos</SelectItem>
-                              <SelectItem value="2">2 - Servicios</SelectItem>
-                              <SelectItem value="3">3 - Productos + servicios</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="facturar-doc-tipo">Tipo de documento receptor (`docTipo`)</Label>
-                          <Input
-                            id="facturar-doc-tipo"
-                            type="number"
-                            value={form.docTipo ?? ""}
-                            onChange={(e) =>
-                              setForm((prev) => ({
-                                ...prev,
-                                docTipo: e.target.value === "" ? undefined : Number(e.target.value),
-                              }))
-                            }
-                            placeholder="80 = CUIT, 99 = consumidor final"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="facturar-doc-nro">Número de documento receptor (`docNro`)</Label>
-                          <Input
-                            id="facturar-doc-nro"
-                            value={form.docNro ?? ""}
-                            onChange={(e) =>
-                              setForm((prev) => ({
-                                ...prev,
-                                docNro: e.target.value ? Number(e.target.value) : undefined,
-                              }))
-                            }
-                            placeholder="Con docTipo 99 suele ser 0"
-                          />
-                        </div>
-
-                        {(form.concepto === 2 || form.concepto === 3) && (
-                          <>
-                            <div className="space-y-2">
-                              <Label htmlFor="facturar-servicio-desde">Servicio — fecha desde</Label>
-                              <Input
-                                id="facturar-servicio-desde"
-                                type="date"
-                                value={form.fechaServicioDesde ?? ""}
-                                onChange={(e) =>
-                                  setForm((prev) => ({
-                                    ...prev,
-                                    fechaServicioDesde: e.target.value || undefined,
-                                  }))
-                                }
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="facturar-servicio-hasta">Servicio — fecha hasta</Label>
-                              <Input
-                                id="facturar-servicio-hasta"
-                                type="date"
-                                value={form.fechaServicioHasta ?? ""}
-                                onChange={(e) =>
-                                  setForm((prev) => ({
-                                    ...prev,
-                                    fechaServicioHasta: e.target.value || undefined,
-                                  }))
-                                }
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
+                      <FacturacionFiscalConfigPanel
+                        value={form}
+                        onChange={setForm}
+                        cliente={modalCliente}
+                        sugerencia={facturarSugerencia}
+                        showSaveAsDefault
+                        saveAsDefault={rememberFiscalDefaults}
+                        onSaveAsDefaultChange={(checked) => {
+                          setRememberFiscalDefaults(checked)
+                          if (checked) {
                             saveFacturacionFormDefaults({
                               tipo: form.tipo ?? 6,
                               condicionIvaReceptor: form.condicionIvaReceptor ?? 5,
                               concepto: (form.concepto ?? 1) as 1 | 2 | 3,
                             })
+                            setEmitirConDefaultsGuardados(true)
                             setDefaultsSavedHint(true)
                             setTimeout(() => setDefaultsSavedHint(false), 2500)
-                          }}
-                        >
-                          {defaultsSavedHint ? "Guardado" : "Guardar como predeterminado"}
+                          }
+                        }}
+                      />
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="submit" size="sm">
+                          <Send className="mr-2 h-4 w-4" />
+                          Revisar y confirmar emisión
                         </Button>
                         <Button type="button" variant="ghost" size="sm" asChild>
-                          <Link href="/configuracion?tab=facturacion">Abrir Configuración ARCA</Link>
+                          <Link href="/configuracion?tab=facturacion">Configuración ARCA global</Link>
                         </Button>
                       </div>
-                    </div>
+                    </form>
                   )}
 
                   <div className="flex flex-wrap gap-2">
@@ -2335,8 +2235,9 @@ export default function FacturacionPage() {
                     Usá reintento forzado solo si la venta ya tuvo facturación previa y operaciones lo confirma.
                   </p>
                 </div>
+                </div>
               )}
-              <DialogFooter>
+              <DialogFooter className="shrink-0 border-t px-6 py-4">
                 {invoiceModalMode === "view" ? (
                   <Button variant="outline" onClick={() => setIsEmitModalOpen(false)}>
                     Cerrar
@@ -2383,7 +2284,25 @@ export default function FacturacionPage() {
             facturarPayload={facturarPayloadForEmit}
             emisorCuitLabel={emisorCuitMostrar}
             isSubmitting={isSubmitting}
-            onConfigure={() => setIsEmitModalOpen(true)}
+            onConfigure={() => {
+              setShowAdvancedEmitForm(true)
+              setIsConfirmEmitOpen(false)
+              setIsEmitModalOpen(true)
+            }}
+            facturarSugerencia={facturarSugerencia}
+            onFiscalFormApply={(next, { saveAsDefault }) => {
+              setForm(next)
+              setShowAdvancedEmitForm(true)
+              if (saveAsDefault) {
+                saveFacturacionFormDefaults({
+                  tipo: next.tipo ?? 6,
+                  condicionIvaReceptor: next.condicionIvaReceptor ?? 5,
+                  concepto: (next.concepto ?? 1) as 1 | 2 | 3,
+                })
+                setEmitirConDefaultsGuardados(true)
+              }
+            }}
+            manualFiscalConfig={form.fiscalManualConfig === true}
             selectedBillableKey={selectedBillableKey}
             onReceptorCuitChange={(raw: string) =>
               setForm((prev) => applyReceptorCuitToFacturarForm(prev, raw, clienteFiscalSnapshot))
@@ -2409,6 +2328,13 @@ export default function FacturacionPage() {
               setForm((prev) => ({ ...prev, condicionVentaTexto: texto }))
             }
             onConfirm={(payload) => void onSubmitFacturar(payload)}
+            onManualPayloadApply={(body) =>
+              setForm((prev) => ({
+                ...prev,
+                ...body,
+                fiscalManualConfig: true,
+              }))
+            }
           />
 
           <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>

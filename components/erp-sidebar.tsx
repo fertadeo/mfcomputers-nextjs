@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/contexts/AuthContext"
 import { useRole } from "@/app/hooks/useRole"
-import { MENU_GROUPS } from "@/app/config/menu"
+import { MENU_GROUPS, MENU_GROUP_IDS_COLLAPSED_BY_DEFAULT } from "@/app/config/menu"
 import { filterMenuGroupsByRole } from "@/app/lib/menuAuth"
 import {
   Menu,
@@ -34,7 +34,9 @@ interface ERPSidebarProps {
 export function ERPSidebar({ activeItem, onItemClick }: ERPSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(MENU_GROUP_IDS_COLLAPSED_BY_DEFAULT)
+  )
   const { logout, user } = useAuth()
   const { getCurrentRole, getCurrentRoleLabel } = useRole()
   const router = useRouter()

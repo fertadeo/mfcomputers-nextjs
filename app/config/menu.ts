@@ -311,6 +311,12 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
 ]
 
+/** Grupos del sidebar colapsados al iniciar (el resto quedan abiertos). */
+export const MENU_GROUP_IDS_COLLAPSED_BY_DEFAULT: readonly string[] = [
+  "contabilidad",
+  "administracion",
+]
+
 // Función helper para verificar si un rol tiene acceso a un item
 export function hasRoleAccess(userRole: Role | undefined, requiredRoles?: Role[]): boolean {
   if (!userRole) return false

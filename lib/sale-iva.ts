@@ -161,21 +161,27 @@ export function buildArcaIvaDiscriminado(
 export function buildFacturadorIvaArrayFromLines(
   items: Array<{ subtotal: number; iva_rate?: number | null }>
 ): Array<{ id: number; base: number; cuota: number }> {
-  const buckets = new Map<number, { base: number; cuota: number }>()
+  const buckets = new Map<number, { base: number; lineTotal: number }>()
 
   for (const item of items) {
     const rate = normalizeSaleIvaRate(item.iva_rate)
     const id = afipAlicuotaIdFromRate(rate)
-    const { neto, iva } = splitIva(item.subtotal, rate)
-    const prev = buckets.get(id) ?? { base: 0, cuota: 0 }
+    const lineTotal = Math.round(Number(item.subtotal) * 100) / 100
+    const { neto } = splitIva(lineTotal, rate)
+    const prev = buckets.get(id) ?? { base: 0, lineTotal: 0 }
     buckets.set(id, {
       base: Math.round((prev.base + neto) * 100) / 100,
-      cuota: Math.round((prev.cuota + iva) * 100) / 100,
+      lineTotal: Math.round((prev.lineTotal + lineTotal) * 100) / 100,
     })
   }
 
   return Array.from(buckets.entries())
-    .map(([id, { base, cuota }]) => ({ id, base, cuota }))
+    .map(([id, { base, lineTotal }]) => ({
+      id,
+      base,
+      cuota: Math.round((lineTotal - base) * 100) / 100,
+    }))
+    .filter((row) => row.base !== 0 || row.cuota !== 0)
     .sort((a, b) => a.id - b.id)
 }
 

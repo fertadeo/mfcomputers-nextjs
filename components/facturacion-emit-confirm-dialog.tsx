@@ -6,6 +6,7 @@ import { ArcaPadronCuitField } from "@/components/arca-padron-cuit-field"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -16,17 +17,20 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TipoComprobanteBadge } from "@/components/tipo-comprobante-badge"
-import type { Cliente, FacturarSaleRequest, Sale } from "@/lib/api"
+import type { Cliente, FacturarSaleRequest, FacturarSugerenciaData, Sale } from "@/lib/api"
 import type { BillableRow } from "@/lib/facturacion-billables"
-import { labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
+import { labelCondicionIvaReceptor, labelCondicionIvaReceptorForDisplay } from "@/lib/facturacion-cliente-fiscal"
+import { clienteCondicionIvaErp, validateFacturarReceptorFiscal } from "@/lib/facturacion-form-from-cliente"
 import { getTipoComprobanteLabel } from "@/lib/facturacion-comprobantes"
 import { getArcaPadronDisplayName, type ArcaPadronResult } from "@/lib/arca-padron"
+import { clientTaxIdValidationMessage } from "@/lib/client-tax-id"
 import { formatFacturacionFecha, type FacturacionPreviewLine } from "@/lib/facturacion-preview-lines"
 import { computeSaleIvaBreakdown, formatSaleIvaRateLabel } from "@/lib/sale-iva"
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
+import { FacturacionFiscalConfigDialog } from "@/components/facturacion-fiscal-config-dialog"
 import { ClienteInfoCard } from "@/components/cliente-picker"
 import { buildArcaInvoicePdfInputFromPreviewLines } from "@/lib/build-arca-invoice-pdf-input"
-import { buildFacturarFullPayloadPreview } from "@/lib/facturacion-request-preview"
+import { buildFacturarFullPayloadPreview, extractFacturarBodyFromPreviewJson } from "@/lib/facturacion-request-preview"
 import {
   applyCondicionVentaToFacturarPayload,
   CONDICION_VENTA_CATALOG,
@@ -44,6 +48,10 @@ import {
   requiresPadronForReceptorCuit,
   soloDigitosDoc,
 } from "@/lib/facturacion-receptor-doc"
+import {
+  formatCondicionPadronMismatchHint,
+  validateCondicionIvaConPadronSugerencia,
+} from "@/lib/facturacion-padron-condicion"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -90,15 +98,21 @@ export interface FacturacionEmitConfirmDialogProps {
   emitErrorRequestId?: string | null
   /** Body definitivo para POST /sales/:id/facturar (tras buildFacturarPayload). */
   facturarPayload: FacturarSaleRequest
+  /** Tipo/condición ajustados manualmente en configuración fiscal. */
+  manualFiscalConfig?: boolean
+  facturarSugerencia?: FacturarSugerenciaData | null
   emisorCuitLabel: string
   isSubmitting: boolean
-  onConfigure: () => void
+  onConfigure?: () => void
+  onFiscalFormApply?: (form: FacturarSaleRequest, options: { saveAsDefault: boolean }) => void
   onReceptorCuitChange: (rawInput: string) => void
   onPadronApply: (data: ArcaPadronResult) => void
   onPadronReset: () => void
   onCondicionVentaCodigoChange: (codigo: string) => void
   onCondicionVentaTextoChange: (texto: string) => void
   onConfirm: (payload: FacturarSaleRequest) => void
+  /** Sincroniza el formulario de emisión cuando el usuario aplica un JSON manual. */
+  onManualPayloadApply?: (body: FacturarSaleRequest) => void
   /** Clave de fila seleccionada (reinicia estado al cambiar comprobante). */
   selectedBillableKey?: string | null
 }
@@ -122,30 +136,45 @@ export function FacturacionEmitConfirmDialog({
   emitErrorTitle = null,
   emitErrorRequestId = null,
   facturarPayload,
+  manualFiscalConfig = false,
+  facturarSugerencia = null,
   emisorCuitLabel,
   isSubmitting,
   onConfigure,
+  onFiscalFormApply,
   onReceptorCuitChange,
   onPadronApply,
   onPadronReset,
   onCondicionVentaCodigoChange,
   onCondicionVentaTextoChange,
   onConfirm,
+  onManualPayloadApply,
   selectedBillableKey = null,
 }: FacturacionEmitConfirmDialogProps) {
   const [receptorCuitInput, setReceptorCuitInput] = useState("")
   const [padronDisplayName, setPadronDisplayName] = useState<string | null>(null)
   const [padronVerifiedDigits, setPadronVerifiedDigits] = useState<string | null>(null)
+  const [padronCondicionCodigo, setPadronCondicionCodigo] = useState<number | null>(null)
   const [payloadJsonOpen, setPayloadJsonOpen] = useState(false)
   const [payloadCopied, setPayloadCopied] = useState(false)
+  const [payloadJsonText, setPayloadJsonText] = useState("")
+  const [payloadJsonError, setPayloadJsonError] = useState<string | null>(null)
+  const [jsonManuallyApplied, setJsonManuallyApplied] = useState(false)
+  const [appliedManualBody, setAppliedManualBody] = useState<FacturarSaleRequest | null>(null)
+  const [fiscalConfigOpen, setFiscalConfigOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id))
     setPadronDisplayName(null)
     setPadronVerifiedDigits(null)
+    setPadronCondicionCodigo(null)
     setPayloadJsonOpen(false)
     setPayloadCopied(false)
+    setPayloadJsonText("")
+    setPayloadJsonError(null)
+    setJsonManuallyApplied(false)
+    setAppliedManualBody(null)
   }, [open, billable?.key, selectedBillableKey])
 
   useEffect(() => {
@@ -198,8 +227,11 @@ export function FacturacionEmitConfirmDialog({
       ? formatCuitInputDisplay(receptorCuitDigits)
       : null
 
-  const needsPadron =
-    requiresPadronForReceptorCuit(ventaDestinatario.cuitDigits, receptorCuitDigits, esConsumidorFinal)
+  const needsPadron = requiresPadronForReceptorCuit(
+    ventaDestinatario.cuitDigits,
+    receptorCuitDigits,
+    esConsumidorFinal
+  )
   const padronPending = needsPadron && padronVerifiedDigits !== receptorCuitDigits
 
   const facturarSaleId = useMemo(() => {
@@ -220,12 +252,14 @@ export function FacturacionEmitConfirmDialog({
 
   const payloadParaEmision = useMemo(() => {
     const domicilio = [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null
-    return applyCondicionVentaToFacturarPayload(facturarPayload, {
+    const base = appliedManualBody ?? facturarPayload
+    return applyCondicionVentaToFacturarPayload(base, {
       fechaComprobante: fechaCbte ?? saleDate ?? sale?.sale_date,
       receptorRazonSocial: comprobanteDestinatarioNombre,
       receptorDomicilio: domicilio,
     })
   }, [
+    appliedManualBody,
     facturarPayload,
     fechaCbte,
     saleDate,
@@ -235,12 +269,48 @@ export function FacturacionEmitConfirmDialog({
     cliente?.city,
   ])
 
+  const condicionPadronValidation = useMemo(() => {
+    if (
+      manualFiscalConfig ||
+      appliedManualBody ||
+      esConsumidorFinal ||
+      padronPending ||
+      padronCondicionCodigo == null
+    ) {
+      return null
+    }
+    return validateCondicionIvaConPadronSugerencia(
+      payloadParaEmision.condicionIvaReceptor ?? facturarPayload.condicionIvaReceptor ?? 5,
+      padronCondicionCodigo,
+      payloadParaEmision.tipo ?? facturarPayload.tipo ?? 6
+    )
+  }, [
+    esConsumidorFinal,
+    padronPending,
+    padronCondicionCodigo,
+    facturarPayload.condicionIvaReceptor,
+    facturarPayload.tipo,
+    payloadParaEmision.condicionIvaReceptor,
+    payloadParaEmision.tipo,
+    manualFiscalConfig,
+    appliedManualBody,
+  ])
+  const condicionPadronError = formatCondicionPadronMismatchHint(condicionPadronValidation ?? {
+    checked: false,
+    coincide: true,
+    condicionEnviada: payloadParaEmision.condicionIvaReceptor ?? 5,
+  })
+
   const facturarFullPayloadPreview = useMemo(() => {
     if (facturarSaleId == null || !sale) return null
 
     const docTipo = payloadParaEmision.docTipo ?? 99
     const docNro = payloadParaEmision.docNro ?? 0
-    const condicion = payloadParaEmision.condicionIvaReceptor ?? 5
+    const condicionErp =
+      form.condicionIvaReceptor ??
+      clienteCondicionIvaErp(cliente) ??
+      payloadParaEmision.condicionIvaReceptor ??
+      5
 
     return buildFacturarFullPayloadPreview({
       saleId: facturarSaleId,
@@ -255,8 +325,8 @@ export function FacturacionEmitConfirmDialog({
         razonSocial: comprobanteDestinatarioNombre,
         docTipo,
         docNro,
-        condicionIvaReceptor: condicion,
-        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicion, cliente),
+        condicionIvaReceptor: condicionErp,
+        condicionIvaLabel: labelCondicionIvaReceptorForDisplay(condicionErp, cliente),
         taxConditionEnErp: cliente?.tax_condition ?? null,
         domicilio: [cliente?.address, cliente?.city].filter(Boolean).join(", ") || null,
       },
@@ -271,6 +341,8 @@ export function FacturacionEmitConfirmDialog({
     totalComprobante,
     comprobanteDestinatarioNombre,
     cliente,
+    form.condicionIvaReceptor,
+    form.tipo,
   ])
 
   const arcaInvoicePreview = useMemo(() => {
@@ -302,10 +374,48 @@ export function FacturacionEmitConfirmDialog({
     ? JSON.stringify(facturarFullPayloadPreview, null, 2)
     : ""
 
+  useEffect(() => {
+    if (!open || jsonManuallyApplied) return
+    setPayloadJsonText(facturarRequestJson)
+  }, [open, facturarRequestJson, jsonManuallyApplied])
+
+  const jsonPendingApply =
+    !jsonManuallyApplied &&
+    payloadJsonText.trim() !== "" &&
+    facturarRequestJson.trim() !== "" &&
+    payloadJsonText.trim() !== facturarRequestJson.trim()
+
+  const effectiveReceptorFiscalError = useMemo(() => {
+    if (!sale) return receptorFiscalError
+    if (appliedManualBody) {
+      return validateFacturarReceptorFiscal(sale, cliente, payloadParaEmision)
+    }
+    return receptorFiscalError
+  }, [sale, cliente, payloadParaEmision, appliedManualBody, receptorFiscalError])
+
+  const applyPayloadJson = () => {
+    const result = extractFacturarBodyFromPreviewJson(payloadJsonText)
+    if (!result.ok) {
+      setPayloadJsonError(result.error)
+      return
+    }
+    setPayloadJsonError(null)
+    setAppliedManualBody(result.body)
+    setJsonManuallyApplied(true)
+    onManualPayloadApply?.(result.body)
+  }
+
+  const resetPayloadJson = () => {
+    setJsonManuallyApplied(false)
+    setAppliedManualBody(null)
+    setPayloadJsonError(null)
+    setPayloadJsonText(facturarRequestJson)
+  }
+
   const copyPayloadJson = async () => {
-    if (!facturarRequestJson) return
+    if (!payloadJsonText) return
     try {
-      await navigator.clipboard.writeText(facturarRequestJson)
+      await navigator.clipboard.writeText(payloadJsonText)
       setPayloadCopied(true)
       window.setTimeout(() => setPayloadCopied(false), 2000)
     } catch {
@@ -409,12 +519,17 @@ export function FacturacionEmitConfirmDialog({
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                     <span className="text-muted-foreground">Comprobante a emitir: </span>
-                    <TipoComprobanteBadge tipo={form.tipo} />
-                    <span className="text-sm">{getTipoComprobanteLabel(form.tipo)}</span>
+                    <TipoComprobanteBadge tipo={facturarPayload.tipo} />
+                    <span className="text-sm">{getTipoComprobanteLabel(facturarPayload.tipo)}</span>
                     <span className="text-muted-foreground text-xs">
-                      · IVA receptor {form.condicionIvaReceptor} (
-                      {labelCondicionIvaReceptorForDisplay(form.condicionIvaReceptor ?? 5, cliente)})
+                      · IVA receptor {facturarPayload.condicionIvaReceptor} (
+                      {labelCondicionIvaReceptor(facturarPayload.condicionIvaReceptor ?? 5)})
                     </span>
+                    {manualFiscalConfig ? (
+                      <Badge variant="secondary" className="text-xs">
+                        Configuración manual
+                      </Badge>
+                    ) : null}
                   </div>
                   <div>
                     <span className="text-muted-foreground">Concepto: </span>
@@ -425,7 +540,7 @@ export function FacturacionEmitConfirmDialog({
                     <span className="font-mono text-xs">
                       {esConsumidorFinal
                         ? "tipo 99 · sin número (consumidor final)"
-                        : `tipo ${form.docTipo ?? "—"} · ${form.docNro ?? 0}`}
+                        : `tipo ${facturarPayload.docTipo ?? "—"} · ${facturarPayload.docNro ?? 0}`}
                     </span>
                   </div>
                 </div>
@@ -501,12 +616,16 @@ export function FacturacionEmitConfirmDialog({
                   cuitValue={receptorCuitInput}
                   disabled={isSubmitting || clienteLoading}
                   onCuitChange={(formatted) => {
+                    const d = soloDigitosDoc(formatted)
+                    const prevDigits = soloDigitosDoc(receptorCuitInput)
                     setReceptorCuitInput(formatted)
                     onReceptorCuitChange(formatted)
-                    const d = soloDigitosDoc(formatted)
+                    // Tras consulta ARCA el campo se reformatea con los mismos dígitos; no limpiar verificación.
+                    if (d.length > 0 && d === prevDigits) return
                     if (d !== padronVerifiedDigits) {
                       setPadronVerifiedDigits(null)
                       setPadronDisplayName(null)
+                      setPadronCondicionCodigo(null)
                     }
                   }}
                   onApplyPadron={(data) => {
@@ -514,11 +633,17 @@ export function FacturacionEmitConfirmDialog({
                     const digits = soloDigitosDoc(data.cuit)
                     setPadronVerifiedDigits(digits)
                     setPadronDisplayName(getArcaPadronDisplayName(data) || null)
+                    setPadronCondicionCodigo(
+                      data.condicionIvaCodigo != null && data.condicionIvaCodigo > 0
+                        ? data.condicionIvaCodigo
+                        : null
+                    )
                   }}
                   onPadronReset={() => {
                     onPadronReset()
                     setPadronVerifiedDigits(null)
                     setPadronDisplayName(null)
+                    setPadronCondicionCodigo(null)
                   }}
                 />
 
@@ -526,13 +651,20 @@ export function FacturacionEmitConfirmDialog({
                   <p className="text-muted-foreground text-xs">Cargando datos del cliente de la venta…</p>
                 ) : null}
                 {cuitInvalid ? (
-                  <p className="text-destructive text-xs">El CUIT debe tener 11 dígitos o dejá el campo vacío.</p>
+                  <p className="text-destructive text-xs">{clientTaxIdValidationMessage()} o dejá el campo vacío.</p>
                 ) : null}
                 {padronPending ? (
                   <Alert
                     variant="warning"
-                    title="Consultá ARCA para el nuevo CUIT"
-                    description="Ingresaste un CUIT distinto al de la venta. Usá «Buscar en ARCA» o esperá la consulta automática para validar el destinatario."
+                    title="Consultá ARCA para validar el CUIT"
+                    description="Con CUIT/CUIL es obligatorio consultar el padrón ARCA antes de emitir. Usá «Buscar en ARCA» o esperá la consulta automática."
+                  />
+                ) : null}
+                {condicionPadronError ? (
+                  <Alert
+                    variant="error"
+                    title="Condición IVA distinta al padrón ARCA"
+                    description={condicionPadronError}
                   />
                 ) : null}
                 {esConsumidorFinal ? (
@@ -724,37 +856,92 @@ export function FacturacionEmitConfirmDialog({
                 {payloadJsonOpen ? (
                   <div className="border-t px-4 pb-4 pt-3 space-y-2">
                     <p className="text-muted-foreground text-xs">
-                      Incluye el POST al backend (<code className="text-[11px]">httpRequest</code>), receptor (razón
-                      social, CUIT, condición IVA), ítems con alícuotas, neto/IVA y totales. Los productos no van en el
-                      body del POST: el servidor los lee de la venta (<code className="text-[11px]">sale_items</code>).
-                      No incluye cabeceras de autenticación.
+                      Podés editar el JSON directamente. Lo que se envía al emitir es{" "}
+                      <code className="text-[11px]">httpRequest.body</code> (o un objeto plano con{" "}
+                      <code className="text-[11px]">tipo</code> /{" "}
+                      <code className="text-[11px]">condicionIvaReceptor</code>). Usá{" "}
+                      <strong>Aplicar cambios</strong> antes de confirmar. Los ítems siguen leyéndose de la venta en el
+                      servidor.
                     </p>
-                    <div className="relative">
-                      <pre className="max-h-[min(28rem,50vh)] overflow-auto rounded-md bg-muted/60 p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
-                        {facturarRequestJson}
-                      </pre>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="absolute right-2 top-2 h-8 bg-background/90"
-                        onClick={() => void copyPayloadJson()}
-                        disabled={!facturarRequestJson}
-                      >
-                        <Copy className="mr-1.5 h-3.5 w-3.5" />
-                        {payloadCopied ? "Copiado" : "Copiar"}
-                      </Button>
+                    {jsonManuallyApplied ? (
+                      <Badge variant="outline" className="text-xs">
+                        Payload manual activo — se enviará httpRequest.body editado
+                      </Badge>
+                    ) : null}
+                    {jsonPendingApply ? (
+                      <Alert
+                        variant="warning"
+                        title="Cambios sin aplicar"
+                        description="Editaste el JSON pero aún no aplicaste los cambios. Usá «Aplicar cambios» o «Restaurar automático»."
+                      />
+                    ) : null}
+                    {payloadJsonError ? (
+                      <Alert variant="error" title="JSON inválido" description={payloadJsonError} />
+                    ) : null}
+                    <div className="relative space-y-2">
+                      <Textarea
+                        value={payloadJsonText}
+                        onChange={(e) => {
+                          setPayloadJsonText(e.target.value)
+                          if (payloadJsonError) setPayloadJsonError(null)
+                        }}
+                        disabled={isSubmitting}
+                        className="min-h-[min(28rem,50vh)] max-h-[min(28rem,50vh)] overflow-auto font-mono text-xs leading-relaxed"
+                        spellCheck={false}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={applyPayloadJson}
+                          disabled={isSubmitting || !payloadJsonText.trim()}
+                        >
+                          Aplicar cambios
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={resetPayloadJson}
+                          disabled={isSubmitting || (!jsonManuallyApplied && !jsonPendingApply)}
+                        >
+                          Restaurar automático
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void copyPayloadJson()}
+                          disabled={!payloadJsonText}
+                        >
+                          <Copy className="mr-1.5 h-3.5 w-3.5" />
+                          {payloadCopied ? "Copiado" : "Copiar"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
               </div>
 
-              {receptorFiscalError ? (
-                <Alert variant="error" title="Receptor fiscal incorrecto" description={receptorFiscalError} />
+              {effectiveReceptorFiscalError ? (
+                <Alert
+                  variant="error"
+                  title="Receptor fiscal incorrecto"
+                  description={effectiveReceptorFiscalError}
+                />
               ) : null}
 
               {itemIvaError ? (
                 <Alert variant="error" title="No se puede emitir" description={itemIvaError} />
+              ) : null}
+
+              {manualFiscalConfig ? (
+                <Alert
+                  variant="info"
+                  title="Configuración fiscal personalizada"
+                  description="Tipo de comprobante y condición IVA fueron elegidos manualmente para esta emisión. Podés cambiarlos con el botón «Configuración fiscal» del pie del modal."
+                />
               ) : null}
 
               {form.force ? (
@@ -769,7 +956,18 @@ export function FacturacionEmitConfirmDialog({
         </div>
 
         <DialogFooter className="shrink-0 flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:justify-between">
-          <Button type="button" variant="outline" onClick={onConfigure} disabled={isSubmitting}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (onFiscalFormApply) {
+                setFiscalConfigOpen(true)
+              } else {
+                onConfigure?.()
+              }
+            }}
+            disabled={isSubmitting}
+          >
             Configuración fiscal
           </Button>
           <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
@@ -787,9 +985,12 @@ export function FacturacionEmitConfirmDialog({
                 lines.length === 0 ||
                 cuitInvalid ||
                 padronPending ||
+                !!condicionPadronError ||
                 condicionVentaOtroInvalido ||
                 !!itemIvaError ||
-                !!receptorFiscalError
+                !!effectiveReceptorFiscalError ||
+                jsonPendingApply ||
+                !!payloadJsonError
               }
             >
               {isSubmitting ? (
@@ -804,6 +1005,17 @@ export function FacturacionEmitConfirmDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {onFiscalFormApply ? (
+        <FacturacionFiscalConfigDialog
+          open={fiscalConfigOpen}
+          onOpenChange={setFiscalConfigOpen}
+          form={form}
+          cliente={cliente}
+          sugerencia={facturarSugerencia}
+          onApply={onFiscalFormApply}
+        />
+      ) : null}
     </Dialog>
   )
 }

@@ -11,15 +11,20 @@ import {
 } from "@/lib/facturacion-cliente-fiscal"
 import {
   isComprobanteClaseB,
+  isCondicionIvaMonotributoErp,
   resolveCondicionIvaReceptorForWsfe,
 } from "@/lib/facturacion-comprobantes"
 import { buildDefaultFacturarFormRequest } from "@/lib/facturacion-settings"
 import { soloDigitosDoc } from "@/lib/facturacion-receptor-doc"
+import {
+  classifyClientTaxId,
+  normalizeClientTaxIdDigits,
+} from "@/lib/client-tax-id"
 
 /** Cliente con datos fiscales confiables en el ERP (no pisar con sugerencia API). */
 export function clienteTieneDatosFiscalesErp(cliente?: Cliente | null): boolean {
   if (!cliente) return false
-  if (clienteCuitDigitos(cliente).length === 11) return true
+  if (classifyClientTaxId(clienteCuitDigitos(cliente))) return true
   if (normalizeTaxConditionFromApi(cliente.tax_condition)) return true
   if (cliente.personeria === "persona_juridica") return true
   if (cliente.condicion_iva_receptor != null && cliente.condicion_iva_receptor > 0) return true
@@ -39,7 +44,7 @@ export function clienteCondicionIvaErp(cliente?: Cliente | null): number | null 
   return null
 }
 
-/** Bloquea emitir como consumidor final (5) si el cliente tiene otra condición fiscal. */
+/** Bloquea emitir como consumidor final (5) si el cliente tiene otra condición fiscal (salvo Factura B + monotributo WSFE). */
 export function validateNoConsumidorFinalSiOtraCondicion(
   payload: FacturarSaleRequest,
   cliente: Cliente | null
@@ -47,7 +52,16 @@ export function validateNoConsumidorFinalSiOtraCondicion(
   const condicionPayload = payload.condicionIvaReceptor ?? 5
   if (condicionPayload !== 5) return null
 
+  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(condicionPayload)
   const condicionErp = clienteCondicionIvaErp(cliente)
+  if (
+    isComprobanteClaseB(tipo) &&
+    condicionErp != null &&
+    isCondicionIvaMonotributoErp(condicionErp)
+  ) {
+    return null
+  }
+
   if (condicionErp != null && condicionErp !== 5) {
     return `El cliente tiene condición IVA ${condicionErp} (${labelCondicionIvaFromErp(condicionErp)}) en el ERP; no se puede facturar como Consumidor final (5). Revisá los datos fiscales o consultá padrón ARCA.`
   }
@@ -98,15 +112,16 @@ export function validateReceptorDocumentoCondicion(payload: FacturarSaleRequest)
   return null
 }
 
-function applyWsfeCondicionToPayload(payload: FacturarSaleRequest): FacturarSaleRequest {
-  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
+/** Condición IVA WSFE en el body de POST /sales/:id/facturar (Factura B + monotributo ERP → 5). */
+export function applyWsfeCondicionToFacturarPayload(payload: FacturarSaleRequest): FacturarSaleRequest {
   const condicionErp = payload.condicionIvaReceptor ?? 5
+  const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(condicionErp)
   const condicionWsfe = resolveCondicionIvaReceptorForWsfe(tipo, condicionErp)
-  if (condicionWsfe === condicionErp) return payload
+  if (condicionWsfe === condicionErp && payload.tipo === tipo) return payload
   return { ...payload, tipo, condicionIvaReceptor: condicionWsfe }
 }
 
-/** Evita combinaciones inválidas (ej. Factura A + consumidor final sin CUIT). */
+/** Evita combinaciones inválidas graves; no bloquea pruebas manuales distintas a la sugerencia ARCA. */
 export function validateFacturarPayloadCoherence(payload: FacturarSaleRequest): string | null {
   const docCondicionErr = validateReceptorDocumentoCondicion(payload)
   if (docCondicionErr) return docCondicionErr
@@ -115,15 +130,11 @@ export function validateFacturarPayloadCoherence(payload: FacturarSaleRequest): 
   const condicion = payload.condicionIvaReceptor ?? 5
   const docTipo = payload.docTipo ?? 99
   const docNro = payload.docNro ?? 0
-  const tipoEsperado = resolveTipoComprobanteFromCondicionIvaReceptor(condicion)
-
-  if (tipo !== tipoEsperado) {
-    return `El tipo de comprobante (${tipo}) no coincide con la condición IVA del receptor (${condicion}). Debería ser tipo ${tipoEsperado}. Revisá la configuración o los datos del cliente antes de emitir.`
-  }
 
   if (tipo === 1) {
-    if (condicion !== 1) {
-      return "Factura A solo corresponde a un receptor Responsable Inscripto (condición IVA 1)."
+    const condicionOkFacturaA = condicion === 1 || isCondicionIvaMonotributoErp(condicion)
+    if (!condicionOkFacturaA) {
+      return "Factura A corresponde a receptor Responsable Inscripto (1) o Monotributo (6) con CUIT."
     }
     if (docTipo !== 80 || docNro <= 0) {
       return "Factura A requiere el CUIT del receptor (docTipo 80 con 11 dígitos)."
@@ -161,11 +172,22 @@ export function applyClienteToFacturarForm(
 
   const fiscal = resolveFacturacionDesdeCliente(cliente)
   const cuit = clienteCuitDigitos(cliente)
+  const docKind = classifyClientTaxId(cuit)
 
-  if (cuit.length === 11) {
+  if (docKind === "cuil_cuit") {
     return {
       ...base,
       docTipo: 80,
+      docNro: parseInt(cuit, 10),
+      condicionIvaReceptor: fiscal.condicionIvaReceptor,
+      tipo: fiscal.tipoComprobante,
+    }
+  }
+
+  if (docKind === "dni") {
+    return {
+      ...base,
+      docTipo: 96,
       docNro: parseInt(cuit, 10),
       condicionIvaReceptor: fiscal.condicionIvaReceptor,
       tipo: fiscal.tipoComprobante,
@@ -220,48 +242,61 @@ export function mergeSugerenciaIntoFacturarForm(
 }
 
 /**
- * Body definitivo para POST /facturar: prioriza datos fiscales del cliente cargado
- * (no deja consumidor final si hay CUIT en el ERP).
+ * Body definitivo para POST /facturar.
+ * Respeta las opciones del formulario (configuración fiscal manual); solo autocompleta
+ * docTipo/docNro desde el cliente cuando el receptor no está identificado (99 / 0).
  */
 export function buildFacturarPayload(
   form: FacturarSaleRequest,
-  cliente: Cliente | null
+  cliente: Cliente | null,
+  options?: { manualFiscalConfig?: boolean }
 ): FacturarSaleRequest {
-  if (cliente) {
-    const fromCliente = applyClienteToFacturarForm(form, cliente)
-    const payload: FacturarSaleRequest = {
-      ...form,
-      ...fromCliente,
-      concepto: form.concepto ?? fromCliente.concepto,
-      force: form.force,
-      fechaServicioDesde: form.fechaServicioDesde,
-      fechaServicioHasta: form.fechaServicioHasta,
-      cuitEmisor: form.cuitEmisor,
-      puntoVenta: form.puntoVenta,
+  const defaults = applyClienteToFacturarForm({ concepto: 1 }, cliente)
+  const manualFiscal = options?.manualFiscalConfig === true || form.fiscalManualConfig === true
+
+  const docSinIdentificar =
+    (form.docTipo == null || form.docTipo === 99) &&
+    (form.docNro == null || form.docNro === 0)
+
+  const payload: FacturarSaleRequest = {
+    ...form,
+    concepto: form.concepto ?? defaults.concepto ?? 1,
+    tipo: form.tipo ?? defaults.tipo,
+    condicionIvaReceptor: form.condicionIvaReceptor ?? defaults.condicionIvaReceptor,
+    docTipo: docSinIdentificar ? defaults.docTipo : (form.docTipo ?? defaults.docTipo),
+    docNro: docSinIdentificar ? defaults.docNro : (form.docNro ?? defaults.docNro),
+  }
+
+  if (manualFiscal) {
+    return {
+      ...payload,
+      fiscalManualConfig: true,
+      skipPadronCondicionCheck: true,
     }
-    payload.tipo = resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor ?? 5)
-    return applyWsfeCondicionToPayload(payload)
   }
 
-  const payload: FacturarSaleRequest = { ...form }
-
-  if (payload.docTipo === 80 && payload.docNro != null && payload.docNro > 0) {
-    return applyWsfeCondicionToPayload(payload)
-  }
-
-  payload.docTipo = 99
-  payload.docNro = 0
-  payload.condicionIvaReceptor = payload.condicionIvaReceptor ?? 5
-  payload.tipo =
-    payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(payload.condicionIvaReceptor)
-  return applyWsfeCondicionToPayload(payload)
+  return applyWsfeCondicionToFacturarPayload(payload)
 }
 
 export function validateFacturarReceptorFiscal(
   sale: { client_id?: number | null; client_name?: string | null },
   cliente: Cliente | null,
-  payload: FacturarSaleRequest
+  payload: FacturarSaleRequest,
+  options?: { manualFiscalConfig?: boolean }
 ): string | null {
+  const manualFiscal =
+    options?.manualFiscalConfig === true || payload.fiscalManualConfig === true
+
+  if (manualFiscal) {
+    if (!sale.client_id) return null
+    const cuit = clienteCuitDigitos(cliente)
+    const esConsumidorFinalAfip = payload.docTipo === 99 && (payload.docNro ?? 0) === 0
+    if (cuit.length === 11 && esConsumidorFinalAfip) {
+      return "La venta tiene un cliente con CUIT/CUIL en el ERP, pero el comprobante se emitiría sin documento (consumidor final). Revisá que el cliente tenga el CUIT cargado o consultá el padrón ARCA antes de emitir."
+    }
+    return null
+  }
+
   const cfErr = validateNoConsumidorFinalSiOtraCondicion(payload, cliente)
   if (cfErr) return cfErr
 
@@ -277,7 +312,10 @@ export function validateFacturarReceptorFiscal(
   if (cliente) {
     const esperada = resolveFacturacionDesdeCliente(cliente).condicionIvaReceptor
     const enviada = payload.condicionIvaReceptor ?? 5
-    if (esperada !== 5 && enviada === 5 && cuit.length === 11) {
+    const tipo = payload.tipo ?? resolveTipoComprobanteFromCondicionIvaReceptor(enviada)
+    const esMonotributoFacturaB =
+      isComprobanteClaseB(tipo) && isCondicionIvaMonotributoErp(esperada) && enviada === 5
+    if (esperada !== 5 && enviada === 5 && cuit.length === 11 && !esMonotributoFacturaB) {
       return `La condición IVA del cliente no es consumidor final, pero el comprobante se enviaría como condición ${enviada}. Revisá los datos fiscales del cliente antes de emitir.`
     }
 

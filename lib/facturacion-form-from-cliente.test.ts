@@ -39,6 +39,22 @@ describe("facturacion-form-from-cliente", () => {
     ).toBe("30123456789")
   })
 
+  it("aplica docTipo 96 para cliente con DNI", () => {
+    const form = applyClienteToFacturarForm(
+      { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
+      cliente({
+        id: 2,
+        name: "Juan Pérez",
+        code: "J1",
+        personeria: "persona_fisica",
+        tax_condition: "consumidor_final",
+        cuil_cuit: "12345678",
+      })
+    )
+    expect(form.docTipo).toBe(96)
+    expect(form.docNro).toBe(12345678)
+  })
+
   it("aplica docTipo 80 y condición RI para cliente jurídico con CUIT", () => {
     const form = applyClienteToFacturarForm(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
@@ -57,9 +73,9 @@ describe("facturacion-form-from-cliente", () => {
     expect(form.tipo).toBe(1)
   })
 
-  it("buildFacturarPayload no deja CF si el form tenía docTipo 99 pero el cliente tiene CUIT", () => {
+  it("buildFacturarPayload autocompleta doc desde cliente sin pisar tipo ni condición del form", () => {
     const payload = buildFacturarPayload(
-      { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
+      { docTipo: 99, docNro: 0, condicionIvaReceptor: 1, tipo: 1 },
       cliente({
         id: 1,
         name: "MINISTERIO TEST",
@@ -70,10 +86,12 @@ describe("facturacion-form-from-cliente", () => {
       })
     )
     expect(payload.docTipo).toBe(80)
+    expect(payload.docNro).toBe(30123456789)
     expect(payload.condicionIvaReceptor).toBe(1)
+    expect(payload.tipo).toBe(1)
   })
 
-  it("aplica Factura B a receptor monotributo cuando el emisor es RI", () => {
+  it("aplica Factura A a receptor monotributo cuando el emisor es RI", () => {
     const form = applyClienteToFacturarForm(
       { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 11 },
       cliente({
@@ -85,11 +103,11 @@ describe("facturacion-form-from-cliente", () => {
       })
     )
     expect(form.condicionIvaReceptor).toBe(6)
-    expect(form.tipo).toBe(6)
+    expect(form.tipo).toBe(1)
     expect(form.docTipo).toBe(80)
   })
 
-  it("usa tipo sugerido por la API (emisor RI → Factura B para monotributo)", () => {
+  it("usa tipo sugerido por la API (emisor RI → Factura A para monotributo)", () => {
     const form = buildFacturarFormForSale(
       cliente({
         id: 37,
@@ -102,13 +120,13 @@ describe("facturacion-form-from-cliente", () => {
         totalAmount: 2,
         condicionIvaReceptor: 6,
         sugerencia: {
-          tipo: 6,
-          label: "Factura B",
-          motivo: "Emisor RI frente a monotributo: corresponde Factura B.",
+          tipo: 1,
+          label: "Factura A",
+          motivo: "Emisor RI y receptor monotributo: corresponde Factura A.",
         },
       }
     )
-    expect(form.tipo).toBe(6)
+    expect(form.tipo).toBe(1)
     expect(form.condicionIvaReceptor).toBe(6)
   })
 
@@ -134,6 +152,16 @@ describe("facturacion-form-from-cliente", () => {
     expect(form.docNro).toBe(30709212083)
   })
 
+  it("validateFacturarPayloadCoherence permite Factura A a monotributo (6) con CUIT", () => {
+    const err = validateFacturarPayloadCoherence({
+      tipo: 1,
+      condicionIvaReceptor: 6,
+      docTipo: 80,
+      docNro: 20355026656,
+    })
+    expect(err).toBeNull()
+  })
+
   it("validateFacturarPayloadCoherence rechaza Factura A sin CUIT", () => {
     const err = validateFacturarPayloadCoherence({
       tipo: 1,
@@ -141,12 +169,17 @@ describe("facturacion-form-from-cliente", () => {
       docTipo: 99,
       docNro: 0,
     })
-    expect(err).toMatch(/no coincide/)
+    expect(err).toMatch(/Factura A/)
   })
 
-  it("buildFacturarPayload normaliza monotributo (6) a condición 7 en Factura B para WSFE", () => {
+  it("buildFacturarPayload mapea monotributo (6) a consumidor final (5) en Factura B para WSFE", () => {
     const payload = buildFacturarPayload(
-      { docTipo: 99, docNro: 0, condicionIvaReceptor: 5, tipo: 6 },
+      {
+        docTipo: 80,
+        docNro: 20355026656,
+        condicionIvaReceptor: 6,
+        tipo: 6,
+      },
       cliente({
         id: 37,
         name: "FERNANDO MANUEL TADEO SUAREZ",
@@ -157,10 +190,30 @@ describe("facturacion-form-from-cliente", () => {
     )
     expect(payload.tipo).toBe(6)
     expect(payload.docTipo).toBe(80)
-    expect(payload.condicionIvaReceptor).toBe(7)
+    expect(payload.condicionIvaReceptor).toBe(5)
   })
 
-  it("validateFacturarReceptorFiscal rechaza CF si cliente es monotributo", () => {
+  it("buildFacturarPayload respeta Factura A manual aunque el cliente sea monotributo", () => {
+    const payload = buildFacturarPayload(
+      {
+        docTipo: 80,
+        docNro: 20355026656,
+        condicionIvaReceptor: 6,
+        tipo: 1,
+      },
+      cliente({
+        id: 37,
+        name: "FERNANDO MANUEL TADEO SUAREZ",
+        code: "F1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20355026656",
+      })
+    )
+    expect(payload.tipo).toBe(1)
+    expect(payload.condicionIvaReceptor).toBe(6)
+  })
+
+  it("validateFacturarReceptorFiscal permite CF (5) en Factura B a monotributista (mapeo WSFE)", () => {
     const err = validateFacturarReceptorFiscal(
       { client_id: 37, client_name: "FERNANDO" },
       cliente({
@@ -172,7 +225,51 @@ describe("facturacion-form-from-cliente", () => {
       }),
       { docTipo: 80, docNro: 20355026656, condicionIvaReceptor: 5, tipo: 6 }
     )
-    expect(err).toMatch(/Consumidor final/)
+    expect(err).toBeNull()
+  })
+
+  it("buildFacturarPayload respeta condición manual sin mapeo WSFE", () => {
+    const payload = buildFacturarPayload(
+      {
+        docTipo: 80,
+        docNro: 20343304073,
+        condicionIvaReceptor: 5,
+        tipo: 1,
+        fiscalManualConfig: true,
+      },
+      cliente({
+        id: 1,
+        name: "MATIAS",
+        code: "M1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20343304073",
+      })
+    )
+    expect(payload.tipo).toBe(1)
+    expect(payload.condicionIvaReceptor).toBe(5)
+    expect(payload.fiscalManualConfig).toBe(true)
+    expect(payload.skipPadronCondicionCheck).toBe(true)
+  })
+
+  it("validateFacturarReceptorFiscal permite override manual Factura A + CF (5)", () => {
+    const err = validateFacturarReceptorFiscal(
+      { client_id: 1, client_name: "MATIAS" },
+      cliente({
+        id: 1,
+        name: "MATIAS DANIEL RONCATTO",
+        code: "M1",
+        tax_condition: "monotributo",
+        cuil_cuit: "20343304073",
+      }),
+      {
+        docTipo: 80,
+        docNro: 20343304073,
+        condicionIvaReceptor: 5,
+        tipo: 1,
+        fiscalManualConfig: true,
+      }
+    )
+    expect(err).toBeNull()
   })
 
   it("validateFacturarPayloadCoherence rechaza CUIT con CF en Factura A", () => {
