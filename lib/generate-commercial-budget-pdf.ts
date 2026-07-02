@@ -151,7 +151,7 @@ export function commercialPdfParamsFromApiDetail(detail: CommercialBudgetDetail)
 }
 
 function formatMoneyAr(n: number): string {
-  return n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
 function formatDateAr(iso: string): string {
