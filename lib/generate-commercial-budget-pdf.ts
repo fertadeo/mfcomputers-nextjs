@@ -170,6 +170,12 @@ function formatDateAr(iso: string): string {
 
 const LINE_ITEM_LINE_H = 11
 const LINE_ITEM_PAD_TOP = 14
+const TABLE_UNIT_COL_W = 58
+const TABLE_QTY_COL_W = 34
+const TABLE_TOT_COL_W = 66
+const TABLE_COL_GAP = 12
+/** Límite de caracteres por línea en descripciones muy largas (refuerzo al wrap por ancho). */
+const PRODUCT_DESC_MAX_CHARS_PER_LINE = 40
 
 interface BudgetTableColumns {
   colDesc: number
@@ -179,13 +185,51 @@ interface BudgetTableColumns {
   descMaxW: number
 }
 
-function getBudgetTableColumns(mx: number, contentW: number, pageW: number): BudgetTableColumns {
+function getBudgetTableColumns(mx: number, pageW: number): BudgetTableColumns {
   const colDesc = mx + 10
-  const colUnit = mx + contentW * 0.54
-  const colQty = mx + contentW * 0.74
   const colTot = pageW - mx - 10
-  const descMaxW = colUnit - colDesc - 16
+  const colQty = colTot - TABLE_TOT_COL_W - TABLE_COL_GAP
+  const colUnit = colQty - TABLE_QTY_COL_W - TABLE_COL_GAP
+  const descMaxW = colUnit - TABLE_UNIT_COL_W - colDesc - TABLE_COL_GAP
   return { colDesc, colUnit, colQty, colTot, descMaxW }
+}
+
+function wrapBudgetProductText(
+  doc: jsPDF,
+  text: string,
+  maxWidth: number,
+  fontStyle: "normal" | "bold" = "bold"
+): string[] {
+  const trimmed = text.trim() || "—"
+  doc.setFont("helvetica", fontStyle)
+  const safeWidth = Math.max(48, maxWidth - 8)
+  const fromWidth = doc.splitTextToSize(trimmed, safeWidth) as string[]
+
+  const lines: string[] = []
+  for (const line of fromWidth) {
+    if (line.length <= PRODUCT_DESC_MAX_CHARS_PER_LINE && doc.getTextWidth(line) <= safeWidth) {
+      lines.push(line)
+      continue
+    }
+
+    let remaining = line
+    while (remaining.length > 0) {
+      let end = Math.min(PRODUCT_DESC_MAX_CHARS_PER_LINE, remaining.length)
+      if (end < remaining.length) {
+        const spaceAt = remaining.lastIndexOf(" ", end)
+        if (spaceAt > 16) end = spaceAt
+      }
+      let chunk = remaining.slice(0, end).trimEnd()
+      while (chunk.length > 1 && doc.getTextWidth(chunk) > safeWidth) {
+        chunk = chunk.slice(0, -1).trimEnd()
+      }
+      if (!chunk) chunk = remaining.slice(0, 1)
+      lines.push(chunk)
+      remaining = remaining.slice(chunk.length).trimStart()
+    }
+  }
+
+  return lines.length > 0 ? lines : ["—"]
 }
 
 function drawBudgetItemsTableHeader(
@@ -353,7 +397,7 @@ function renderCommercialBudgetPdf(
       y = 48
     }
 
-    const tableCols = getBudgetTableColumns(mx, contentW, pageW)
+    const tableCols = getBudgetTableColumns(mx, pageW)
     const { colDesc, colUnit, colQty, colTot, descMaxW } = tableCols
     const tableBottomMargin = 160
 
@@ -383,11 +427,11 @@ function renderCommercialBudgetPdf(
 
         doc.setFont("helvetica", "bold")
         doc.setFontSize(9)
-        const nameLines = doc.splitTextToSize(productName, descMaxW) as string[]
+        const nameLines = wrapBudgetProductText(doc, productName, descMaxW, "bold")
         const subtitle = item.product_code ? `Código: ${item.product_code.trim()}` : ""
         doc.setFont("helvetica", "normal")
         const subtitleLines = subtitle
-          ? (doc.splitTextToSize(subtitle, descMaxW) as string[])
+          ? wrapBudgetProductText(doc, subtitle, descMaxW, "normal")
           : []
         const descLineCount = nameLines.length + subtitleLines.length
         const rowH = Math.max(26, LINE_ITEM_PAD_TOP + descLineCount * LINE_ITEM_LINE_H + 4)
@@ -490,68 +534,6 @@ function renderCommercialBudgetPdf(
     doc.setFontSize(11)
     doc.setTextColor(...BRAND_BLUE)
     doc.text("Gracias por confiar en nosotros", mx, y)
-    y += 22
-
-    const footTop = pageH - 72
-    if (y > footTop - 10) {
-      doc.addPage()
-      y = 48
-    }
-    y = Math.max(y, footTop)
-
-    doc.setDrawColor(...GRAY_LINE)
-    doc.line(mx, y, pageW - mx, y)
-    y += 10
-
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(7)
-    doc.setTextColor(...TEXT_MUTED)
-    const third = contentW / 3
-    let c1 = y
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(...BRAND_BLUE)
-    doc.text("Consultas", mx, c1)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(...TEXT_MUTED)
-    c1 += 9
-    if (COMPANY.email) {
-      doc.text(`Email: ${COMPANY.email}`, mx, c1)
-      c1 += 8
-    } else {
-      doc.text("Acercate al local o escribinos por los canales habituales.", mx, c1)
-      c1 += 8
-    }
-    if (COMPANY.phone) {
-      doc.text(`Tel: ${COMPANY.phone}`, mx, c1)
-      c1 += 8
-    }
-
-    let c2 = y
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(...BRAND_BLUE)
-    doc.text("Validez", mx + third, c2)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(...TEXT_MUTED)
-    c2 += 9
-    const validityMsg = params.valid_until
-      ? `Oferta con vigencia hasta ${formatDateAr(params.valid_until)}.`
-      : "Consultá vigencia de precios y stock al momento de confirmar."
-    c2 = drawWrapped(doc, validityMsg, mx + third, c2, third - 6, 8, 5)
-
-    let c3 = y
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(...BRAND_BLUE)
-    doc.text("Términos", mx + third * 2, c3)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(...TEXT_MUTED)
-    c3 += 9
-    const terms = doc.splitTextToSize(
-      "Documento de presupuesto. No constituye factura fiscal ni comprobante de pago. El stock se descuenta al emitir la venta.",
-      third - 6
-    ) as string[]
-    terms.forEach((t, i) => {
-      doc.text(t, mx + third * 2, c3 + i * 8)
-    })
 }
 
 export function buildCommercialBudgetPdf(
