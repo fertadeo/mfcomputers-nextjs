@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Download, Loader2 } from "lucide-react"
+import { Download, Eye, Loader2 } from "lucide-react"
 import type { Sale, SaleComprobanteHistorial } from "@/lib/api"
 import {
   historialComprobanteLabel,
@@ -13,11 +13,15 @@ import {
 export function FacturacionHistorialList({
   sale,
   downloadingKey,
+  viewingKey,
   onDownload,
+  onView,
 }: {
   sale: Sale
   downloadingKey?: string | null
+  viewingKey?: string | null
   onDownload: (row: SaleComprobanteHistorial) => void
+  onView?: (row: SaleComprobanteHistorial) => void
 }) {
   const rows = visibleSaleHistorial(sale)
   if (rows.length < 2) return null
@@ -31,8 +35,9 @@ export function FacturacionHistorialList({
       </p>
       <ol className="space-y-2">
         {rows.map((row, index) => {
-          const key = `${row.kind}-${row.cae ?? row.sequence}`
+          const key = historialDownloadKey(row)
           const downloading = downloadingKey === key
+          const viewing = viewingKey === key
           return (
             <li
               key={key}
@@ -61,20 +66,38 @@ export function FacturacionHistorialList({
                   CAE {row.cae ?? "—"}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={downloading}
-                onClick={() => onDownload(row)}
-              >
-                {downloading ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Download className="mr-2 h-3.5 w-3.5" />
-                )}
-                PDF
-              </Button>
+              <div className="flex shrink-0 flex-wrap gap-1.5">
+                {onView ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={viewing || downloading}
+                    onClick={() => onView(row)}
+                  >
+                    {viewing ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Eye className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    Ver
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={downloading || viewing}
+                  onClick={() => onDownload(row)}
+                >
+                  {downloading ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  PDF
+                </Button>
+              </div>
             </li>
           )
         })}

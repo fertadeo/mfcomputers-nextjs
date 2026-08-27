@@ -47,7 +47,9 @@ import {
   receptorCuitInputFromForm,
   requiresPadronForReceptorCuit,
   soloDigitosDoc,
+  extractDocFromArcaRequest,
 } from "@/lib/facturacion-receptor-doc"
+import { classifyClientTaxId } from "@/lib/client-tax-id"
 import {
   formatCondicionPadronMismatchHint,
   validateCondicionIvaConPadronSugerencia,
@@ -165,9 +167,9 @@ export function FacturacionEmitConfirmDialog({
 
   useEffect(() => {
     if (!open) return
-    setReceptorCuitInput(receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id))
+    const nextInput = receptorCuitInputFromForm(form, cliente?.cuil_cuit, cliente?.primary_tax_id)
+    setReceptorCuitInput(nextInput)
     setPadronDisplayName(null)
-    setPadronVerifiedDigits(null)
     setPadronCondicionCodigo(null)
     setPayloadJsonOpen(false)
     setPayloadCopied(false)
@@ -175,7 +177,22 @@ export function FacturacionEmitConfirmDialog({
     setPayloadJsonError(null)
     setJsonManuallyApplied(false)
     setAppliedManualBody(null)
-  }, [open, billable?.key, selectedBillableKey])
+
+    // Si la venta ya se facturó con el mismo CUIT, no exigir reconsultar padrón al refacturar/reemitir.
+    const nextDigits = soloDigitosDoc(nextInput)
+    const prevFromSale = extractDocFromArcaRequest(sale ?? {})
+    const prevDigits =
+      prevFromSale.docNro != null && prevFromSale.docNro > 0
+        ? String(prevFromSale.docNro).replace(/\D/g, "")
+        : ""
+    const alreadyBilledSameCuit =
+      sale?.arca_status === "success" &&
+      classifyClientTaxId(nextDigits) === "cuil_cuit" &&
+      nextDigits.length === 11 &&
+      (prevDigits === nextDigits || prevDigits.length === 0)
+
+    setPadronVerifiedDigits(alreadyBilledSameCuit ? nextDigits : null)
+  }, [open, billable?.key, selectedBillableKey, sale?.id, sale?.arca_status, form.docTipo, form.docNro, cliente?.cuil_cuit, cliente?.primary_tax_id])
 
   useEffect(() => {
     if (!open) return
@@ -392,6 +409,35 @@ export function FacturacionEmitConfirmDialog({
     }
     return receptorFiscalError
   }, [sale, cliente, payloadParaEmision, appliedManualBody, receptorFiscalError])
+
+  const emitBlockedReason = useMemo(() => {
+    if (!sale) return "Seleccioná una venta."
+    if (clienteLoading) return "Cargando datos del cliente…"
+    if (linesLoading) return "Cargando ítems del comprobante…"
+    if (lines.length === 0) return "No hay ítems para emitir."
+    if (cuitInvalid) return "CUIT/CUIL del receptor inválido."
+    if (padronPending) return "Consultá el padrón ARCA del CUIT antes de emitir."
+    if (condicionPadronError) return condicionPadronError
+    if (condicionVentaOtroInvalido) return "Completá el texto de condición de venta «Otro»."
+    if (itemIvaError) return itemIvaError
+    if (effectiveReceptorFiscalError) return effectiveReceptorFiscalError
+    if (jsonPendingApply) return "Aplicá o restaurá los cambios del JSON antes de emitir."
+    if (payloadJsonError) return payloadJsonError
+    return null
+  }, [
+    sale,
+    clienteLoading,
+    linesLoading,
+    lines.length,
+    cuitInvalid,
+    padronPending,
+    condicionPadronError,
+    condicionVentaOtroInvalido,
+    itemIvaError,
+    effectiveReceptorFiscalError,
+    jsonPendingApply,
+    payloadJsonError,
+  ])
 
   const applyPayloadJson = () => {
     const result = extractFacturarBodyFromPreviewJson(payloadJsonText)
@@ -970,28 +1016,19 @@ export function FacturacionEmitConfirmDialog({
           >
             Configuración fiscal
           </Button>
-          <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+          <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
+            {emitBlockedReason ? (
+              <p className="text-destructive max-w-md text-right text-xs leading-snug">{emitBlockedReason}</p>
+            ) : null}
+            <div className="flex w-full flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancelar
             </Button>
             <Button
               type="button"
               onClick={() => onConfirm(payloadParaEmision)}
-              disabled={
-                isSubmitting ||
-                !sale ||
-                clienteLoading ||
-                linesLoading ||
-                lines.length === 0 ||
-                cuitInvalid ||
-                padronPending ||
-                !!condicionPadronError ||
-                condicionVentaOtroInvalido ||
-                !!itemIvaError ||
-                !!effectiveReceptorFiscalError ||
-                jsonPendingApply ||
-                !!payloadJsonError
-              }
+              disabled={isSubmitting || !!emitBlockedReason}
+              title={emitBlockedReason ?? undefined}
             >
               {isSubmitting ? (
                 <>
@@ -1002,6 +1039,7 @@ export function FacturacionEmitConfirmDialog({
                 "Confirmar y emitir en ARCA"
               )}
             </Button>
+            </div>
           </div>
         </DialogFooter>
       </DialogContent>

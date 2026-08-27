@@ -82,6 +82,7 @@ import { fetchSaleArcaNotaCreditoEmision } from "@/lib/fetch-sale-arca-nota-cred
 import {
   emisionFromHistorialComprobante,
   facturarPayloadFromHistorialComprobante,
+  historialComprobanteLabel,
   historialPreviewAviso,
   itemsFromHistorialComprobante,
 } from "@/lib/facturacion-historial"
@@ -305,6 +306,11 @@ export default function FacturacionPage() {
   const [rememberFiscalDefaults, setRememberFiscalDefaults] = useState(false)
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
   const [historialDownloadingKey, setHistorialDownloadingKey] = useState<string | null>(null)
+  const [historialViewingKey, setHistorialViewingKey] = useState<string | null>(null)
+  const [historialPreviewOpen, setHistorialPreviewOpen] = useState(false)
+  const [historialPreviewData, setHistorialPreviewData] = useState<GenerateArcaInvoicePdfParams | null>(null)
+  const [historialPreviewError, setHistorialPreviewError] = useState<string | null>(null)
+  const [historialPreviewTitle, setHistorialPreviewTitle] = useState<string>("Comprobante")
   const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
   const [creditNoteArcaResolved, setCreditNoteArcaResolved] = useState<ResolvedSaleArcaEmision | null>(null)
   const [creditNoteArcaPreview, setCreditNoteArcaPreview] = useState<GenerateArcaInvoicePdfParams | null>(null)
@@ -844,6 +850,10 @@ export default function FacturacionPage() {
     setInvoiceModalMode("emit")
     setIsEmitModalOpen(false)
     setErrorMsg(null)
+    const row = billables.find((b) => b.key === rowKey)
+    if (row?.sale && saleCanRefacturar(row.sale)) {
+      setForm((prev) => ({ ...prev, force: true }))
+    }
     setIsConfirmEmitOpen(true)
   }
 
@@ -1176,6 +1186,48 @@ export default function FacturacionPage() {
     }
   }
 
+  const viewArcaPdfForHistorial = async (sale: Sale, row: SaleComprobanteHistorial) => {
+    const emision = emisionFromHistorialComprobante(row)
+    if (!emision?.cae) {
+      setErrorTitle("Sin datos del comprobante")
+      setErrorMsg("Este comprobante del historial no tiene CAE guardado.")
+      return
+    }
+    const key = historialDownloadKey(row)
+    setHistorialViewingKey(key)
+    setHistorialPreviewError(null)
+    setHistorialPreviewData(null)
+    setHistorialPreviewTitle(historialComprobanteLabel(row))
+    setHistorialPreviewOpen(true)
+    try {
+      let cliente: Cliente | null = modalCliente
+      if (sale.client_id && (!cliente || cliente.id !== sale.client_id)) {
+        try {
+          cliente = await getClienteById(sale.client_id)
+        } catch {
+          cliente = null
+        }
+      }
+      const data = await buildArcaInvoicePdfInput({
+        saleId: sale.id,
+        emision,
+        facturarPayload: facturarPayloadFromHistorialComprobante(row),
+        cliente,
+        saleSnapshot: sale,
+        previewAviso: historialPreviewAviso(row),
+        itemsOverride: itemsFromHistorialComprobante(row),
+        skipSaleRequestOverlay: true,
+        previewAllowMissingNumero: true,
+      })
+      setHistorialPreviewData(data)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "No se pudo mostrar el comprobante histórico."
+      setHistorialPreviewError(msg)
+    } finally {
+      setHistorialViewingKey(null)
+    }
+  }
+
   const onSubmitFacturar = async (payloadOverride?: FacturarSaleRequest) => {
     if (!selectedBillable || !selectedSale) {
       setErrorMsg("Seleccioná una venta u orden de reparación antes de facturar.")
@@ -1238,7 +1290,11 @@ export default function FacturacionPage() {
         )
       }
 
-      const payload = payloadOverride ?? buildFacturarPayload(form, modalCliente)
+      const payloadBase = payloadOverride ?? buildFacturarPayload(form, modalCliente)
+      const payload =
+        selectedSale && saleCanRefacturar(selectedSale)
+          ? { ...payloadBase, force: true }
+          : payloadBase
       console.log("[FACTURAR UI] Emitiendo comprobante:", {
         billableKind: selectedBillable.kind,
         saleId,
@@ -1905,7 +1961,9 @@ export default function FacturacionPage() {
                       <FacturacionHistorialList
                         sale={selectedSale}
                         downloadingKey={historialDownloadingKey}
+                        viewingKey={historialViewingKey}
                         onDownload={(row) => void downloadArcaPdfForHistorial(selectedSale, row)}
+                        onView={(row) => void viewArcaPdfForHistorial(selectedSale, row)}
                       />
                     ) : null}
                     {viewInvoiceLoading ? (
@@ -2420,6 +2478,42 @@ export default function FacturacionPage() {
               }))
             }
           />
+
+          <Dialog
+            open={historialPreviewOpen}
+            onOpenChange={(open) => {
+              setHistorialPreviewOpen(open)
+              if (!open) {
+                setHistorialPreviewData(null)
+                setHistorialPreviewError(null)
+                setHistorialViewingKey(null)
+              }
+            }}
+          >
+            <DialogContent className="flex max-h-[92vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+              <DialogHeader className="shrink-0 border-b px-6 py-4">
+                <DialogTitle>{historialPreviewTitle}</DialogTitle>
+                <DialogDescription>Vista del comprobante guardado en el historial de la venta.</DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
+                {historialViewingKey ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <p className="text-sm">Cargando comprobante…</p>
+                  </div>
+                ) : historialPreviewError ? (
+                  <Alert variant="warning" title="No se puede mostrar" description={historialPreviewError} />
+                ) : historialPreviewData ? (
+                  <ArcaInvoiceTemplatePreview data={historialPreviewData} />
+                ) : null}
+              </div>
+              <DialogFooter className="shrink-0 border-t px-6 py-4">
+                <Button variant="outline" onClick={() => setHistorialPreviewOpen(false)}>
+                  Cerrar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={creditNoteSale != null} onOpenChange={(open) => !open && setCreditNoteSale(null)}>
             <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
