@@ -31,6 +31,7 @@ import {
   Pencil,
 } from "lucide-react"
 import { saleHasFiscalLock } from "@/lib/sale-edit"
+import { saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
 import { externalInvoiceBadgeLabel, IMPORTED_SALE_FISCAL_HINT, isImportedSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
 import type { SaleResponseData, SalePaymentMethod } from "@/lib/api"
 import { getProductById } from "@/lib/api"
@@ -172,7 +173,13 @@ export function SaleDetailModal({ sale, isOpen, onClose, canEdit, onEdit }: Sale
             <Alert
               variant="error"
               title="Venta facturada (ARCA)"
-              description="Solo lectura. Para corregir el comprobante fiscal hace falta emitir una nota de crédito."
+              description="Solo lectura. Para corregir el comprobante fiscal hace falta emitir una nota de crédito y, si corresponde, refacturar."
+            />
+          ) : saleHasNotaCreditoEmitida(sale) ? (
+            <Alert
+              variant="warning"
+              title="Factura anulada con nota de crédito"
+              description="Podés editar la venta y volver a facturar. El comprobante original y la NC quedan en el historial."
             />
           ) : null}
           {canEdit && onEdit && (

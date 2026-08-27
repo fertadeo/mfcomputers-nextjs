@@ -48,6 +48,10 @@ export interface BuildArcaInvoicePdfInputArgs {
   previewAllowMissingNumero?: boolean
   /** Texto bajo el título (ej. comprobante asociado en nota de crédito). */
   previewAviso?: string | null
+  /** Ítems del comprobante histórico (refacturación). Si hay, no se usan los de la venta actual. */
+  itemsOverride?: SaleItemResponse[] | null
+  /** No mezclar docTipo/docNro de la venta vigente (PDF de un comprobante anterior). */
+  skipSaleRequestOverlay?: boolean
 }
 
 async function resolveCatalogProductNames(
@@ -94,12 +98,17 @@ function lineSubtotal(item: SaleItemResponse): number {
 export async function buildArcaInvoicePdfInput(
   args: BuildArcaInvoicePdfInputArgs
 ): Promise<GenerateArcaInvoicePdfParams> {
-  const { saleId, emision, facturarPayload, cliente, saleSnapshot, previewAllowMissingNumero, previewAviso } =
+  const { saleId, emision, facturarPayload, cliente, saleSnapshot, previewAllowMissingNumero, previewAviso, itemsOverride, skipSaleRequestOverlay } =
     args
 
   const saleRes = await getSale(saleId)
   const sale = saleRes.data
-  const items = sale.items?.length ? sale.items : saleSnapshot?.items ?? []
+  const items =
+    itemsOverride && itemsOverride.length > 0
+      ? itemsOverride
+      : sale.items?.length
+        ? sale.items
+        : saleSnapshot?.items ?? []
 
   if (!items.length) {
     throw new Error("La venta no tiene ítems para armar el comprobante PDF.")
@@ -127,7 +136,9 @@ export async function buildArcaInvoicePdfInput(
   const condicionVentaPdf = condicionVentaLabelFromPayload(facturarPayload)
   const clienteForDoc =
     cliente ?? saleToClienteSnapshot(sale) ?? (saleSnapshot ? saleToClienteSnapshot(saleSnapshot) : null)
-  const fromSaleRequest = extractDocFromArcaRequest(sale)
+  const fromSaleRequest = skipSaleRequestOverlay
+    ? ({} as ReturnType<typeof extractDocFromArcaRequest>)
+    : extractDocFromArcaRequest(sale)
   const fromQr = parseAfipQrReceptorDoc(emision.qrUrl)
   const mergedPayload = {
     ...facturarPayload,
@@ -146,7 +157,10 @@ export async function buildArcaInvoicePdfInput(
     docHints
   )
   const condicionIva = facturarPayload.condicionIvaReceptor ?? 5
-  const total = toNumber(emision.importe ?? sale.total_amount)
+  const totalFromItems = items.reduce((sum, item) => sum + lineSubtotal(item), 0)
+  const total = toNumber(
+    emision.importe ?? (itemsOverride && itemsOverride.length > 0 ? totalFromItems : sale.total_amount)
+  )
   const saleCurrency = String(sale.currency ?? "ARS").toUpperCase() === "USD" ? "USD" : "ARS"
   const tipoCambio =
     saleCurrency === "USD" && sale.exchange_rate != null

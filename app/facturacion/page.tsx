@@ -61,6 +61,7 @@ import {
   type NotaCreditoEmisionData,
   type RepairOrder,
   type Sale,
+  type SaleComprobanteHistorial,
 } from "@/lib/api"
 import {
   REPAIR_ORDER_FACTURABLE_STATUSES,
@@ -79,6 +80,12 @@ import { generateArcaInvoicePdfFromBuildArgs, type GenerateArcaInvoicePdfParams 
 import { fetchSaleArcaEmision, type ResolvedSaleArcaEmision } from "@/lib/fetch-sale-arca-emision"
 import { fetchSaleArcaNotaCreditoEmision } from "@/lib/fetch-sale-arca-nota-credito-emision"
 import {
+  emisionFromHistorialComprobante,
+  facturarPayloadFromHistorialComprobante,
+  historialPreviewAviso,
+  itemsFromHistorialComprobante,
+} from "@/lib/facturacion-historial"
+import {
   buildDefaultFacturarFormRequest,
   getEmitirConDefaultsGuardados,
   getStoredFacturacionCuitEmisor,
@@ -86,7 +93,7 @@ import {
   saveFacturacionFormDefaults,
   setEmitirConDefaultsGuardados,
 } from "@/lib/facturacion-settings"
-import { canEmitNotaCredito, canFacturarSaleViaApi, canReemitirComprobante, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
+import { canEmitNotaCredito, canFacturarSaleViaApi, canReemitirComprobante, saleCanRefacturar, saleHasComprobanteHistorial, saleHasNotaCreditoEmitida } from "@/lib/facturacion-nota-credito"
 import { externalInvoiceBadgeLabel, IMPORTED_SALE_BADGE, IMPORTED_SALE_FISCAL_HINT, isImportedSale, isLinkedPosExternalSale, LINKED_POS_SALE_HINT } from "@/lib/sale-import"
 import {
   formatComprobanteAfipReferencia,
@@ -108,6 +115,7 @@ import { ArcaInvoiceTemplatePreview } from "@/components/arca-invoice-template-p
 import { FacturacionArcaPreviewPanel } from "@/components/facturacion-arca-preview-panel"
 import { FacturacionEmitConfirmDialog } from "@/components/facturacion-emit-confirm-dialog"
 import { FacturacionFiscalConfigPanel } from "@/components/facturacion-fiscal-config-panel"
+import { FacturacionHistorialList, historialDownloadKey } from "@/components/facturacion-historial"
 import { SaleCurrencyBadge } from "@/components/sale-currency-badge"
 import { SaleCurrencyNotice } from "@/components/sale-currency-notice"
 import { ClienteInfoCard } from "@/components/cliente-picker"
@@ -296,6 +304,7 @@ export default function FacturacionPage() {
   const [defaultsSavedHint, setDefaultsSavedHint] = useState(false)
   const [rememberFiscalDefaults, setRememberFiscalDefaults] = useState(false)
   const [isGeneratingArcaPdf, setIsGeneratingArcaPdf] = useState(false)
+  const [historialDownloadingKey, setHistorialDownloadingKey] = useState<string | null>(null)
   const [creditNoteSale, setCreditNoteSale] = useState<Sale | null>(null)
   const [creditNoteArcaResolved, setCreditNoteArcaResolved] = useState<ResolvedSaleArcaEmision | null>(null)
   const [creditNoteArcaPreview, setCreditNoteArcaPreview] = useState<GenerateArcaInvoicePdfParams | null>(null)
@@ -664,7 +673,7 @@ export default function FacturacionPage() {
       if (updatedSale) {
         try {
           await downloadArcaPdfForNotaCredito(updatedSale, nc ?? null, { reportErrorOnPage: false })
-          setCreditNoteEmitSuccess(`${successBase} PDF descargado.`)
+          setCreditNoteEmitSuccess(`${successBase} PDF descargado. Si hace falta, editá la venta y refacturá.`)
         } catch (pdfErr) {
           const pdfMsg = pdfErr instanceof Error ? pdfErr.message : "No se pudo generar el PDF"
           setCreditNoteEmitSuccess(`${successBase} (PDF no descargado: ${pdfMsg})`)
@@ -1125,6 +1134,45 @@ export default function FacturacionPage() {
       throw e instanceof Error ? e : new Error(msg)
     } finally {
       setIsGeneratingArcaPdf(false)
+    }
+  }
+
+  const downloadArcaPdfForHistorial = async (sale: Sale, row: SaleComprobanteHistorial) => {
+    const emision = emisionFromHistorialComprobante(row)
+    if (!emision?.cae) {
+      setErrorTitle("Sin datos del comprobante")
+      setErrorMsg("Este comprobante del historial no tiene CAE guardado.")
+      return
+    }
+    const key = historialDownloadKey(row)
+    setHistorialDownloadingKey(key)
+    setIsGeneratingArcaPdf(true)
+    try {
+      let cliente: Cliente | null = modalCliente
+      if (sale.client_id && (!cliente || cliente.id !== sale.client_id)) {
+        try {
+          cliente = await getClienteById(sale.client_id)
+        } catch {
+          cliente = null
+        }
+      }
+      await generateArcaInvoicePdfFromBuildArgs({
+        saleId: sale.id,
+        emision,
+        facturarPayload: facturarPayloadFromHistorialComprobante(row),
+        cliente,
+        saleSnapshot: sale,
+        previewAviso: historialPreviewAviso(row),
+        itemsOverride: itemsFromHistorialComprobante(row),
+        skipSaleRequestOverlay: true,
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "No se pudo generar el PDF del comprobante histórico."
+      setErrorTitle("Error al descargar comprobante")
+      setErrorMsg(msg)
+    } finally {
+      setIsGeneratingArcaPdf(false)
+      setHistorialDownloadingKey(null)
     }
   }
 
@@ -1627,6 +1675,10 @@ export default function FacturacionPage() {
                                 <Badge variant="outline" className="text-xs font-normal text-amber-800 dark:text-amber-300">
                                   Anulada con NC
                                 </Badge>
+                              ) : row.sale && saleHasComprobanteHistorial(row.sale) ? (
+                                <Badge variant="outline" className="text-xs font-normal">
+                                  Con historial
+                                </Badge>
                               ) : row.arcaNcStatus === "error" && row.sale?.arca_nc_error_message ? (
                                 <p className="text-muted-foreground max-w-full text-xs leading-snug">
                                   NC: {row.sale.arca_nc_error_message}
@@ -1670,8 +1722,9 @@ export default function FacturacionPage() {
                               const sale = row.sale
                               const showEditLink = Boolean(sale && isLinkedPosExternalSale(sale))
                               const showNc = Boolean(sale && canEmitNotaCredito(sale))
-                              const showReemit = Boolean(sale && canReemitirComprobante(sale))
-                              const showMenu = showEditLink || showNc || showReemit
+                              const showRefacturar = Boolean(sale && saleCanRefacturar(sale))
+                              const showReemit = Boolean(sale && canReemitirComprobante(sale) && !showRefacturar)
+                              const showMenu = showEditLink || showNc || showReemit || showRefacturar
 
                               return (
                                 <div className="mx-auto flex w-[6.5rem] items-center justify-center gap-1">
@@ -1709,7 +1762,7 @@ export default function FacturacionPage() {
                                             Modificar vinculación
                                           </DropdownMenuItem>
                                         ) : null}
-                                        {showEditLink && (showNc || showReemit) ? (
+                                        {showEditLink && (showNc || showReemit || showRefacturar) ? (
                                           <DropdownMenuSeparator />
                                         ) : null}
                                         {showNc ? (
@@ -1719,6 +1772,12 @@ export default function FacturacionPage() {
                                           >
                                             <AlertTriangle className="mr-2 h-4 w-4" />
                                             Emitir nota de crédito
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                        {showRefacturar ? (
+                                          <DropdownMenuItem onClick={() => startEmitFromTable(row.key)}>
+                                            <RefreshCcw className="mr-2 h-4 w-4" />
+                                            Refacturar
                                           </DropdownMenuItem>
                                         ) : null}
                                         {showReemit ? (
@@ -1842,6 +1901,13 @@ export default function FacturacionPage() {
                     </div>
                   ) : null}
                   <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
+                    {selectedSale ? (
+                      <FacturacionHistorialList
+                        sale={selectedSale}
+                        downloadingKey={historialDownloadingKey}
+                        onDownload={(row) => void downloadArcaPdfForHistorial(selectedSale, row)}
+                      />
+                    ) : null}
                     {viewInvoiceLoading ? (
                       <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
                         <Loader2 className="h-8 w-8 animate-spin" />
@@ -1981,6 +2047,16 @@ export default function FacturacionPage() {
                           Emitir nota de crédito
                         </Button>
                       ) : null}
+                      {selectedSale && saleCanRefacturar(selectedSale) && selectedBillableKey ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => startEmitFromTable(selectedBillableKey)}
+                        >
+                          <RefreshCcw className="mr-2 h-4 w-4" />
+                          Refacturar
+                        </Button>
+                      ) : null}
                       {selectedSale.arca_cae ? (
                         <Button
                           type="button"
@@ -2011,11 +2087,19 @@ export default function FacturacionPage() {
                       title={
                         selectedSale && isImportedSale(selectedSale)
                           ? IMPORTED_SALE_FISCAL_HINT
-                          : undefined
+                          : selectedSale && saleCanRefacturar(selectedSale)
+                            ? "Emitir una nueva factura después de la nota de crédito"
+                            : undefined
                       }
-                      onClick={() => setInvoiceModalMode("emit")}
+                      onClick={() => {
+                        if (selectedSale && saleCanRefacturar(selectedSale) && selectedBillableKey) {
+                          startEmitFromTable(selectedBillableKey)
+                          return
+                        }
+                        setInvoiceModalMode("emit")
+                      }}
                     >
-                      Reemitir…
+                      {selectedSale && saleCanRefacturar(selectedSale) ? "Refacturar…" : "Reemitir…"}
                     </Button>
                   </DialogFooter>
                 </>
@@ -2417,8 +2501,8 @@ export default function FacturacionPage() {
                       title="Nota de crédito ya emitida"
                       description={
                         creditNoteSale.arca_nc_cae
-                          ? `CAE NC: ${creditNoteSale.arca_nc_cae}`
-                          : "Esta venta ya tiene una nota de crédito registrada."
+                          ? `CAE NC: ${creditNoteSale.arca_nc_cae}. Podés editar la venta y refacturar para emitir un nuevo comprobante.`
+                          : "Esta venta ya tiene una nota de crédito registrada. Podés editar la venta y refacturar."
                       }
                     />
                   ) : null}
@@ -2449,6 +2533,21 @@ export default function FacturacionPage() {
                   <Button variant="outline" onClick={() => setCreditNoteSale(null)}>
                     Cerrar
                   </Button>
+                  {creditNoteSale && saleCanRefacturar(creditNoteSale) ? (
+                    <Button
+                      onClick={() => {
+                        const key =
+                          billables.find((b) => b.sale?.id === creditNoteSale.id)?.key ??
+                          selectedBillableKey ??
+                          `sale-${creditNoteSale.id}`
+                        setCreditNoteSale(null)
+                        startEmitFromTable(key)
+                      }}
+                    >
+                      <RefreshCcw className="mr-2 h-4 w-4" />
+                      Refacturar
+                    </Button>
+                  ) : (
                   <Button
                     disabled={
                       creditNoteSubmitting ||
@@ -2469,6 +2568,7 @@ export default function FacturacionPage() {
                       "Emitir nota de crédito"
                     )}
                   </Button>
+                  )}
                 </div>
               </DialogFooter>
             </DialogContent>
