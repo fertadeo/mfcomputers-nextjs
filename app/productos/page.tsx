@@ -27,7 +27,9 @@ import { NewProductModal } from "@/components/new-product-modal"
 import { EditProductModal } from "@/components/edit-product-modal"
 import { BarcodeSearchModal } from "@/components/barcode-search-modal"
 import { getProductImageUrl } from "@/lib/product-image-utils"
+import { filterProductCatalog } from "@/lib/product-catalog-filter"
 import { formatSaleIvaRateLabel, productIvaRate } from "@/lib/sale-iva"
+import { ProductExportDialog } from "@/components/product-export-dialog"
 import { LinkWooCommerceIdsButton, LinkWooCommerceSummary } from "@/components/products/link-woocommerce-ids-button"
 import Image from "next/image"
 import {
@@ -94,6 +96,7 @@ export default function ProductosPage() {
   const limit = 50 // Productos por página
   const [linkSummary, setLinkSummary] = useState<LinkWooCommerceIdsSummary | null>(null)
   const [lastLinkAt, setLastLinkAt] = useState<string | null>(null)
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
 
   const STORAGE_KEYS = {
     viewMode: "productos-view-mode",
@@ -152,10 +155,40 @@ export default function ProductosPage() {
     }
   }
 
-  // Actualizar productos mostrados cuando cambie la página, búsqueda, filtros, tab, orden o datos
+  const filteredCatalog = useMemo(
+    () =>
+      filterProductCatalog(allProducts, {
+        productTab,
+        searchTerm,
+        filterCategory,
+        filterStatus,
+        filterStock,
+        filterDateModification,
+        sortBy,
+        sortOrder,
+      }),
+    [
+      allProducts,
+      productTab,
+      searchTerm,
+      filterCategory,
+      filterStatus,
+      filterStock,
+      filterDateModification,
+      sortBy,
+      sortOrder,
+    ]
+  )
+
+  // Actualizar productos mostrados cuando cambie la página o el catálogo filtrado
   useEffect(() => {
-    updateDisplayedProducts()
-  }, [currentPage, searchTerm, allProducts, productTab, filterCategory, filterStatus, filterStock, filterDateModification, sortBy, sortOrder])
+    if (!productsLoaded) return
+    const startIndex = (currentPage - 1) * limit
+    const endIndex = startIndex + limit
+    setProducts(filteredCatalog.slice(startIndex, endIndex))
+    setTotalPages(Math.ceil(filteredCatalog.length / limit))
+    setTotalProducts(filteredCatalog.length)
+  }, [currentPage, filteredCatalog, productsLoaded])
 
   const loadProductStats = async () => {
     try {
@@ -196,119 +229,6 @@ export default function ProductosPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Función para actualizar los productos mostrados según tab, búsqueda, filtros y paginación
-  const updateDisplayedProducts = () => {
-    if (!productsLoaded) return
-
-    let productsToShow: Product[] = []
-
-    // 1) Filtrar por pestaña según is_active, stock y allow_backorders
-    // Publicados: activos con stock > 0 o venta por encargo (stock 0 + allow_backorders)
-    // Borrador: activos sin stock y sin venta por encargo; Eliminados: inactivos (soft delete)
-    const byTab = allProducts.filter((p) => {
-      if (productTab === "published") return !!p.is_active && (p.stock > 0 || !!p.allow_backorders)
-      if (productTab === "draft") return !!p.is_active && p.stock === 0 && !p.allow_backorders
-      return !p.is_active // deleted = inactivos / borrados
-    })
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.trim().toLowerCase()
-      const filtered = byTab.filter((product) => {
-        const codeMatch = product.code?.toLowerCase().includes(term)
-        const nameMatch = product.name?.toLowerCase().includes(term)
-        const categoryMatch = product.category_name?.toLowerCase().includes(term)
-        return codeMatch || nameMatch || categoryMatch
-      })
-      productsToShow = filtered.sort((a, b) => {
-        const aCode = a.code?.toLowerCase() || ""
-        const bCode = b.code?.toLowerCase() || ""
-        const aName = a.name?.toLowerCase() || ""
-        const bName = b.name?.toLowerCase() || ""
-        if (aCode === term && bCode !== term) return -1
-        if (bCode === term && aCode !== term) return 1
-        if (aCode.startsWith(term) && !bCode.startsWith(term)) return -1
-        if (bCode.startsWith(term) && !aCode.startsWith(term)) return 1
-        if (aCode.includes(term) && !bCode.includes(term)) return -1
-        if (bCode.includes(term) && !aCode.includes(term)) return 1
-        if (aName.includes(term) && !bName.includes(term)) return -1
-        if (bName.includes(term) && !aName.includes(term)) return 1
-        return 0
-      })
-    } else {
-      productsToShow = [...byTab]
-    }
-
-    // Aplicar filtro de categoría
-    if (filterCategory !== "all") {
-      if (filterCategory === "none") {
-        productsToShow = productsToShow.filter((p) => !p.category_id)
-      } else {
-        const categoryId = parseInt(filterCategory, 10)
-        productsToShow = productsToShow.filter((p) => p.category_id === categoryId)
-      }
-    }
-
-    // Aplicar filtro de estado (activo/inactivo)
-    if (filterStatus === "active") {
-      productsToShow = productsToShow.filter((p) => p.is_active)
-    } else if (filterStatus === "inactive") {
-      productsToShow = productsToShow.filter((p) => !p.is_active)
-    }
-
-    // Aplicar filtro de stock
-    if (filterStock === "low") {
-      productsToShow = productsToShow.filter((p) => p.stock > 0 && p.stock <= p.min_stock)
-    } else if (filterStock === "out") {
-      productsToShow = productsToShow.filter((p) => p.stock === 0)
-    }
-
-    // Filtro por fecha de modificación
-    if (filterDateModification !== "all" && productsToShow.length > 0) {
-      const now = Date.now()
-      const daysMs = { last7: 7 * 24 * 60 * 60 * 1000, last30: 30 * 24 * 60 * 60 * 1000, last90: 90 * 24 * 60 * 60 * 1000 }
-      const since = now - daysMs[filterDateModification]
-      productsToShow = productsToShow.filter((p) => {
-        const updated = p.updated_at ? new Date(p.updated_at).getTime() : 0
-        return updated >= since
-      })
-    }
-
-    // Aplicar ordenamiento
-    productsToShow = [...productsToShow].sort((a, b) => {
-      let cmp = 0
-      switch (sortBy) {
-        case "name":
-          cmp = (a.name || "").localeCompare(b.name || "", "es")
-          break
-        case "code":
-          cmp = (a.code || "").localeCompare(b.code || "", "es")
-          break
-        case "price":
-          cmp = a.price - b.price
-          break
-        case "stock":
-          cmp = a.stock - b.stock
-          break
-        case "category":
-          cmp = (a.category_name || "").localeCompare(b.category_name || "", "es")
-          break
-        case "updated_at":
-          cmp = (new Date(a.updated_at || 0).getTime()) - (new Date(b.updated_at || 0).getTime())
-          break
-        default:
-          cmp = 0
-      }
-      return sortOrder === "asc" ? cmp : -cmp
-    })
-
-    // Aplicar paginación
-    const startIndex = (currentPage - 1) * limit
-    const endIndex = startIndex + limit
-    setProducts(productsToShow.slice(startIndex, endIndex))
-    setTotalPages(Math.ceil(productsToShow.length / limit))
-    setTotalProducts(productsToShow.length)
   }
 
   // Función para recargar productos (usada después de crear/eliminar)
@@ -435,7 +355,7 @@ export default function ProductosPage() {
                     </Link>
                   </Button>
                 )}
-                <Button variant="outline">
+                <Button variant="outline" onClick={() => setIsExportDialogOpen(true)} disabled={loading}>
                   <Download className="h-4 w-4 mr-2" />
                   Exportar
                 </Button>
@@ -1120,6 +1040,13 @@ export default function ProductosPage() {
             loadProducts()
             loadProductStats()
           }}
+        />
+
+        <ProductExportDialog
+          open={isExportDialogOpen}
+          onOpenChange={setIsExportDialogOpen}
+          filteredProducts={filteredCatalog}
+          allProducts={allProducts}
         />
 
         {/* Modal de búsqueda por código de barras */}
