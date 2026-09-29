@@ -85,8 +85,30 @@ function formatDate(value?: string | null): string {
   return date.toLocaleDateString("es-AR")
 }
 
+function imageUrlFromValue(value: unknown): string {
+  if (typeof value === "string") return value.trim()
+  if (value && typeof value === "object") {
+    const record = value as { src?: unknown; url?: unknown; source_url?: unknown }
+    for (const key of ["src", "url", "source_url"] as const) {
+      if (typeof record[key] === "string" && record[key].trim()) return record[key].trim()
+    }
+  }
+  return ""
+}
+
+function absolutizeImageUrl(url: string): string {
+  if (!url) return ""
+  if (url.startsWith("data:image/")) return url
+  if (url.startsWith("//")) return `https:${url}`
+  if (url.startsWith("/") && typeof window !== "undefined") return `${window.location.origin}${url}`
+  return url
+}
+
 function productImageUrl(product: Product): string {
-  return getAllProductImages(product)[0] ?? ""
+  const listed = (product.images ?? []).map(imageUrlFromValue).filter(Boolean)
+  if (listed[0]) return absolutizeImageUrl(listed[0])
+  const fallback = getAllProductImages({ ...product, images: undefined }).map(imageUrlFromValue).find(Boolean)
+  return absolutizeImageUrl(fallback ?? "")
 }
 
 function columnValue(product: Product, column: ProductExportColumnId): string {
@@ -158,6 +180,38 @@ function escapeCsv(value: string): string {
   return value
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+export function buildProductsExcelHtml(options: ProductExportOptions, imageDataUrls: Array<string | null> = []): string {
+  const columns = selectedColumns(options.columns)
+  const headers = [
+    ...(options.includeImage ? ["Imagen"] : []),
+    ...columns.map((column) => column.label),
+  ]
+  const rows = options.products.map((product, index) => {
+    const image = options.includeImage
+      ? imageDataUrls[index]
+        ? `<img src="${imageDataUrls[index]}" width="64" height="64" alt="">`
+        : ""
+      : ""
+    const cells = [
+      ...(options.includeImage ? [image] : []),
+      ...columns.map((column) => escapeHtml(columnValue(product, column.id))),
+    ]
+    return `<tr>${cells.map((cell) => `<td style="vertical-align:middle;padding:4px;border:1px solid #e2e8f0;">${cell}</td>`).join("")}</tr>`
+  })
+  const head = headers
+    .map((header) => `<th style="background:#0f766e;color:#fff;padding:6px;border:1px solid #0f766e;">${escapeHtml(header)}</th>`)
+    .join("")
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><table>${`<thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody>`}</table></body></html>`
+}
+
 export function buildProductsCsv(options: ProductExportOptions): string {
   const columns = selectedColumns(options.columns)
   const headers = [
@@ -197,34 +251,33 @@ async function mapPool<T, R>(
   return results
 }
 
-function loadImageDataUrl(url: string): Promise<string | null> {
+function rasterizeToJpeg(src: string): Promise<string | null> {
   return new Promise((resolve) => {
     const img = new Image()
-    img.crossOrigin = "anonymous"
     const timer = window.setTimeout(() => {
       img.onload = null
       img.onerror = null
       resolve(null)
-    }, 5000)
+    }, 8000)
     img.onload = () => {
       window.clearTimeout(timer)
       try {
-        const size = 80
+        const size = 160
         const canvas = document.createElement("canvas")
         canvas.width = size
         canvas.height = size
         const ctx = canvas.getContext("2d")
-        if (!ctx || !img.width || !img.height) {
+        if (!ctx || !img.naturalWidth || !img.naturalHeight) {
           resolve(null)
           return
         }
         ctx.fillStyle = "#ffffff"
         ctx.fillRect(0, 0, size, size)
-        const scale = Math.min(size / img.width, size / img.height)
-        const w = img.width * scale
-        const h = img.height * scale
+        const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight)
+        const w = img.naturalWidth * scale
+        const h = img.naturalHeight * scale
         ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
-        resolve(canvas.toDataURL("image/jpeg", 0.72))
+        resolve(canvas.toDataURL("image/jpeg", 0.82))
       } catch {
         resolve(null)
       }
@@ -233,8 +286,31 @@ function loadImageDataUrl(url: string): Promise<string | null> {
       window.clearTimeout(timer)
       resolve(null)
     }
-    img.src = url
+    img.src = src
   })
+}
+
+async function loadImageDataUrl(url: string): Promise<string | null> {
+  const absolute = absolutizeImageUrl(url)
+  if (!absolute) return null
+  if (absolute.startsWith("data:image/")) return rasterizeToJpeg(absolute)
+
+  try {
+    const response = await fetch(`/api/product-image?url=${encodeURIComponent(absolute)}`, {
+      credentials: "same-origin",
+    })
+    if (!response.ok) return null
+    const blob = await response.blob()
+    if (!blob.type.startsWith("image/")) return null
+    const objectUrl = URL.createObjectURL(blob)
+    try {
+      return await rasterizeToJpeg(objectUrl)
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  } catch {
+    return null
+  }
 }
 
 async function loadProductImages(
@@ -261,7 +337,7 @@ export async function buildProductsPdf(options: ProductExportOptions): Promise<j
     : []
 
   const wide = includeImage || columns.length > 6
-  const doc = new jsPDF({ orientation: wide ? "landscape" : "portrait", unit: "pt", format: "a4" })
+  const doc = new jsPDF({ orientation: wide ? "landscape" : "portrait", unit: "pt", format: "a4", compress: true })
   const pageWidth = doc.internal.pageSize.getWidth()
   const marginX = 28
 
@@ -308,15 +384,15 @@ export async function buildProductsPdf(options: ProductExportOptions): Promise<j
     },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: includeImage
-      ? { 0: { cellWidth: 28, minCellHeight: 22 } }
+      ? { 0: { cellWidth: 58, minCellHeight: 52 } }
       : undefined,
     didDrawCell: (data) => {
-      if (!includeImage || data.section !== "body" || data.column.index !== 0) return
+      if (!includeImage || data.section !== "body" || data.column.index !== 0 || data.row.index < 0) return
       const image = images[data.row.index]
       if (!image) return
-      const padding = 2
-      const size = Math.min(18, data.cell.height - padding * 2, data.cell.width - padding * 2)
-      if (size <= 0) return
+      const padding = 4
+      const size = Math.min(44, data.cell.width - padding * 2, data.cell.height - padding * 2)
+      if (size < 12) return
       try {
         doc.addImage(
           image,
@@ -324,10 +400,12 @@ export async function buildProductsPdf(options: ProductExportOptions): Promise<j
           data.cell.x + (data.cell.width - size) / 2,
           data.cell.y + (data.cell.height - size) / 2,
           size,
-          size
+          size,
+          undefined,
+          "FAST"
         )
       } catch {
-        // La imagen no se pudo incrustar; la fila sigue con el resto de columnas.
+        // La foto no se pudo incrustar; el resto de la fila se mantiene.
       }
     },
     didDrawPage: () => {
@@ -348,6 +426,15 @@ export async function exportProducts(options: ProductExportOptions): Promise<voi
   if (typeof window === "undefined") return
   const filename = `productos-${exportFileStamp()}`
   if (options.format === "csv") {
+    if (options.includeImage) {
+      const imageDataUrls = await loadProductImages(options.products, options.onProgress)
+      const html = buildProductsExcelHtml(options, imageDataUrls)
+      downloadBlob(
+        new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" }),
+        `${filename}.xls`
+      )
+      return
+    }
     const csv = buildProductsCsv(options)
     downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${filename}.csv`)
     return

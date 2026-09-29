@@ -185,8 +185,8 @@ export function ProductExportDialog({
               </span>
               <span className="block text-xs text-muted-foreground">
                 {format === "csv"
-                  ? "En CSV se guarda el enlace de la imagen."
-                  : "En PDF se incrusta la foto. Si el sitio de la imagen no permite descargarla, esa celda queda vacía."}
+                  ? "Con imagen, el archivo se abre en Excel y muestra la foto. Sin imagen, se descarga un CSV."
+                  : "En el PDF se incrusta la foto del producto."}
               </span>
             </span>
           </label>
@@ -233,7 +233,7 @@ export function ProductExportDialog({
             </div>
           </div>
 
-          {progress && format === "pdf" && includeImage && (
+          {progress && includeImage && (
             <p className="text-sm text-muted-foreground">
               Preparando imágenes {progress.done} de {progress.total}…
             </p>
@@ -254,7 +254,7 @@ export function ProductExportDialog({
             disabled={exporting || columns.length === 0 || products.length === 0}
           >
             {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-            Descargar {format === "csv" ? "CSV" : "PDF"}
+            Descargar {format === "pdf" ? "PDF" : includeImage ? "Excel" : "CSV"}
           </Button>
         </DialogFooter>
       </DialogContent>

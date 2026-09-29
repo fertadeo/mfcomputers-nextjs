@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Product } from "@/lib/api"
-import { buildProductsCsv, buildProductsPdf } from "@/lib/export-products"
+import { buildProductsCsv, buildProductsExcelHtml, buildProductsPdf } from "@/lib/export-products"
 import { filterProductCatalog } from "@/lib/product-catalog-filter"
 
 function product(partial: Partial<Product> & Pick<Product, "id" | "code" | "name">): Product {
@@ -81,6 +81,21 @@ describe("buildProductsCsv", () => {
   })
 })
 
+describe("buildProductsExcelHtml", () => {
+  it("incrusta la foto para que Excel la muestre", () => {
+    const html = buildProductsExcelHtml(
+      {
+        format: "csv",
+        includeImage: true,
+        columns: ["name"],
+        products: [product({ id: 1, code: "X", name: "Cable" })],
+      },
+      ["data:image/jpeg;base64,abc"]
+    )
+    expect(html).toContain('<img src="data:image/jpeg;base64,abc"')
+    expect(html).toContain("Cable")
+  })
+})
 describe("buildProductsPdf", () => {
   it("genera un PDF con el nombre y el precio del producto", async () => {
     const doc = await buildProductsPdf({
