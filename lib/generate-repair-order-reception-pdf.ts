@@ -338,13 +338,19 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     y += 18
 
     const totalBoxH = 28
-    doc.setFillColor(...BRAND_BLUE)
-    doc.rect(sumX - 20, y - 4, pageW - mx - (sumX - 20) + 4, totalBoxH, "F")
+    const totalLabel = "TOTAL ESTIMADO:"
+    const totalValue = formatMoneyAr(grandTotal)
     doc.setFont("helvetica", "bold")
     doc.setFontSize(11)
+    const totalLabelWidth = doc.getTextWidth(totalLabel)
+    const boxPadX = 12
+    const boxRight = pageW - mx
+    const boxLeft = sumX - totalLabelWidth - boxPadX
+    doc.setFillColor(...BRAND_BLUE)
+    doc.rect(boxLeft, y - 4, boxRight - boxLeft, totalBoxH, "F")
     doc.setTextColor(255, 255, 255)
-    doc.text("TOTAL ESTIMADO:", sumX, y + 12, { align: "right" })
-    doc.text(formatMoneyAr(grandTotal), valX, y + 12, { align: "right" })
+    doc.text(totalLabel, sumX, y + 12, { align: "right" })
+    doc.text(totalValue, valX, y + 12, { align: "right" })
 
     y += totalBoxH + 28
 
