@@ -286,8 +286,8 @@ export default function ReparacionesPage() {
 
   return (
     <Protected requiredRoles={["gerencia", "ventas", "admin"]}>
-      <ERPLayout activeItem="reparaciones">
-        <div className="space-y-6">
+      <ERPLayout activeItem="reparaciones" fullWidth>
+        <div className="min-w-0 space-y-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-3xl font-bold">Órdenes de reparación</h1>
@@ -347,14 +347,14 @@ export default function ReparacionesPage() {
             </div>
           )}
 
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader>
               <CardTitle>Listado de órdenes</CardTitle>
               <CardDescription>
                 Filtros por estado y rango de fechas de recepción
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0">
               <div className="flex flex-wrap gap-4 mb-4">
                 <div className="relative min-w-[220px] flex-1 md:max-w-[340px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -438,18 +438,29 @@ export default function ReparacionesPage() {
                 </div>
               ) : (
                 <>
-                  <Table>
+                  <Table className="table-fixed">
+                    <colgroup>
+                      <col className="w-[9%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[15%]" />
+                    </colgroup>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Número</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Equipo</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Recepción</TableHead>
-                        <TableHead>Retiro estimado</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="text-right">Saldo</TableHead>
-                        <TableHead className="w-[100px] text-right">Acciones</TableHead>
+                        <TableHead className="whitespace-normal">Número</TableHead>
+                        <TableHead className="whitespace-normal">Cliente</TableHead>
+                        <TableHead className="whitespace-normal">Equipo</TableHead>
+                        <TableHead className="whitespace-normal">Estado</TableHead>
+                        <TableHead className="whitespace-normal">Recepción</TableHead>
+                        <TableHead className="whitespace-normal leading-tight">Retiro estimado</TableHead>
+                        <TableHead className="whitespace-normal text-right">Total</TableHead>
+                        <TableHead className="whitespace-normal text-right">Saldo</TableHead>
+                        <TableHead className="whitespace-normal text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -466,27 +477,32 @@ export default function ReparacionesPage() {
                         const retiroVencido = isRetiroEstimadoVencido(order)
                         return (
                           <TableRow key={order.id}>
-                            <TableCell className="font-medium">{order.repair_number}</TableCell>
-                            <TableCell>
+                            <TableCell className="truncate font-medium" title={order.repair_number}>
+                              {order.repair_number}
+                            </TableCell>
+                            <TableCell
+                              className="truncate"
+                              title={order.client?.name ?? clientNameById[order.client_id] ?? undefined}
+                            >
                               {order.client?.name ?? clientNameById[order.client_id] ?? `Cliente #${order.client_id}`}
                             </TableCell>
-                            <TableCell className="max-w-[200px] truncate" title={order.equipment_description || undefined}>
+                            <TableCell className="truncate" title={order.equipment_description || undefined}>
                               {getEquipmentListSummary(order.equipment_description || "")}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="whitespace-normal">
                               <Badge
                                 variant={getStatusVariant(order.status)}
-                                className={getStatusClassName(order.status)}
+                                className={`${getStatusClassName(order.status)} h-auto max-w-full whitespace-normal text-center leading-tight`}
                               >
                                 {REPAIR_ORDER_STATUS_LABELS[order.status] ?? order.status}
                               </Badge>
                             </TableCell>
-                            <TableCell>{formatDate(order.reception_date)}</TableCell>
+                            <TableCell className="overflow-hidden whitespace-nowrap">{formatDate(order.reception_date)}</TableCell>
                             <TableCell
                               className={
                                 retiroVencido
-                                  ? "text-amber-700 dark:text-amber-500 font-medium"
-                                  : undefined
+                                  ? "overflow-hidden whitespace-nowrap font-medium text-amber-700 dark:text-amber-500"
+                                  : "overflow-hidden whitespace-nowrap"
                               }
                               title={
                                 retiroVencido
@@ -496,14 +512,14 @@ export default function ReparacionesPage() {
                             >
                               {formatDate(order.delivery_date_estimated)}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="overflow-hidden whitespace-nowrap text-right tabular-nums" title={formatMoney(order.total_amount)}>
                               {formatMoney(order.total_amount)}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="overflow-hidden whitespace-nowrap text-right tabular-nums" title={formatMoney(balance)}>
                               {formatMoney(balance)}
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-end gap-0.5">
+                            <TableCell className="overflow-hidden px-0.5">
+                              <div className="flex items-center justify-end gap-0">
                                 {waUrl ? (
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-[#25D366] hover:text-[#128C7E]" asChild>
                                     <a

@@ -10,9 +10,11 @@ interface ERPLayoutProps {
   activeItem?: string
   /** Más ancho útil para tablas extensas (p. ej. facturación). */
   wideContent?: boolean
+  /** Ocupa todo el ancho del área principal, sin tope fijo. */
+  fullWidth?: boolean
 }
 
-export function ERPLayout({ children, activeItem, wideContent }: ERPLayoutProps) {
+export function ERPLayout({ children, activeItem, wideContent, fullWidth }: ERPLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
@@ -31,7 +33,7 @@ export function ERPLayout({ children, activeItem, wideContent }: ERPLayoutProps)
           <div
             className={cn(
               "mx-auto w-full min-w-0",
-              wideContent ? "max-w-[min(100%,96rem)]" : "max-w-7xl"
+              fullWidth ? "max-w-none" : wideContent ? "max-w-[min(100%,96rem)]" : "max-w-7xl"
             )}
           >
             {children}
