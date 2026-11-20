@@ -11,6 +11,7 @@ import {
   documentClientePdfFromSnapshot,
   drawDocumentClientePdfDetails,
 } from "@/lib/document-cliente-pdf"
+import { MF_COMPUTERS_COMPANY } from "@/lib/mf-computers-company"
 
 const LOGO_PATH = "/images/Recurso-8@3x.png"
 
@@ -24,14 +25,7 @@ const GRAY_LINE: [number, number, number] = [226, 232, 240]
 const TEXT_MUTED: [number, number, number] = [100, 116, 139]
 const TEXT_BODY: [number, number, number] = [30, 41, 59]
 
-const COMPANY = {
-  name: "MFComputers",
-  tagline: "Soluciones informáticas",
-  address: "Luther King 1095",
-  city: "Santa Rosa, La Pampa",
-  phone: "",
-  email: "",
-}
+const COMPANY = MF_COMPUTERS_COMPANY
 
 export interface RepairOrderReceptionPdfLineItem {
   product_name: string
@@ -154,6 +148,12 @@ export function generateRepairOrderReceptionPdf(params: GenerateRepairOrderRecep
     doc.setFontSize(9)
     doc.setTextColor(...TEXT_MUTED)
     doc.text(COMPANY.tagline, mx, y)
+    y += 11
+    doc.text(`Titular: ${COMPANY.legalName}`, mx, y)
+    y += 11
+    doc.text(`CUIT: ${COMPANY.cuit}`, mx, y)
+    y += 11
+    doc.text(`Celular: ${COMPANY.phone}`, mx, y)
     y += 11
     doc.text(COMPANY.address, mx, y)
     y += 11
