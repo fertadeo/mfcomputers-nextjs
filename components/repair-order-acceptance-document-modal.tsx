@@ -11,6 +11,7 @@ import { useConfirmBeforeClose } from "@/lib/use-confirm-before-close"
 import { Button } from "@/components/ui/button"
 import { getRepairOrderAcceptanceDocument } from "@/lib/api"
 import { documentClientePdfFromSnapshot } from "@/lib/document-cliente-pdf"
+import { MF_COMPUTERS_COMPANY } from "@/lib/mf-computers-company"
 import { RepairOrderEquipmentReadOnly } from "@/components/repair-order-equipment-fields"
 import { FileText, Loader2 } from "lucide-react"
 
@@ -93,6 +94,13 @@ export function RepairOrderAcceptanceDocumentModal({
           <div className="space-y-4 print:block" id="acceptance-document">
             <div className="border rounded-lg p-6 space-y-4 bg-background">
               <h2 className="text-lg font-semibold">Orden de reparación {doc.repair_number}</h2>
+              <div className="rounded-lg border bg-muted/20 p-4 space-y-1 text-sm">
+                <p className="font-semibold">Datos del negocio</p>
+                <p>{MF_COMPUTERS_COMPANY.name}</p>
+                <p className="text-muted-foreground">Titular: {MF_COMPUTERS_COMPANY.legalName}</p>
+                <p className="text-muted-foreground">CUIT: {MF_COMPUTERS_COMPANY.cuit}</p>
+                <p className="text-muted-foreground">Celular: {MF_COMPUTERS_COMPANY.phone}</p>
+              </div>
               <div className="rounded-lg border bg-muted/20 p-4 space-y-1 text-sm">
                 <p className="font-semibold">{doc.client_name}</p>
                 {(() => {
