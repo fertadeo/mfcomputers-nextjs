@@ -7427,6 +7427,8 @@ export interface RepairOrder {
   accepted_at: string | null
   days_to_claim: number | null
   notes: string | null
+  /** Informe técnico redactado para el cliente. No implica repuestos, mano de obra ni cargo. */
+  technical_report?: string | null
   created_by: number | null
   created_at: string
   updated_at: string
@@ -7591,6 +7593,7 @@ export interface CreateRepairOrderBody {
   delivery_date_estimated?: string
   labor_amount?: number
   notes?: string
+  technical_report?: string | null
 }
 
 export async function createRepairOrder(
