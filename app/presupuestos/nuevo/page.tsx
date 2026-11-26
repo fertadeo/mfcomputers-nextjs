@@ -304,7 +304,6 @@ export default function NuevoPresupuestoPage() {
                   setClientSearch("")
                   setClients([])
                 }}
-                placeholder="Buscar por nombre, CUIT, código o dirección…"
                 clearLabel="Quitar cliente"
               />
             </CardContent>

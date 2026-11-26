@@ -673,7 +673,6 @@ export default function RepairOrderDetailPage() {
                           setEditClientSearch("")
                           setEditClients([])
                         }}
-                        placeholder="Buscar por nombre, CUIT, código o dirección…"
                         clearLabel="Quitar cliente"
                       />
                     </div>

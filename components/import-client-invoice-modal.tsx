@@ -46,6 +46,7 @@ import {
   type ParseSalesInvoiceResult,
 } from "@/lib/api"
 import { LINKED_POS_SALE_HINT } from "@/lib/sale-import"
+import { CLIENTE_SEARCH_PLACEHOLDER } from "@/lib/cliente-search"
 import { TIPOS_COMPROBANTE_AFIP } from "@/lib/facturacion-comprobantes"
 import { formatSaleIvaRateLabel, normalizeSaleIvaRate } from "@/lib/sale-iva"
 
@@ -142,6 +143,7 @@ export function ImportClientInvoiceModal({
   const [parseResult, setParseResult] = useState<ParseSalesInvoiceResult | null>(null)
   const [items, setItems] = useState<EditableItem[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [clientSearch, setClientSearch] = useState("")
   const [clientId, setClientId] = useState<string>("")
   const [puntoVenta, setPuntoVenta] = useState("")
   const [numero, setNumero] = useState("")
@@ -174,16 +176,33 @@ export function ImportClientInvoiceModal({
     setRegistrationMode("standalone")
     setLinkableSales([])
     setLinkSaleId("")
+    setClientSearch("")
   }, [defaultClientId])
 
   useEffect(() => {
     if (!isOpen) return
 
-    getClientes(1, 200, undefined, "active")
-      .then((res) => {
-        setClientes(res.clients ?? [])
-      })
-      .catch(() => toast.error("No se pudieron cargar los clientes"))
+    const query = clientSearch.trim()
+    const timer = setTimeout(() => {
+      getClientes(1, query.length >= 2 ? 20 : 200, query.length >= 2 ? query : undefined, "active")
+        .then((res) => {
+          setClientes((prev) => {
+            const incoming = res.clients ?? []
+            const selected = prev.find((cliente) => String(cliente.id) === clientId)
+            if (selected && !incoming.some((cliente) => cliente.id === selected.id)) {
+              return [selected, ...incoming]
+            }
+            return incoming
+          })
+        })
+        .catch(() => toast.error("No se pudieron cargar los clientes"))
+    }, query.length >= 2 ? 300 : 0)
+
+    return () => clearTimeout(timer)
+  }, [isOpen, clientSearch, clientId])
+
+  useEffect(() => {
+    if (!isOpen) return
 
     if (editLinkSaleId) {
       setIsLoadingEdit(true)
@@ -573,6 +592,12 @@ export function ImportClientInvoiceModal({
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Cliente</Label>
+                  <Input
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                    placeholder={CLIENTE_SEARCH_PLACEHOLDER}
+                    className="mb-2"
+                  />
                   <Select value={clientId} onValueChange={handleClientChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar cliente" />
@@ -580,7 +605,9 @@ export function ImportClientInvoiceModal({
                     <SelectContent>
                       {clientes.map((c) => (
                         <SelectItem key={c.id} value={String(c.id)}>
-                          {c.name} {c.cuil_cuit ? `(${c.cuil_cuit})` : ""}
+                          {c.name}
+                          {c.address ? ` — ${c.address}` : ""}
+                          {c.cuil_cuit ? ` (${c.cuil_cuit})` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>

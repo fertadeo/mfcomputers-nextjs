@@ -12,6 +12,7 @@ import {
 } from "@/lib/cliente-display"
 import { ClienteUbicacion } from "@/components/cliente-ubicacion"
 import { formatTaxConditionLabel } from "@/lib/client-tax-condition"
+import { CLIENTE_SEARCH_PLACEHOLDER } from "@/lib/cliente-search"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -164,7 +165,7 @@ export function ClientePicker({
   selectedCliente,
   onSelect,
   onClear,
-  placeholder = "Buscar por nombre, CUIT, código o dirección…",
+  placeholder = CLIENTE_SEARCH_PLACEHOLDER,
   clearLabel = "Usar consumidor final",
   className,
   showSelectedCard = true,

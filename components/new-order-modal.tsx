@@ -32,6 +32,7 @@ import {
   ChevronDown
 } from "lucide-react"
 import { getClientes, type Cliente } from "@/lib/api"
+import { CLIENTE_SEARCH_PLACEHOLDER, clienteMatchesQuery } from "@/lib/cliente-search"
 import { IvaRateSelect } from "@/components/iva-rate-select"
 import {
   clienteRequiresZeroItemIva,
@@ -123,19 +124,36 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
     }
   }, [isOpen])
 
-  // Filtrar clientes cuando cambie la búsqueda
+  // Vista inmediata sobre los clientes ya cargados, y búsqueda en todo el padrón
+  // a partir de 2 caracteres (nombre, CUIT, teléfono, dirección, ciudad, email o código).
   useEffect(() => {
-    if (clientSearch.trim() === "") {
-      setFilteredClients(clients)
-    } else {
-      const filtered = clients.filter(client => 
-        client.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-        client.email.toLowerCase().includes(clientSearch.toLowerCase()) ||
-        client.code.toLowerCase().includes(clientSearch.toLowerCase())
-      )
-      setFilteredClients(filtered)
+    if (!isOpen) return
+    const query = clientSearch.trim()
+    if (selectedCliente && query === selectedCliente.name.trim()) {
+      return
     }
-  }, [clientSearch, clients])
+
+    setFilteredClients(clients.filter((client) => clienteMatchesQuery(client, query)))
+    if (query.length < 2) return
+
+    let cancelled = false
+    const timer = setTimeout(() => {
+      getClientes(1, 20, query, "active")
+        .then((response) => {
+          if (!cancelled) setFilteredClients(response.clients || [])
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setFilteredClients(clients.filter((client) => clienteMatchesQuery(client, query)))
+          }
+        })
+    }, 300)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [isOpen, clientSearch, clients, selectedCliente])
 
   // Cerrar dropdown cuando se hace click fuera
   useEffect(() => {
@@ -428,7 +446,7 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
                       value={clientSearch}
                       onChange={(e) => handleClientSearch(e.target.value)}
                       onFocus={() => setShowClientDropdown(true)}
-                      placeholder="Buscar cliente por nombre, email o código..."
+                      placeholder={CLIENTE_SEARCH_PLACEHOLDER}
                       className="pl-10 pr-10 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:border-turquoise-500 focus:ring-turquoise-500"
                     />
                     <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -450,8 +468,13 @@ export function NewOrderModal({ isOpen, onClose, onSuccess }: NewOrderModalProps
                                   {client.name}
                                 </div>
                                 <div className="text-sm text-slate-500 dark:text-slate-400">
-                                  {client.email}
+                                  {[client.address, client.city].filter(Boolean).join(", ") || client.email}
                                 </div>
+                                {client.phone || client.cuil_cuit ? (
+                                  <div className="text-xs text-slate-400 dark:text-slate-500">
+                                    {[client.cuil_cuit, client.phone].filter(Boolean).join(" · ")}
+                                  </div>
+                                ) : null}
                               </div>
                               <Badge variant="outline" className="text-xs">
                                 {client.code}

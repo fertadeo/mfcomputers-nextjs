@@ -12,6 +12,7 @@ import { Users, Search, Plus, Mail, Phone, Filter, Download, UserPlus, AlertCirc
 import { ClienteUbicacion } from "@/components/cliente-ubicacion"
 import { useState, useEffect } from "react"
 import { getClientes, getClienteStats, deleteCliente, type Cliente } from "@/lib/api"
+import { CLIENTE_SEARCH_PLACEHOLDER } from "@/lib/cliente-search"
 import { mapClienteApiToUi, type ClienteUI } from "@/lib/cliente-ui-map"
 import { toast } from "sonner"
 import { NewClientModal } from "@/components/new-client-modal"
@@ -290,7 +291,7 @@ export default function ClientesPage() {
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Buscar por nombre, email o código..." 
+                    placeholder={CLIENTE_SEARCH_PLACEHOLDER} 
                     className="pl-8" 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}

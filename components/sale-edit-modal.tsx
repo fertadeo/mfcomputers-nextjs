@@ -687,7 +687,6 @@ export function SaleEditModal({ sale, isOpen, onClose, onSaved }: SaleEditModalP
                     setClients([])
                     markDirty()
                   }}
-                  placeholder="Buscar cliente por nombre, CUIT, código o dirección…"
                   clearLabel="Consumidor final"
                 />
                 {clientChanged && originalSnapshot ? (

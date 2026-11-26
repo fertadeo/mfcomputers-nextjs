@@ -438,7 +438,6 @@ export function NewRepairOrderModal({ isOpen, onClose, onSuccess }: NewRepairOrd
                   setClientSearch("")
                   setClients([])
                 }}
-                placeholder="Buscar por nombre, CUIT, código o dirección…"
                 clearLabel="Limpiar"
               />
               <Button

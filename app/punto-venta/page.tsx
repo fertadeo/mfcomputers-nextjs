@@ -968,7 +968,6 @@ export default function PuntoVentaPage() {
                       setClientSearch("")
                       setClients([])
                     }}
-                    placeholder="Buscar cliente por nombre, CUIT, código o dirección…"
                     clearLabel="Consumidor final"
                   />
                   {requiresZeroItemIva ? (
