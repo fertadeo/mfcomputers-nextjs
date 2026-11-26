@@ -66,6 +66,7 @@ import {
   type RepairEquipmentFormValues,
 } from "@/lib/repair-order-equipment"
 import { generateRepairOrderReceptionPdf } from "@/lib/generate-repair-order-reception-pdf"
+import { generateRepairOrderTechnicalReportPdf } from "@/lib/generate-repair-order-technical-report-pdf"
 import {
   ArrowLeft,
   Wrench,
@@ -249,6 +250,8 @@ export default function RepairOrderDetailPage() {
     notes: "",
   })
   const [saving, setSaving] = useState(false)
+  const [technicalReport, setTechnicalReport] = useState("")
+  const [savingReport, setSavingReport] = useState(false)
   const [editClientId, setEditClientId] = useState<number | null>(null)
   const [editSelectedCliente, setEditSelectedCliente] = useState<Cliente | null>(null)
   const [editClientSearch, setEditClientSearch] = useState("")
@@ -278,6 +281,11 @@ export default function RepairOrderDetailPage() {
         delivery_date_estimated: enriched.delivery_date_estimated?.slice(0, 10) || "",
         labor_amount: parseFloat(String(enriched.labor_amount || "0")) || 0,
         notes: enriched.notes || "",
+      })
+      setTechnicalReport((current) => {
+        const incoming = enriched.technical_report || ""
+        if (current.trim() && current.trim() !== incoming.trim()) return current
+        return incoming
       })
       setEditClientId(enriched.client_id)
       setEditSelectedCliente(null)
@@ -436,6 +444,7 @@ export default function RepairOrderDetailPage() {
         delivery_date_estimated: editForm.delivery_date_estimated || undefined,
         labor_amount: Number.isNaN(labor) ? undefined : labor,
         notes: editForm.notes || undefined,
+        technical_report: technicalReport.trim() || null,
       })
       toast.success("Orden actualizada.")
       setEditMode(false)
@@ -475,6 +484,75 @@ export default function RepairOrderDetailPage() {
       lineItems: repairOrderItemsToPdfLines(order.items ?? []),
       labor_amount: parseFloat(String(order.labor_amount || "0")) || 0,
     })
+  }
+
+  const persistTechnicalReport = async () => {
+    if (!id || !order) return false
+    const text = technicalReport.trim()
+    if (text === (order.technical_report || "").trim()) return true
+    await updateRepairOrder(id, { technical_report: text || null })
+    setOrder((prev) => (prev ? { ...prev, technical_report: text || null } : prev))
+    setTechnicalReport(text)
+    return true
+  }
+
+  const handleSaveTechnicalReport = async () => {
+    if (!order) return
+    setSavingReport(true)
+    try {
+      await persistTechnicalReport()
+      toast.success("Informe técnico guardado.")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar el informe técnico")
+    } finally {
+      setSavingReport(false)
+    }
+  }
+
+  const handleDownloadTechnicalReport = async () => {
+    if (!order) return
+    const text = technicalReport.trim()
+    if (!text) {
+      toast.error("Escribí el informe técnico antes de generar el PDF.")
+      return
+    }
+    setSavingReport(true)
+    try {
+      try {
+        await persistTechnicalReport()
+      } catch (e: unknown) {
+        toast.error(
+          e instanceof Error
+            ? `${e.message}. El PDF se genera con el texto escrito, pero no quedó guardado.`
+            : "No se pudo guardar el informe. El PDF se genera con el texto escrito."
+        )
+      }
+      let clientFields = pdfClientContactFields(order)
+      if (!clientFields.clientAddressLines?.length && order.client_id) {
+        try {
+          clientFields = pdfClientContactFields(await getClienteById(order.client_id))
+        } catch {
+          /* usar snapshot de la orden */
+        }
+      }
+      generateRepairOrderTechnicalReportPdf({
+        repair_number: order.repair_number,
+        emission_date: new Date().toISOString(),
+        reception_date: order.reception_date,
+        clientName: clientFields.clientName,
+        clientPhone: clientFields.clientPhone,
+        clientEmail: clientFields.clientEmail,
+        clientAddressLines: clientFields.clientAddressLines,
+        clientCode: clientFields.clientCode,
+        clientCuit: clientFields.clientCuit,
+        clientTaxCondition: clientFields.clientTaxCondition,
+        equipment_description: order.equipment_description || "",
+        customer_declared_fault: order.customer_declared_fault?.trim() || undefined,
+        technical_report: text,
+      })
+    } finally {
+      setSavingReport(false)
+    }
   }
 
   const handleDeleteItem = async (itemId: number) => {
@@ -591,6 +669,14 @@ export default function RepairOrderDetailPage() {
               )}
               <Button variant="outline" size="sm" onClick={handleDownloadReceptionPdf}>
                 <FileDown className="h-4 w-4 mr-1" /> PDF recepción
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadTechnicalReport}
+                disabled={savingReport}
+              >
+                <FileText className="h-4 w-4 mr-1" /> PDF informe técnico
               </Button>
             </div>
           </div>
@@ -817,6 +903,47 @@ export default function RepairOrderDetailPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card id="informe-tecnico">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Informe técnico
+              </CardTitle>
+              <CardDescription>
+                Para entregarle al cliente cuando la reparación no conviene. No lleva repuestos,
+                mano de obra ni importe: el técnico redacta el motivo en un documento distinto del presupuesto.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="technical_report">Texto del informe</Label>
+                <Textarea
+                  id="technical_report"
+                  value={technicalReport}
+                  onChange={(e) => setTechnicalReport(e.target.value)}
+                  rows={8}
+                  maxLength={20000}
+                  placeholder="Describí qué se revisó y la recomendación. Por ejemplo: no conviene reparar el equipo por falta de insumos y se recomienda comprar uno nuevo."
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={handleSaveTechnicalReport} disabled={savingReport}>
+                  {savingReport && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                  Guardar informe
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDownloadTechnicalReport}
+                  disabled={savingReport}
+                >
+                  <FileDown className="h-4 w-4 mr-1" />
+                  PDF informe técnico
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
